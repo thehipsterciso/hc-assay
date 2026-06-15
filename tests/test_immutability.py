@@ -40,3 +40,35 @@ def test_unit_attributes_cannot_be_mutated_in_place():
     with pytest.raises(TypeError):
         u.attributes["k"] = "x"  # type: ignore[index]
     assert hash(u) is not None
+
+
+# ---- issue #19: freeze honors its hashable contract on leaves ----
+
+def test_freeze_converts_bytearray_to_bytes():
+    frozen = freeze({"b": bytearray(b"xy")})
+    assert frozen["b"] == b"xy"
+    assert hash(frozen) is not None
+
+
+def test_freeze_canonicalizes_array_buffer():
+    import array
+
+    frozen = freeze({"a": array.array("d", [1.0, 2.0])})
+    assert hash(frozen) is not None  # array.array would otherwise be unhashable
+
+
+def test_freeze_raises_loud_on_unhashable_unconvertible_leaf():
+    class Unhashable:
+        __hash__ = None  # type: ignore[assignment]
+
+    with pytest.raises(TypeError):
+        freeze({"x": Unhashable()})
+
+
+def test_baseline_artifact_with_buffer_contents_is_hashable():
+    import array
+
+    from assay_engine.baseline.toolkit import BaselineArtifact
+
+    ba = BaselineArtifact(corpus_fingerprint="fp", contents={"emb": array.array("d", [1.0])})
+    assert hash(ba) is not None  # was a latent TypeError before #19

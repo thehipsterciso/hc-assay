@@ -63,11 +63,18 @@ class Gate:
         self,
         context: Mapping[str, Any],
         *,
+        study_modes: frozenset[StudyMode] | None = None,
         record: ProvenanceRecorder | None = None,
     ) -> GateDecision:
-        if not legal_transition(self.frm, self.to, self.modes):
+        # The gate's own `modes` is a self-declaration. When the orchestration layer supplies
+        # the running study's actual modes, the transition must be legal under THOSE modes —
+        # so a discovery-only run cannot pass a CONFIRM->ADJUDICATE gate even if the gate
+        # over-declares its modes (audit pass 2, issue #23). Fall back to self.modes only
+        # until the runner is wired.
+        effective_modes = self.modes if study_modes is None else (study_modes & self.modes)
+        if not legal_transition(self.frm, self.to, effective_modes):
             raise GateError(
-                f"gate {self.name!r} declares an illegal transition for its modes: "
+                f"gate {self.name!r} declares an illegal transition for the effective modes: "
                 f"{self.frm.name} -> {self.to.name}"
             )
         decision = self.precondition(context)

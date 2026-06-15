@@ -56,8 +56,12 @@ class FrozenDict(Mapping[str, Any]):
 def freeze(value: Any) -> Any:
     """Recursively convert ``value`` into an immutable, hashable form.
 
-    Mappings → :class:`FrozenDict`, lists/tuples → tuples, sets → frozensets; scalars and
-    already-immutable values pass through unchanged.
+    Mappings → :class:`FrozenDict`, lists/tuples → tuples, sets → frozensets. Known mutable
+    buffers are converted to hashable equivalents (``bytearray`` → ``bytes``;
+    ``array.array`` / numpy-like arrays exposing ``tobytes`` → a ``(kind, shape, bytes)``
+    tuple). Any remaining leaf that is not hashable raises ``TypeError`` *here, at
+    construction time* — rather than silently passing through and resurfacing the error the
+    moment the record is hashed (audit pass 2, issue #19; the incomplete half of #7).
     """
     if isinstance(value, FrozenDict):
         return value
@@ -67,6 +71,24 @@ def freeze(value: Any) -> Any:
         return tuple(freeze(v) for v in value)
     if isinstance(value, (set, frozenset)):
         return frozenset(freeze(v) for v in value)
+    if isinstance(value, bytearray):
+        return bytes(value)
+    # Duck-typed buffer/array support (e.g. array.array, numpy.ndarray) without importing
+    # numpy: anything exposing tobytes() is canonicalized to a hashable descriptor tuple.
+    tobytes = getattr(value, "tobytes", None)
+    if callable(tobytes) and not isinstance(value, (bytes, str)):
+        shape = getattr(value, "shape", None)
+        kind = getattr(getattr(value, "dtype", None), "str", None) or getattr(
+            value, "typecode", type(value).__name__
+        )
+        return (str(kind), tuple(shape) if shape is not None else None, tobytes())
+    try:
+        hash(value)
+    except TypeError as exc:
+        raise TypeError(
+            f"freeze: leaf of type {type(value).__name__!r} is not hashable and has no "
+            "known immutable conversion; a frozen value record cannot contain it"
+        ) from exc
     return value
 
 
