@@ -9,7 +9,7 @@ so the engine consumes it without knowing what the features mean.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Protocol, Sequence, runtime_checkable
+from typing import Protocol, Sequence
 
 from assay_engine.contracts.schema import Corpus
 
@@ -30,7 +30,6 @@ class FeatureMatrix:
             raise ValueError("FeatureMatrix rows must match feature_names width")
 
 
-@runtime_checkable
 class FeatureBuilder(Protocol):
     """Build dataset-specific numeric features from a canonical corpus."""
 

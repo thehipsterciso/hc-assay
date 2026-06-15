@@ -21,6 +21,8 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Mapping
 
+from assay_engine._frozen import freeze_mapping
+
 
 class HypothesisKind(Enum):
     UNIT_LEVEL = "unit_level"
@@ -37,9 +39,17 @@ class Hypothesis:
     """A locked, falsifiable assertion ready for confirmatory testing.
 
     ``locked_at`` and ``timestamp_proof`` are populated when the hypothesis is sealed for
-    pre-registration (RFC-3161 token reference). An unlocked hypothesis (both ``None``) must
-    not be passed to a confirmatory test — the engine enforces this at the gate, and the
-    ``locked`` property is the in-code check.
+    pre-registration. An unlocked hypothesis (either field ``None``) must not be passed to a
+    confirmatory test — the engine refuses this, and the ``locked`` property is the in-code
+    check.
+
+    Scope of ``locked`` today (audit pass 1, issue #6): ``locked`` is a **pre-registration
+    sentinel** — it asserts only that both fields are populated. It does NOT yet parse
+    ``locked_at`` as a timestamp, validate ``timestamp_proof`` as an RFC-3161 token, or
+    verify that the lock precedes confirmation. Real RFC-3161 verification and
+    lock-before-confirm ordering are deferred until the pre-registration / timestamp-authority
+    infrastructure lands (see GOVERNANCE.md). Do not read ``locked`` as a cryptographic
+    guarantee yet.
     """
 
     hypothesis_id: str
@@ -60,3 +70,4 @@ class Hypothesis:
     def __post_init__(self) -> None:
         if self.origin is HypothesisOrigin.EXTERNAL_CLAIM and not self.source_claim_id:
             raise ValueError("EXTERNAL_CLAIM hypotheses must carry a source_claim_id")
+        object.__setattr__(self, "params", freeze_mapping(self.params))

@@ -8,12 +8,11 @@ with the canonical result.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Protocol, runtime_checkable
+from typing import Protocol
 
 from assay_engine.contracts.schema import Corpus
 
 
-@runtime_checkable
 class IngestionParser(Protocol):
     """Raw source → canonical :class:`Corpus`.
 

@@ -10,17 +10,27 @@ mechanisms, selected by hypothesis kind:
 
 This module defines the *contract and guards* around confirmation. The concrete statistics
 are supplied by callers via the baseline toolkit; the engine's responsibility here is to
-refuse to confirm an unlocked hypothesis or on discovery data, and to map an outcome onto
-one of the three verdicts honestly (including ``indeterminate``).
+refuse to confirm an unlocked hypothesis or on discovery data, validate the supplied
+statistics, and map an outcome onto one of the three verdicts honestly (including
+``indeterminate``).
+
+Direction handling (audit pass 1, issue #2): a claim predicts the statistic lies in a
+particular tail of the null. The empirical p-value is computed against *that* tail, so a
+claim predicting a low value is confirmable, and a genuine contradiction (significant in the
+opposite tail) is detectable — both were impossible under the previous direction-blind
+upper-tail-only implementation.
 """
 
 from __future__ import annotations
 
-from typing import Iterable
+import math
+from typing import Iterable, Literal
 
 from assay_engine.methodology.firewalls import DiscoverConfirmSplit, FirewallViolation
 from assay_engine.methodology.hypothesis import Hypothesis, HypothesisKind
-from assay_engine.methodology.verdict import Verdict, VerdictLabel
+from assay_engine.methodology.verdict import Verdict
+
+Direction = Literal["greater", "less"]
 
 
 def require_locked(hypothesis: Hypothesis) -> None:
@@ -32,6 +42,24 @@ def require_locked(hypothesis: Hypothesis) -> None:
         )
 
 
+def _validate_alpha(alpha: float) -> None:
+    # A significance threshold of 0.5 or more is not a meaningful one-sided level, and
+    # admitting it lets both tails register "significant" at once (alpha < 0.5 guarantees
+    # p_support + p_contra >= 1 cannot both fall below alpha) — fix-review nit on issue #2.
+    if not (0.0 < alpha < 0.5):
+        raise ValueError(f"alpha must be in (0, 0.5); got {alpha}")
+
+
+def _validate_pvalue(p_value: float) -> None:
+    if not (0.0 <= p_value <= 1.0):
+        raise ValueError(f"p_value must be in [0, 1]; got {p_value}")
+
+
+def _validate_finite(name: str, value: float) -> None:
+    if not math.isfinite(value):
+        raise ValueError(f"{name} must be a finite number; got {value}")
+
+
 def verdict_from_pvalue(
     hypothesis_id: str,
     *,
@@ -40,16 +68,25 @@ def verdict_from_pvalue(
     alpha: float,
     powered: bool,
     direction_supports_claim: bool,
+    test_description: str = "confirmatory test",
 ) -> Verdict:
     """Map a confirmatory statistic onto the three verdicts.
 
     - not ``powered`` → ``indeterminate`` (the method cannot decide).
     - significant and direction agrees with the claim → ``supported``.
     - significant and direction disagrees → ``contradicted``.
-    - not significant → ``indeterminate`` (absence of evidence is not contradiction here;
-      a stronger contradiction needs an equivalence/severity test, handled by callers).
+    - not significant → ``indeterminate`` (absence of evidence is not contradiction here).
+
+    ``p_value`` and ``direction_supports_claim`` must be derived by the caller from a test
+    appropriate to the claim's predicted direction. Inputs are validated (issue #4) and the
+    recorded decision rule reflects the caller's ``test_description`` rather than a hard-coded
+    (and previously incorrect) sidedness label (issue #2).
     """
-    rule = f"two-sided test at alpha={alpha}; powered={powered}"
+    _validate_pvalue(p_value)
+    _validate_alpha(alpha)
+    _validate_finite("statistic", statistic)
+
+    rule = f"{test_description} at alpha={alpha}; powered={powered}"
     common = dict(statistic=statistic, threshold=alpha, evidence={"p_value": p_value})
     if not powered:
         return Verdict.indeterminate(hypothesis_id, rule, notes="underpowered", **common)
@@ -77,7 +114,7 @@ def confirm_unit_level(
     if hypothesis.kind is not HypothesisKind.UNIT_LEVEL:
         raise ValueError("confirm_unit_level requires a UNIT_LEVEL hypothesis")
     require_locked(hypothesis)
-    split.assert_confirm_only(evaluated_ids)  # Firewall B
+    split.assert_confirm_only(evaluated_ids)  # Firewall B (rejects empty / discovery ids)
     return verdict_from_pvalue(
         hypothesis.hypothesis_id,
         statistic=statistic,
@@ -85,7 +122,18 @@ def confirm_unit_level(
         alpha=alpha,
         powered=powered,
         direction_supports_claim=direction_supports_claim,
+        test_description="held-out unit-level test",
     )
+
+
+def _empirical_p(null: list[float], observed: float, tail: Direction) -> float:
+    """One-sided empirical p-value with +1 smoothing for the given tail."""
+    n = len(null)
+    if tail == "greater":
+        extreme = sum(1 for v in null if v >= observed)
+    else:
+        extreme = sum(1 for v in null if v <= observed)
+    return (extreme + 1) / (n + 1)
 
 
 def confirm_whole_corpus(
@@ -95,48 +143,55 @@ def confirm_whole_corpus(
     null_distribution: list[float],
     alpha: float,
     stable_across_resamples: bool,
-    direction_supports_claim: bool,
+    predicted_direction: Direction,
 ) -> Verdict:
     """Confirm a whole-corpus hypothesis against a null distribution + stability check.
 
-    The pattern must (a) beat the permutation/null distribution at ``alpha`` and (b) be
-    stable across resamples. Failing stability yields ``indeterminate`` even if the point
-    estimate beats the null — an unstable effect is not confirmable.
+    ``predicted_direction`` is the tail the claim predicts the observed statistic lies in
+    (``"greater"`` or ``"less"`` than the null). The pattern must (a) beat the null at
+    ``alpha`` in the predicted tail and (b) be stable across resamples → ``supported``. A
+    result significant in the *opposite* tail → ``contradicted``. Anything else (unstable,
+    or not significant in either tail) → ``indeterminate``.
     """
     if hypothesis.kind is not HypothesisKind.WHOLE_CORPUS:
         raise ValueError("confirm_whole_corpus requires a WHOLE_CORPUS hypothesis")
     require_locked(hypothesis)
+    _validate_alpha(alpha)
+    _validate_finite("observed", observed)
     if not null_distribution:
         raise ValueError("a null/permutation distribution is required for whole-corpus confirmation")
+    for v in null_distribution:
+        _validate_finite("null_distribution value", v)
 
+    opposite: Direction = "less" if predicted_direction == "greater" else "greater"
+    p_support = _empirical_p(null_distribution, observed, predicted_direction)
+    p_contra = _empirical_p(null_distribution, observed, opposite)
     n = len(null_distribution)
-    # one-sided empirical p-value (proportion of null at least as extreme), with +1 smoothing
-    at_least_as_extreme = sum(1 for v in null_distribution if v >= observed)
-    p_value = (at_least_as_extreme + 1) / (n + 1)
     rule = (
-        f"empirical p from {n}-sample null at alpha={alpha}; "
-        "requires stability across resamples"
+        f"empirical p from {n}-sample null at alpha={alpha}, predicted tail "
+        f"'{predicted_direction}'; requires stability across resamples"
     )
-    common = dict(
-        statistic=observed,
-        threshold=alpha,
-        evidence={"p_value": p_value, "null_n": n, "stable": stable_across_resamples},
-    )
+    evidence = {
+        "p_support": p_support,
+        "p_contradict": p_contra,
+        "null_n": n,
+        "stable": stable_across_resamples,
+        "predicted_direction": predicted_direction,
+    }
+    common = dict(statistic=observed, threshold=alpha, evidence=evidence)
+
     if not stable_across_resamples:
         return Verdict.indeterminate(
             hypothesis.hypothesis_id, rule, notes="unstable across resamples", **common
         )
-    if p_value <= alpha:
-        label = (
-            VerdictLabel.SUPPORTED if direction_supports_claim else VerdictLabel.CONTRADICTED
-        )
-        return Verdict(
+    if p_support <= alpha:
+        return Verdict.supported(hypothesis.hypothesis_id, rule, **common)
+    if p_contra <= alpha:
+        return Verdict.contradicted(
             hypothesis.hypothesis_id,
-            label,
             rule,
-            statistic=observed,
-            threshold=alpha,
-            evidence={"p_value": p_value, "null_n": n, "stable": stable_across_resamples},
+            notes="significant in the opposite tail",
+            **common,
         )
     return Verdict.indeterminate(
         hypothesis.hypothesis_id, rule, notes="does not beat null at alpha", **common

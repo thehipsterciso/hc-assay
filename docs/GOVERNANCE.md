@@ -38,6 +38,13 @@ This is honestly characterized as a **timestamped adaptive design**: methods are
 first; the data informs the questions; the questions are then locked and timestamped before
 they are tested. It is not claimed to be "predictions registered before any data."
 
+> **Implementation status (engine scaffold):** the engine's lock check is currently a
+> *presence sentinel* — it verifies a hypothesis carries both a lock time and a timestamp
+> proof before confirmation. RFC-3161 token verification against a trusted timestamp
+> authority, and enforcing that the lock precedes the confirmation run, are part of the
+> pre-registration infrastructure not yet wired (audit pass 1, issue #6). Until then, treat
+> the lock as a procedural sentinel, not a cryptographic guarantee.
+
 ## 3. Provenance
 
 An **append-only** audit trail (W3C PROV-DM style) records every action before the next

@@ -3,11 +3,19 @@
 The ordering encodes the method: ingest and build the *blind* baseline before any external
 claim is touched (Firewall A), and discover before confirm (Firewall B). Gates guard the
 transitions between these phases.
+
+Mode coupling (audit pass 1, issue #9): the legal phase sequence depends on the study's
+modes. A discovery-only study runs INGEST→…→CONFIRM→REPORT and must *not* enter the
+external-claims phases (ADJUDICATE, SCORE); an adjudication study includes them. Use
+:func:`required_phases` / :func:`legal_transition` for mode-aware legality;
+:meth:`Phase.can_advance_to` is the mode-agnostic full-pipeline adjacency check.
 """
 
 from __future__ import annotations
 
 from enum import Enum
+
+from assay_engine.contracts.study import StudyMode
 
 
 class Phase(Enum):
@@ -23,4 +31,29 @@ class Phase(Enum):
     REPORT = 8            # assemble the reproducibility package
 
     def can_advance_to(self, other: "Phase") -> bool:
+        """Adjacent in the *full* pipeline (mode-agnostic). For mode-aware legality that lets
+        a discovery-only study skip ADJUDICATE/SCORE, use :func:`legal_transition`."""
         return other.value == self.value + 1
+
+
+def required_phases(modes: frozenset[StudyMode]) -> tuple[Phase, ...]:
+    """The ordered phases a study with ``modes`` actually visits."""
+    seq = [Phase.INGEST, Phase.BASELINE, Phase.DISCOVERY, Phase.PREREGISTER, Phase.CONFIRM]
+    if StudyMode.ADJUDICATE_EXTERNAL_CLAIMS in modes:
+        seq += [Phase.ADJUDICATE, Phase.SCORE]
+    seq.append(Phase.REPORT)
+    return tuple(seq)
+
+
+def legal_transition(frm: Phase, to: Phase, modes: frozenset[StudyMode]) -> bool:
+    """True iff ``to`` immediately follows ``frm`` in the phase sequence for ``modes``.
+
+    A discovery-only study therefore legally goes CONFIRM→REPORT and can never enter
+    ADJUDICATE/SCORE; an adjudication study goes CONFIRM→ADJUDICATE→SCORE→REPORT.
+    """
+    seq = required_phases(modes)
+    try:
+        i = seq.index(frm)
+    except ValueError:
+        return False
+    return i + 1 < len(seq) and seq[i + 1] == to

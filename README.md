@@ -7,8 +7,12 @@ dataset to build an independent, empirical understanding of it — and, where th
 carries external expert-asserted claims, to adjudicate those claims against that
 independent understanding.
 
-Status: **documentation phase.** The methodology and architecture are being written before
-any framework code is built.
+Status: **engine scaffold in place.** The dataset-agnostic engine (`src/assay_engine`) —
+contracts, the methodology core (hypotheses, three verdicts, the two firewalls, the
+measurement↔interpretation fence), and Protocol seams for the infrastructure components — is
+implemented with a passing test suite and CI. The infrastructure seams (reasoning,
+orchestration graph, observability, persistence, baseline toolkit) are stubs to be wired
+next. Adapters and concrete studies build on top.
 
 ---
 

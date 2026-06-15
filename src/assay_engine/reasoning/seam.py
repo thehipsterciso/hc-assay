@@ -12,6 +12,8 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Mapping, Protocol, runtime_checkable
 
+from assay_engine._frozen import freeze_mapping
+
 
 class StakesTier(Enum):
     BULK = "bulk"          # local model — high volume, low stakes
@@ -24,6 +26,9 @@ class ReasoningRequest:
     tier: StakesTier
     purpose: str
     params: Mapping[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "params", freeze_mapping(self.params))
 
 
 @runtime_checkable

@@ -2,7 +2,9 @@
 
 OpenTelemetry → on-box collector. The engine emits spans through this seam so the concrete
 exporter (loopback-bound local collector) can be configured once and enforced everywhere.
-Lifted from the prior platform; loopback enforcement and credential scrubbing carry over.
+When the concrete tracer is lifted from the prior platform, loopback enforcement and
+credential scrubbing will be enforced in that implementation — NOT here, where only the
+Protocol and a fail-loud placeholder live (audit pass 1, issue #14).
 """
 
 from __future__ import annotations
@@ -18,9 +20,15 @@ class Tracer(Protocol):
         ...
 
 
-class NoopTracer:
-    """A tracer that records nothing — default until the local collector is wired."""
+class UnconfiguredTracer:
+    """Placeholder until the local collector is wired. Fails loud rather than silently
+    dropping spans (and providing none of the loopback/scrubbing guarantees of the real
+    tracer). Tests that need a no-op should supply their own explicit double."""
 
     @contextmanager
     def span(self, name: str, attributes: Mapping[str, Any] | None = None) -> Iterator[None]:
-        yield
+        raise NotImplementedError(
+            "tracing seam not yet wired — port the self-hosted OpenTelemetry tracer "
+            "(loopback-bound local collector + credential scrubbing, ADR-0003)"
+        )
+        yield  # pragma: no cover - unreachable; keeps this a generator/contextmanager
