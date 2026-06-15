@@ -77,6 +77,7 @@ def test_verdict_mapping_covers_three_outcomes():
         {"p_value": -0.1},
         {"p_value": 1.5},
         {"alpha": 0.0},
+        {"alpha": 0.5},
         {"alpha": 1.0},
         {"statistic": float("nan")},
         {"statistic": float("inf")},
@@ -135,6 +136,16 @@ def test_whole_corpus_not_significant_is_indeterminate():
     v = confirm_whole_corpus(
         _locked(HypothesisKind.WHOLE_CORPUS), observed=5.0,
         null_distribution=list(range(100)), alpha=0.01,
+        stable_across_resamples=True, predicted_direction="greater",
+    )
+    assert v.label is VerdictLabel.INDETERMINATE
+
+
+def test_whole_corpus_dead_center_is_indeterminate():
+    # An observation at the null center must not be "significant" in either tail.
+    v = confirm_whole_corpus(
+        _locked(HypothesisKind.WHOLE_CORPUS), observed=5.5,
+        null_distribution=[float(i) for i in range(1, 11)], alpha=0.4,
         stable_across_resamples=True, predicted_direction="greater",
     )
     assert v.label is VerdictLabel.INDETERMINATE

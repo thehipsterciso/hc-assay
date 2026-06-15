@@ -43,8 +43,11 @@ def require_locked(hypothesis: Hypothesis) -> None:
 
 
 def _validate_alpha(alpha: float) -> None:
-    if not (0.0 < alpha < 1.0):
-        raise ValueError(f"alpha must be in (0, 1); got {alpha}")
+    # A significance threshold of 0.5 or more is not a meaningful one-sided level, and
+    # admitting it lets both tails register "significant" at once (alpha < 0.5 guarantees
+    # p_support + p_contra >= 1 cannot both fall below alpha) — fix-review nit on issue #2.
+    if not (0.0 < alpha < 0.5):
+        raise ValueError(f"alpha must be in (0, 0.5); got {alpha}")
 
 
 def _validate_pvalue(p_value: float) -> None:
