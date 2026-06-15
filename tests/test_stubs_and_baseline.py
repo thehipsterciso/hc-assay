@@ -2,6 +2,7 @@
 
 import pytest
 
+from assay_engine.methodology.fence import Interpretation, Measurement
 from assay_engine.contracts.features import FeatureMatrix
 from assay_engine.observability.tracing import UnconfiguredTracer
 from assay_engine.reasoning.seam import (
@@ -24,6 +25,13 @@ def test_unconfigured_tracer_fails_loud_not_silent():
     with pytest.raises(NotImplementedError):
         with tracer.span("x"):
             pass
+
+
+def test_measurement_rejects_interpretation_value():
+    # issue #22: interpretation must not feed back into measurement
+    interp = Interpretation(value=1, basis=("p:h",), rationale="r", judged_by="op")
+    with pytest.raises(TypeError):
+        Measurement(value=interp, produced_by="x", inputs_hash="h")
 
 
 def test_feature_matrix_valid():

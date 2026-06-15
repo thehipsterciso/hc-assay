@@ -21,24 +21,6 @@ T = TypeVar("T")
 
 
 @dataclass(frozen=True, slots=True)
-class Measurement(Generic[T]):
-    """A value produced purely by the engine from data — no judgment involved."""
-
-    value: T
-    produced_by: str
-    inputs_hash: str
-    metadata: Mapping[str, Any] = field(default_factory=dict)
-
-    def __post_init__(self) -> None:
-        object.__setattr__(self, "metadata", freeze_mapping(self.metadata))
-
-    @property
-    def ref(self) -> str:
-        """A stable id for this specific measurement: producer + input hash."""
-        return f"{self.produced_by}:{self.inputs_hash}"
-
-
-@dataclass(frozen=True, slots=True)
 class Interpretation(Generic[T]):
     """A judgment *about* one or more measurements. Downstream-only; never an input upstream."""
 
@@ -50,6 +32,32 @@ class Interpretation(Generic[T]):
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "metadata", freeze_mapping(self.metadata))
+
+
+@dataclass(frozen=True, slots=True)
+class Measurement(Generic[T]):
+    """A value produced purely by the engine from data — no judgment involved."""
+
+    value: T
+    produced_by: str
+    inputs_hash: str
+    metadata: Mapping[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        # Structurally close the one-way fence: an interpretation may never re-enter as a
+        # measurement value (audit pass 2, issue #22). Note: ref/inputs_hash integrity
+        # (forgery resistance) is delegated to the provenance/audit layer, not enforced here.
+        if isinstance(self.value, Interpretation):
+            raise TypeError(
+                "Measurement.value cannot be an Interpretation — interpretation must not "
+                "feed back into measurement (the measurement↔interpretation fence)"
+            )
+        object.__setattr__(self, "metadata", freeze_mapping(self.metadata))
+
+    @property
+    def ref(self) -> str:
+        """A stable id for this specific measurement: producer + input hash."""
+        return f"{self.produced_by}:{self.inputs_hash}"
 
 
 def fence(measurement: Measurement[Any], value: T, *, rationale: str, judged_by: str) -> Interpretation[T]:
