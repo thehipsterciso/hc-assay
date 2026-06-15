@@ -72,3 +72,29 @@ def test_baseline_artifact_with_buffer_contents_is_hashable():
 
     ba = BaselineArtifact(corpus_fingerprint="fp", contents={"emb": array.array("d", [1.0])})
     assert hash(ba) is not None  # was a latent TypeError before #19
+
+
+def test_freeze_array_like_with_bad_tobytes_raises_at_construction():
+    # issue #26: a malformed array-like whose tobytes() returns an unhashable, unconvertible
+    # value must be caught loud at construction, not deferred to hash time. (A bytearray
+    # result is fine — freeze converts it to bytes — so use a genuinely unconvertible one.)
+    class BadResult:
+        __hash__ = None  # type: ignore[assignment]
+
+    class Weird:
+        typecode = "d"
+
+        def tobytes(self):
+            return BadResult()
+
+    with pytest.raises(TypeError):
+        freeze(Weird())
+
+
+def test_frozendict_direct_construction_is_deeply_immutable_and_hashable():
+    # issue #27: building FrozenDict directly from nested mutable input still honors contract
+    fd = FrozenDict({"a": {"b": 1}, "c": [1, 2]})
+    assert isinstance(fd["a"], FrozenDict)
+    assert fd["c"] == (1, 2)
+    assert hash(fd) is not None
+    assert fd == freeze({"a": {"b": 1}, "c": [1, 2]})
