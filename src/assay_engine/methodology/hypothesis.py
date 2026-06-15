@@ -19,9 +19,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Mapping
+from typing import Any, Literal, Mapping
 
 from assay_engine._frozen import freeze_mapping
+
+# The tail a claim predicts the statistic lies in, relative to the null.
+Direction = Literal["greater", "less"]
 
 
 class HypothesisKind(Enum):
@@ -61,6 +64,10 @@ class Hypothesis:
     source_claim_id: str | None = None
     locked_at: str | None = None
     timestamp_proof: str | None = None
+    # The predicted direction, fixed at pre-registration so it cannot be chosen post-hoc
+    # after seeing the baseline (audit pass 2, issue #24). For an EXTERNAL_CLAIM hypothesis
+    # the adapter derives this from the claim's assertion, not from the baseline.
+    predicted_direction: Direction | None = None
     params: Mapping[str, Any] = field(default_factory=dict)
 
     @property

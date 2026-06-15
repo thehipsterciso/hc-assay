@@ -83,3 +83,11 @@ def test_requires_human_gate_records_when_recorder_supplied():
     decision = g.evaluate({}, record=recorded.append)
     assert decision.approved
     assert recorded and recorded[0].gate == "g"
+
+
+def test_gate_rejects_transition_illegal_for_running_study_modes():
+    # issue #23: even a default-(ALL_MODES) gate must respect the running study's modes
+    g = Gate("g", Phase.CONFIRM, Phase.ADJUDICATE, _approve)  # default modes
+    assert g.evaluate({}).approved  # legal under the full pipeline
+    with pytest.raises(GateError):
+        g.evaluate({}, study_modes=DISCOVERY)  # discovery-only run forbids ADJUDICATE
