@@ -27,7 +27,12 @@ class FrozenDict(Mapping[str, Any]):
     __slots__ = ("_data", "_hash")
 
     def __init__(self, data: Mapping[str, Any] | None = None) -> None:
-        self._data: dict[str, Any] = dict(data) if data is not None else {}
+        # Freeze values so a directly-constructed FrozenDict satisfies its own
+        # immutable+hashable contract even from nested-mutable input (audit pass 3, issue #27).
+        # freeze() is idempotent, so routing through freeze_mapping costs only one extra pass.
+        self._data: dict[str, Any] = (
+            {k: freeze(v) for k, v in data.items()} if data is not None else {}
+        )
         self._hash: int | None = None
 
     def __getitem__(self, key: str) -> Any:
@@ -84,7 +89,9 @@ def freeze(value: Any) -> Any:
         kind = getattr(getattr(value, "dtype", None), "str", None) or getattr(
             value, "typecode", type(value).__name__
         )
-        return (str(kind), tuple(shape) if shape is not None else None, tobytes())
+        # Route the descriptor through freeze() so a malformed tobytes() returning a
+        # non-hashable value is still caught loud at construction (audit pass 3, issue #26).
+        return freeze((str(kind), tuple(shape) if shape is not None else None, tobytes()))
     try:
         hash(value)
     except TypeError as exc:
