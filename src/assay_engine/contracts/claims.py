@@ -14,7 +14,9 @@ Access to a claims source while claim-blindness is in force raises ``FirewallVio
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Iterable, Mapping, Protocol, runtime_checkable
+from typing import Any, Iterable, Mapping, Protocol
+
+from assay_engine._frozen import freeze_mapping
 
 
 @dataclass(frozen=True, slots=True)
@@ -32,8 +34,11 @@ class ClaimRecord:
     assertion: Mapping[str, Any]
     provenance: Mapping[str, Any] = field(default_factory=dict)
 
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "assertion", freeze_mapping(self.assertion))
+        object.__setattr__(self, "provenance", freeze_mapping(self.provenance))
 
-@runtime_checkable
+
 class ExternalClaimsSource(Protocol):
     """Adapter-provided access to a dataset's external claims (adjudication mode only)."""
 

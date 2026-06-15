@@ -36,6 +36,8 @@ class StudyDefinition:
     claims_source: ExternalClaimsSource | None = None
 
     def __post_init__(self) -> None:
+        if not self.name.strip():
+            raise ValueError("StudyDefinition.name must be non-empty (it is the registry key)")
         if not self.modes:
             raise ValueError("StudyDefinition must declare at least one mode")
         needs_claims = StudyMode.ADJUDICATE_EXTERNAL_CLAIMS in self.modes

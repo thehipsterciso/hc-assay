@@ -12,8 +12,10 @@ source — a baseline simply cannot be handed the claims it must stay blind to.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Mapping, Protocol, runtime_checkable
+from typing import Any, Mapping, Protocol
 
+from assay_engine._frozen import freeze_mapping
+from assay_engine.contracts.claims import ExternalClaimsSource
 from assay_engine.contracts.schema import Corpus
 from assay_engine.methodology.firewalls import ClaimBlindGuard
 
@@ -31,11 +33,16 @@ class BaselineArtifact:
     contents: Mapping[str, Any]
     determinism: Mapping[str, Any] = field(default_factory=dict)
 
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "contents", freeze_mapping(self.contents))
+        object.__setattr__(self, "determinism", freeze_mapping(self.determinism))
 
-@runtime_checkable
+
 class BaselineBuilder(Protocol):
     """Build a :class:`BaselineArtifact` from a corpus, blind to any external claims."""
 
-    def build(self, corpus: Corpus, *, claim_guard: ClaimBlindGuard) -> BaselineArtifact:
+    def build(
+        self, corpus: Corpus, *, claim_guard: ClaimBlindGuard[ExternalClaimsSource]
+    ) -> BaselineArtifact:
         """Construct the baseline. Must run with ``claim_guard.sealed()`` in force."""
         ...

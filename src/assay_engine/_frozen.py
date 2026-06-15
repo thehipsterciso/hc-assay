@@ -1,0 +1,75 @@
+"""Deep-immutable, hashable mapping for the engine's frozen value records.
+
+Many engine dataclasses are ``frozen=True`` and carry mapping fields (``evidence``,
+``metadata``, ``attributes``, ``params``, ``assertion``, ``provenance``, ``contents``,
+``determinism``). With a plain ``dict`` default two problems arise (audit pass 1, issue #7):
+
+1. ``frozen=True`` auto-generates ``__hash__`` over all fields, so the instances *look*
+   hashable but raise ``TypeError`` the moment they are hashed (a dict is unhashable).
+2. ``frozen`` only blocks attribute rebinding; the contained dict stays mutable in place,
+   so a "frozen" provenance record can be silently altered after construction.
+
+:class:`FrozenDict` fixes both: it is an immutable :class:`~collections.abc.Mapping` and is
+hashable. :func:`freeze` recursively converts nested mappings/sequences/sets so the whole
+structure is immutable and hashable. Each affected dataclass normalizes its mapping fields
+through :func:`freeze` in ``__post_init__`` (via ``object.__setattr__`` to satisfy frozen).
+"""
+
+from __future__ import annotations
+
+from collections.abc import Mapping
+from typing import Any, Iterator
+
+
+class FrozenDict(Mapping[str, Any]):
+    """An immutable, hashable mapping. Item assignment is impossible; hashing is stable."""
+
+    __slots__ = ("_data", "_hash")
+
+    def __init__(self, data: Mapping[str, Any] | None = None) -> None:
+        self._data: dict[str, Any] = dict(data) if data is not None else {}
+        self._hash: int | None = None
+
+    def __getitem__(self, key: str) -> Any:
+        return self._data[key]
+
+    def __iter__(self) -> Iterator[str]:
+        return iter(self._data)
+
+    def __len__(self) -> int:
+        return len(self._data)
+
+    def __repr__(self) -> str:
+        return f"FrozenDict({self._data!r})"
+
+    def __hash__(self) -> int:
+        if self._hash is None:
+            self._hash = hash(frozenset(self._data.items()))
+        return self._hash
+
+    def __eq__(self, other: object) -> bool:
+        if isinstance(other, Mapping):
+            return dict(self._data) == dict(other)
+        return NotImplemented
+
+
+def freeze(value: Any) -> Any:
+    """Recursively convert ``value`` into an immutable, hashable form.
+
+    Mappings → :class:`FrozenDict`, lists/tuples → tuples, sets → frozensets; scalars and
+    already-immutable values pass through unchanged.
+    """
+    if isinstance(value, FrozenDict):
+        return value
+    if isinstance(value, Mapping):
+        return FrozenDict({k: freeze(v) for k, v in value.items()})
+    if isinstance(value, (list, tuple)):
+        return tuple(freeze(v) for v in value)
+    if isinstance(value, (set, frozenset)):
+        return frozenset(freeze(v) for v in value)
+    return value
+
+
+def freeze_mapping(value: Mapping[str, Any]) -> FrozenDict:
+    """Normalize a mapping field to a deep-immutable :class:`FrozenDict`."""
+    return FrozenDict({k: freeze(v) for k, v in value.items()})
