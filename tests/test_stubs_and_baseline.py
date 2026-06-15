@@ -34,6 +34,24 @@ def test_measurement_rejects_interpretation_value():
         Measurement(value=interp, produced_by="x", inputs_hash="h")
 
 
+def test_measurement_and_interpretation_with_container_value_are_hashable():
+    # issue #29: the value payload is frozen so the frozen record is hashable
+    m = Measurement(value=[1, 2, 3], produced_by="p", inputs_hash="h")
+    assert hash(m) is not None
+    assert m.value == (1, 2, 3)
+    i = Interpretation(value={"k": 1}, basis=("p:h",), rationale="r", judged_by="op")
+    assert hash(i) is not None
+
+
+def test_measurement_rejects_nested_interpretation():
+    # issue #30: a nested interpretation (in a container or metadata) must also be rejected
+    interp = Interpretation(value=1, basis=("p:h",), rationale="r", judged_by="op")
+    with pytest.raises(TypeError):
+        Measurement(value=[interp], produced_by="x", inputs_hash="h")
+    with pytest.raises(TypeError):
+        Measurement(value=0.5, produced_by="x", inputs_hash="h", metadata={"leak": interp})
+
+
 def test_feature_matrix_valid():
     fm = FeatureMatrix(unit_ids=("a", "b"), feature_names=("f1",), rows=((1.0,), (2.0,)))
     assert len(fm.rows) == 2

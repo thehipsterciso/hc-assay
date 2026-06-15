@@ -12,10 +12,11 @@ interpretation back into a measurement.
 
 from __future__ import annotations
 
+from collections.abc import Mapping as AbcMapping
 from dataclasses import dataclass, field
 from typing import Any, Generic, Mapping, TypeVar
 
-from assay_engine._frozen import freeze_mapping
+from assay_engine._frozen import freeze, freeze_mapping
 
 T = TypeVar("T")
 
@@ -31,7 +32,20 @@ class Interpretation(Generic[T]):
     metadata: Mapping[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
+        # Freeze the payload so the frozen record is deeply immutable + hashable (issue #29).
+        object.__setattr__(self, "value", freeze(self.value))
         object.__setattr__(self, "metadata", freeze_mapping(self.metadata))
+
+
+def _contains_interpretation(obj: Any) -> bool:
+    """True if ``obj`` is, or recursively contains, an :class:`Interpretation`."""
+    if isinstance(obj, Interpretation):
+        return True
+    if isinstance(obj, AbcMapping):
+        return any(_contains_interpretation(v) for v in obj.values())
+    if isinstance(obj, (list, tuple, set, frozenset)):
+        return any(_contains_interpretation(v) for v in obj)
+    return False
 
 
 @dataclass(frozen=True, slots=True)
@@ -45,13 +59,16 @@ class Measurement(Generic[T]):
 
     def __post_init__(self) -> None:
         # Structurally close the one-way fence: an interpretation may never re-enter as a
-        # measurement value (audit pass 2, issue #22). Note: ref/inputs_hash integrity
-        # (forgery resistance) is delegated to the provenance/audit layer, not enforced here.
-        if isinstance(self.value, Interpretation):
+        # measurement value — at the top level OR nested in a container/metadata (issues #22,
+        # #30). Note: ref/inputs_hash integrity (forgery resistance) is delegated to the
+        # provenance/audit layer, not enforced here.
+        if _contains_interpretation(self.value) or _contains_interpretation(self.metadata):
             raise TypeError(
-                "Measurement.value cannot be an Interpretation — interpretation must not "
-                "feed back into measurement (the measurement↔interpretation fence)"
+                "Measurement value/metadata must not contain an Interpretation — "
+                "interpretation must not feed back into measurement (the fence)"
             )
+        # Freeze the payload so the frozen record is deeply immutable + hashable (issue #29).
+        object.__setattr__(self, "value", freeze(self.value))
         object.__setattr__(self, "metadata", freeze_mapping(self.metadata))
 
     @property
