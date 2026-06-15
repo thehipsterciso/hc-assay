@@ -74,9 +74,12 @@ def freeze(value: Any) -> Any:
     if isinstance(value, bytearray):
         return bytes(value)
     # Duck-typed buffer/array support (e.g. array.array, numpy.ndarray) without importing
-    # numpy: anything exposing tobytes() is canonicalized to a hashable descriptor tuple.
+    # numpy: an array-like exposing tobytes() is canonicalized to a hashable descriptor tuple.
+    # Require an array-ish marker (shape/typecode/dtype) so an unrelated object that merely
+    # happens to have a tobytes() is left to the hashability check below (fix-review nit, #19).
     tobytes = getattr(value, "tobytes", None)
-    if callable(tobytes) and not isinstance(value, (bytes, str)):
+    array_like = hasattr(value, "shape") or hasattr(value, "typecode") or hasattr(value, "dtype")
+    if callable(tobytes) and array_like and not isinstance(value, (bytes, str)):
         shape = getattr(value, "shape", None)
         kind = getattr(getattr(value, "dtype", None), "str", None) or getattr(
             value, "typecode", type(value).__name__
