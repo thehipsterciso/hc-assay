@@ -11,6 +11,8 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Mapping
 
+from assay_engine._frozen import freeze_mapping
+
 
 class VerdictLabel(Enum):
     SUPPORTED = "supported"
@@ -33,6 +35,9 @@ class Verdict:
     threshold: float | None = None
     evidence: Mapping[str, Any] = field(default_factory=dict)
     notes: str = ""
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "evidence", freeze_mapping(self.evidence))
 
     @property
     def is_indeterminate(self) -> bool:

@@ -1,6 +1,7 @@
 # hc-assay — Charter
 
-**Status:** Planning / documentation phase.
+**Status:** Active development — engine skeleton and methodology core implemented (see
+ARCHITECTURE.md / ADR-0002); infrastructure seams are stubs being wired.
 
 ---
 

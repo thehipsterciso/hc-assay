@@ -9,7 +9,7 @@ import pkgutil
 import pytest
 
 import assay_engine
-from assay_engine.contracts.schema import Corpus, Unit
+from assay_engine.contracts.schema import Corpus, Relation, Unit
 from assay_engine.contracts.study import StudyDefinition, StudyMode
 from assay_engine.methodology.fence import Interpretation, Measurement, fence
 from assay_engine.registry import (
@@ -36,6 +36,22 @@ def test_corpus_rejects_duplicate_unit_ids():
 def test_corpus_unit_ids():
     c = Corpus(units=(Unit("a"), Unit("b")))
     assert c.unit_ids() == frozenset({"a", "b"})
+
+
+def test_corpus_accepts_relations_between_known_units():
+    Corpus(units=(Unit("a"), Unit("b")), relations=(Relation("a", "b", "parent"),))
+
+
+def test_corpus_rejects_relation_to_unknown_unit():
+    # issue #3: a closed corpus must not reference non-existent units
+    with pytest.raises(ValueError):
+        Corpus(units=(Unit("a"),), relations=(Relation("a", "ghost", "parent"),))
+
+
+def test_study_rejects_empty_name():
+    # issue #8: name is the registry key / pre-registration anchor
+    with pytest.raises(ValueError):
+        StudyDefinition.discovery("  ", _StubParser(), ["q"])
 
 
 def test_discovery_study_must_not_carry_claims_source():
@@ -80,7 +96,11 @@ def test_fence_is_one_directional():
     m = Measurement(value=0.9, produced_by="similarity", inputs_hash="abc")
     interp = fence(m, "units are close", rationale="cosine 0.9", judged_by="operator")
     assert isinstance(interp, Interpretation)
-    assert interp.basis == ("similarity",)
+    # issue #16: basis identifies the specific measurement (producer:inputs_hash), not just
+    # the producer, so two measurements from one producer are distinguishable.
+    assert interp.basis == ("similarity:abc",)
+    other = Measurement(value=0.1, produced_by="similarity", inputs_hash="xyz")
+    assert fence(other, "far", rationale="r", judged_by="operator").basis != interp.basis
     # there is deliberately no inverse: Interpretation cannot become a Measurement
     assert not hasattr(interp, "as_measurement")
 
