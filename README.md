@@ -1,0 +1,66 @@
+# hc-assay
+
+**A reusable blueprint for rigorous, reproducible empirical ML/NLP on security & privacy data.**
+
+`hc-assay` is not a single study. It is an **engine + a methodology** that you clone onto a
+dataset to build an independent, empirical understanding of it — and, where the dataset
+carries external expert-asserted claims, to adjudicate those claims against that
+independent understanding.
+
+Status: **documentation phase.** The methodology and architecture are being written before
+any framework code is built.
+
+---
+
+## What it does
+
+Given a security & privacy dataset, `hc-assay`:
+
+1. **Builds an independent empirical baseline** of the data using ML/NLP — deterministic,
+   versioned, and reproducible by a hostile reviewer. This baseline is the one object in
+   the system derived purely from the data.
+2. Lets the data **surface features, hypotheses, questions, and findings** — discovery
+   driven by method, not by a pre-conceived narrative.
+3. **Optionally adjudicates external expert claims.** If the dataset ships claims asserted
+   by some external authority (relationships, labels, a taxonomy, mappings), those are
+   converted into typed, falsifiable hypotheses and tested **against the baseline** —
+   which is kept blind to those claims. Each test returns a verdict: **supported,
+   contradicted, or indeterminate.**
+4. **Scores the external source** against the validated baseline — where it aligns, where
+   it doesn't — as an output of method, with interpretation fenced off from measurement.
+
+Everything runs **on-box** (local-first, data-sovereign); nothing leaves the machine.
+
+## Two modes
+
+- **Discovery** — no external claims; the data surfaces the questions and the findings.
+- **Adjudicate external claims** — external expert assertions exist and are tested against
+  the independent baseline. *(Optional, per dataset.)*
+
+The external claims are a **pluggable adapter input**. A clone may run pure discovery with
+no claims at all. The blueprint itself never assumes any particular dataset, claim source,
+or domain taxonomy.
+
+## Engine + adapter
+
+- The **engine** is dataset-agnostic and reusable: orchestration, governance gates, the
+  reasoning seam, observability, persistence, the baseline toolkit, and the methodology
+  core (hypothesis typing, three-verdict testing, the firewalls, the measurement↔
+  interpretation fence).
+- An **adapter** is what you write when you clone onto a new dataset: an ingestion parser,
+  the canonical-schema binding, an optional external-claims source, a domain glossary /
+  feature builders, and that study's pre-registration.
+
+Each concrete study lives in **its own repository** built on this engine, to keep every
+study's pre-registration clean and independent.
+
+## Documentation
+
+| Doc | Purpose |
+|---|---|
+| [docs/CHARTER.md](docs/CHARTER.md) | Purpose, principles, scope, operating model |
+| [docs/METHODOLOGY.md](docs/METHODOLOGY.md) | The research method, the two firewalls, verdicts, reproducibility |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Engine vs adapter, components, the adapter contract, onboarding |
+| [docs/GOVERNANCE.md](docs/GOVERNANCE.md) | Gates, pre-registration, provenance, independence, data sovereignty |
+| [docs/GLOSSARY.md](docs/GLOSSARY.md) | Canonical terms |
+| [docs/decisions/](docs/decisions/) | Architecture Decision Records |

@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+.env
+
+# Tooling
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Data / artifacts (never commit corpus data, embeddings, or run outputs)
+data/
+embeddings/
+artifacts/
+*.parquet
+*.faiss
+
+# Local infra / logs
+*.log
+.DS_Store
