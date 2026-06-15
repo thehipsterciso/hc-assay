@@ -1,0 +1,40 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "assay-engine"
+version = "0.0.1"
+description = "Dataset-agnostic engine for rigorous, reproducible empirical ML/NLP on security & privacy data."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "Proprietary" }
+authors = [{ name = "hc-assay" }]
+
+# The engine depends only on goal-agnostic infrastructure. Concrete versions are pinned
+# when each component is lifted from the prior hardened platform; kept unpinned here so the
+# scaffold installs cleanly before the infra is wired.
+dependencies = []
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8",
+    "ruff>=0.6",
+    "mypy>=1.11",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/assay_engine"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+
+[tool.ruff]
+line-length = 100
+src = ["src", "tests"]
+
+[tool.mypy]
+python_version = "3.11"
+packages = ["assay_engine"]
+strict = true
