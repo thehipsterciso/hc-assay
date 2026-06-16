@@ -303,8 +303,21 @@ def run_study(
             # optional dataset features (recorded + returned; the baseline builder is blind-built
             # from the corpus, so features are provenance/output, not a baseline input here)
             feature_matrices: list[FeatureMatrix] = []
+            corpus_unit_ids = {u.unit_id for u in corpus.units}
             for fb in defn.feature_builders:
                 fm = fb.build(corpus)
+                # features must describe THIS corpus's units — no fictional or duplicate ids
+                # (the feature-side analogue of the split-drift guard above).
+                if len(set(fm.unit_ids)) != len(fm.unit_ids):
+                    raise FirewallViolation(
+                        f"feature builder {list(fb.provides)} returned duplicate unit_ids"
+                    )
+                ghost = set(fm.unit_ids) - corpus_unit_ids
+                if ghost:
+                    raise FirewallViolation(
+                        f"feature builder {list(fb.provides)} returned {len(ghost)} unit_id(s) "
+                        f"absent from the corpus (e.g. {sorted(ghost)[:3]})"
+                    )
                 feature_matrices.append(fm)
                 trail.record(
                     "features",

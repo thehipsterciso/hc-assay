@@ -351,6 +351,26 @@ def test_feature_builders_are_computed_and_recorded(tmp_path):
     assert any(e.kind == "features" for e in res.provenance)
 
 
+def test_feature_matrix_with_ghost_unit_ids_is_rejected(tmp_path):
+    from assay_engine.contracts.features import FeatureMatrix
+
+    class GhostFeatures:
+        def build(self, corpus):
+            return FeatureMatrix(
+                unit_ids=("ghost1", "ghost2"), feature_names=("f",), rows=((1.0,), (2.0,))
+            )
+
+        @property
+        def provides(self):
+            return ("f",)
+
+    src = ref.write_source(tmp_path / "c.json")
+    plan = ref.make_plan(src, modes=DISCOVERY)
+    plan = replace(plan, definition=replace(plan.definition, feature_builders=(GhostFeatures(),)))
+    with pytest.raises(FirewallViolation, match="absent from the corpus"):
+        run_study(plan, gate_handler=auto_approve)
+
+
 def test_split_ids_absent_from_corpus_are_rejected(tmp_path):
     from assay_engine.methodology.firewalls import DiscoverConfirmSplit
 
