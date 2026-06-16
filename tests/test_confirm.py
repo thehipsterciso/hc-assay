@@ -143,6 +143,24 @@ _STABLE_HI = [100.0] * 20  # resamples far above any small null -> stable for "g
 _STABLE_LO = [-100.0] * 20  # far below -> stable for "less"
 
 
+def test_whole_corpus_rejects_invalid_predicted_direction():
+    # #128: an unrecognized direction must RAISE, not silently fall through to the 'less' tail
+    # (which would flip supported<->contradicted). Both the locked-direction and the
+    # confirm-time-argument paths must validate.
+    bad = _locked(HypothesisKind.WHOLE_CORPUS, predicted_direction="up")
+    with pytest.raises(ValueError, match="predicted_direction must be one of"):
+        confirm_whole_corpus(bad, observed=10.0, null_distribution=[0.0] * 100, alpha=0.05)
+    ok = _locked(HypothesisKind.WHOLE_CORPUS)  # no locked direction
+    with pytest.raises(ValueError, match="predicted_direction must be one of"):
+        confirm_whole_corpus(
+            ok,
+            observed=10.0,
+            null_distribution=[0.0] * 100,
+            alpha=0.05,
+            predicted_direction="sideways",
+        )
+
+
 def test_whole_corpus_supported_upper_tail():
     v = confirm_whole_corpus(
         _locked(HypothesisKind.WHOLE_CORPUS),

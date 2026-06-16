@@ -55,13 +55,28 @@ class _ClaudeAgentOptions:
         self.__dict__.update(kw)
 
 
+_HANG = object()  # sentinel: query awaits "forever" to simulate a hung subprocess (#127)
+
+
 @pytest.fixture
 def fake_sdk(monkeypatch):
-    """Inject a fake claude_agent_sdk whose `query` yields a scripted message stream."""
-    scripted: list = []
+    """Inject a fake claude_agent_sdk whose `query` yields a scripted message stream.
+
+    Exposes the captured ClaudeAgentOptions via ``scripted.captured_options`` so tests can assert
+    the security wiring (env=scrubbed_env, sandbox flags) actually reaches the subprocess.
+    """
+    import anyio
+
+    class _Scripted(list):
+        captured_options = None  # query records the ClaudeAgentOptions it received here
+
+    scripted = _Scripted()
 
     async def query(prompt, options):  # noqa: ANN001
+        scripted.captured_options = options
         for msg in scripted:
+            if msg is _HANG:  # simulate a hung subprocess; inner fail_after must cancel us
+                await anyio.sleep(3600)
             if isinstance(msg, Exception):  # simulate the SDK/transport raising mid-stream
                 raise msg
             yield msg
@@ -84,6 +99,45 @@ def _run(prompt="hi", system=None, model=None):
 def test_t3_success_collects_text_blocks(fake_sdk):
     fake_sdk.append(_AssistantMessage([_TextBlock("po"), _TextBlock("ng")]))
     assert _run() == "pong"
+
+
+def test_t3_wires_scrubbed_env_into_subprocess_options(fake_sdk, monkeypatch):
+    # #124: the no-metered-API firewall must be wired end-to-end — env=scrubbed_env() must reach
+    # the ClaudeAgentOptions handed to the subprocess (not just be unit-tested in isolation).
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-metered-LEAK")
+    monkeypatch.setenv("ANTHROPIC_BASE_URL", "http://attacker.example")
+    fake_sdk.append(_AssistantMessage([_TextBlock("pong")]))
+    _run()
+    opts = fake_sdk.captured_options
+    assert hasattr(opts, "env"), "env not wired into ClaudeAgentOptions (#124 firewall unguarded)"
+    # the merged child env must neutralize the metered key + off-box redirect, keep OAuth
+    child = {**__import__("os").environ, **opts.env}
+    assert child["ANTHROPIC_API_KEY"] == "" and child["ANTHROPIC_BASE_URL"] == ""
+    assert child["CLAUDE_CODE_OAUTH_TOKEN"] == "test-subscription-token"
+
+
+def test_t3_wires_subprocess_sandbox_settings(fake_sdk):
+    # #125: the subprocess sandbox flags must actually reach the options (no tools, no settings
+    # sources, non-interactive permission mode).
+    fake_sdk.append(_AssistantMessage([_TextBlock("pong")]))
+    _run()
+    opts = fake_sdk.captured_options
+    assert opts.allowed_tools == []  # no tools may run in a reasoning call
+    assert opts.setting_sources == []  # do not load ambient project/user settings
+    assert opts.permission_mode == "dontAsk"  # non-interactive, deny-by-default
+
+
+def test_t3_hung_subprocess_is_cancelled_not_leaked(fake_sdk, monkeypatch):
+    # #127: a hung stream must be cancelled by the inner timeout (frees the pool slot) and
+    # surface a typed ReasoningError — not block forever.
+    monkeypatch.setattr(rc, "HIGH_STAKES_TIMEOUT", 0.3)
+    fake_sdk.append(_HANG)
+    import time as _t
+
+    t0 = _t.monotonic()
+    with pytest.raises(ReasoningError):
+        _run()
+    assert _t.monotonic() - t0 < 5  # cancelled promptly near the 0.3s inner timeout, not hung
 
 
 def test_t3_empty_reply_raises_transient(fake_sdk):

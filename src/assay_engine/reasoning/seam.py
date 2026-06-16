@@ -395,6 +395,17 @@ def _high_stakes_complete(prompt: str, system: str | None, model: str | None) ->
         # The CLI/SDK signals rate windows and API failures by COMPLETING the stream
         # (a RateLimitEvent, or a terminal ResultMessage with is_error) — NOT by raising.
         # We must inspect the stream, not just catch exceptions (issue #R4).
+        #
+        # Inner cancellation (#127): wrap the stream in anyio.fail_after so a hung subprocess is
+        # actually CANCELLED (the cancellation propagates into query() and tears down the child),
+        # freeing the bounded-pool worker. The outer _with_timeout only raises in the caller; it
+        # cannot cancel this thread, so without this a hung HIGH_STAKES call would leak its slot
+        # permanently. Fires before the outer wall-clock (HIGH_STAKES_TIMEOUT + 30).
+        nonlocal result_error
+        with anyio.fail_after(HIGH_STAKES_TIMEOUT):
+            await _drain_stream()
+
+    async def _drain_stream() -> None:
         nonlocal result_error
         async for msg in query(prompt=prompt, options=options):
             if type(msg).__name__ == "RateLimitEvent":

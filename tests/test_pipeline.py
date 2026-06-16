@@ -448,6 +448,34 @@ def test_gate_handler_is_required(tmp_path):
         run_study(ref.make_plan(src, modes=DISCOVERY))  # type: ignore[call-arg]
 
 
+def test_run_study_rejects_claim_hypothesis_locked_after_baseline(tmp_path):
+    # #126: end-to-end through run_study, a claim hypothesis locked AFTER the baseline existed
+    # must be rejected (not_after=baseline_instant). The reference locks in the past (accepted);
+    # here we lock on-demand at now() inside hypothesis_for → must raise.
+    from assay_engine.methodology.preregistration import lock_hypothesis
+
+    src = ref.write_source(tmp_path / "c.json")
+    plan = ref.make_plan(src, modes=ADJUDICATE)
+
+    def lock_now(claim):
+        h = Hypothesis(
+            hypothesis_id=f"H-{claim.claim_id}",
+            statement="s",
+            kind=HypothesisKind.WHOLE_CORPUS,
+            origin=HypothesisOrigin.EXTERNAL_CLAIM,
+            test_name="t",
+            decision_rule="r",
+            source_claim_id=claim.claim_id,
+            predicted_direction="greater",
+        )
+        return lock_hypothesis(
+            h, authority=ref.AUTHORITY
+        )  # default instant = now() (after baseline)
+
+    with pytest.raises(PreRegistrationError, match="precede|strictly before"):
+        run_study(replace(plan, hypothesis_for=lock_now), gate_handler=auto_approve)
+
+
 def test_gate_review_payload_is_frozen_and_hashable(tmp_path):
     # #113: GateReview's Mapping payload must be deep-frozen (immutable + hashable)
     from assay_engine._frozen import FrozenDict

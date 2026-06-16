@@ -189,9 +189,17 @@ def _resample_stability(resamples: Sequence[float], reference: float, tail: Dire
     return agree / len(resamples)
 
 
+_VALID_DIRECTIONS = ("greater", "less")
+
+
 def _resolve_direction(hypothesis: Hypothesis, predicted_direction: Direction | None) -> Direction:
     """Direction is fixed at lock time on the hypothesis (issue #24); the confirm-time
-    argument is optional and, if given, must match the pre-registered one."""
+    argument is optional and, if given, must match the pre-registered one.
+
+    The resolved direction is validated against ``{"greater", "less"}`` and any other value is
+    rejected: an unrecognized direction would otherwise fall through to the 'less' tail in
+    :func:`_empirical_p`, silently flipping supported↔contradicted (audit pass 2, #128).
+    """
     locked_dir = hypothesis.predicted_direction
     if locked_dir is not None:
         if predicted_direction is not None and predicted_direction != locked_dir:
@@ -199,13 +207,20 @@ def _resolve_direction(hypothesis: Hypothesis, predicted_direction: Direction | 
                 "predicted_direction argument contradicts the hypothesis's pre-registered "
                 f"direction ({predicted_direction!r} != {locked_dir!r})"
             )
-        return locked_dir
-    if predicted_direction is None:
+        resolved = locked_dir
+    elif predicted_direction is None:
         raise ValueError(
             "no predicted_direction: set it on the hypothesis at pre-registration "
             "(preferred) or pass it explicitly"
         )
-    return predicted_direction
+    else:
+        resolved = predicted_direction
+    if resolved not in _VALID_DIRECTIONS:
+        raise ValueError(
+            f"predicted_direction must be one of {_VALID_DIRECTIONS}; got {resolved!r} — an "
+            "unrecognized tail would silently flip the supported/contradicted verdict"
+        )
+    return resolved
 
 
 def confirm_whole_corpus(
