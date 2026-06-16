@@ -490,8 +490,26 @@ def _attempt(request: ReasoningRequest) -> str:
     raise PermanentReasoningError(f"unknown tier: {request.tier!r}")
 
 
-def _run_with_retries(request: ReasoningRequest) -> str:
-    """Execute with independent transient and rate-limit retry budgets."""
+def _sleep_bounded(secs: float, deadline: float | None) -> None:
+    """Sleep ``secs``, but never past ``deadline`` — so backoff can't blow an overall budget.
+
+    If the deadline has already passed, raise instead of sleeping the full interval, so a long
+    rate-limit backoff cannot keep a caller blocked well beyond its deadline (#102).
+    """
+    if deadline is not None:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise ReasoningError("reasoning deadline exceeded during backoff")
+        secs = min(secs, remaining)
+    time.sleep(secs)
+
+
+def _run_with_retries(request: ReasoningRequest, *, deadline: float | None = None) -> str:
+    """Execute with independent transient and rate-limit retry budgets.
+
+    ``deadline`` (monotonic seconds) bounds the cumulative backoff so the retry budgets cannot
+    block a caller past its overall deadline (#102).
+    """
     transient = 0
     rate = 0
     while True:
@@ -502,12 +520,12 @@ def _run_with_retries(request: ReasoningRequest) -> str:
         except RateLimitError:
             if rate >= RATE_LIMIT_MAX_RETRIES:
                 raise
-            time.sleep(RATE_LIMIT_BACKOFF * (rate + 1))
+            _sleep_bounded(RATE_LIMIT_BACKOFF * (rate + 1), deadline)
             rate += 1
         except ReasoningError:
             if transient >= MAX_RETRIES:
                 raise
-            time.sleep(BACKOFF_BASE**transient)
+            _sleep_bounded(BACKOFF_BASE**transient, deadline)
             transient += 1
 
 
@@ -593,9 +611,13 @@ class TieredReasoningSeam:
                     purpose=request.purpose,
                     params=params,
                 )
+                # A transient/rate/permanent error is already handled (and bounded by the shared
+                # deadline) inside _run_with_retries — let it PROPAGATE rather than re-rolling, so
+                # the budgets do NOT multiply (#102). We re-roll ONLY on a JSON *parse* failure.
+                text = _run_with_retries(attempt_req, deadline=deadline)
                 try:
-                    return extract_json(_run_with_retries(attempt_req))
-                except ReasoningError as exc:
+                    return extract_json(text)
+                except ReasoningError as exc:  # parse failure → re-roll with a new seed
                     last = exc
             raise last if last is not None else ReasoningError("run_json failed")
 

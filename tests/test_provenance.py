@@ -165,3 +165,25 @@ def test_deterministic_hashes_under_fixed_clock():
     b = ProvenanceTrail(clock=_fixed_clock())
     b.record("k", "s", v={"a": 1, "b": 2})
     assert a.entries[0].entry_hash == b.entries[0].entry_hash
+
+
+def test_record_is_thread_safe_under_concurrency():
+    # #114: concurrent record() must not corrupt the seq/prev_hash chain
+    import threading
+
+    t = ProvenanceTrail()
+    barrier = threading.Barrier(8)
+
+    def worker(w):
+        barrier.wait()  # maximize contention
+        for i in range(50):
+            t.record("k", f"w{w}-{i}", w=w, i=i)
+
+    threads = [threading.Thread(target=worker, args=(w,)) for w in range(8)]
+    for th in threads:
+        th.start()
+    for th in threads:
+        th.join()
+    assert len(t) == 8 * 50
+    t.verify()  # intact hash chain despite concurrent appends
+    assert [e.seq for e in t.entries] == list(range(8 * 50))  # contiguous, no dupes/gaps

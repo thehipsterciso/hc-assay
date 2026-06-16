@@ -101,6 +101,13 @@ reproducibility and of the independence claim.
 > attestation of the trail's *time* is the same pluggable concern as pre-registration (§2),
 > out of scope here. A caller may pass its own trail to `run_study` so a run that *raises* (a
 > blocked gate, a firewall violation) still leaves an auditable partial trail.
+>
+> The synchronous `run_study` path records all of the above into the chained trail by default.
+> The **durable LangGraph gate path** (`make_gate_node`) records decisions into LangGraph
+> `gate_decisions` *state*, which is not the hash-chained trail; to bring that path under §3
+> integrity, wire `make_gate_node(..., recorder=...)` to a `ProvenanceTrail` (the recorder
+> bridge, #111). Without that bridge, the graph path's gate decisions are graph state, not
+> tamper-evident trail entries.
 
 ## 4. Single-operator structural independence
 

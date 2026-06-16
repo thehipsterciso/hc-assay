@@ -448,6 +448,59 @@ def test_gate_handler_is_required(tmp_path):
         run_study(ref.make_plan(src, modes=DISCOVERY))  # type: ignore[call-arg]
 
 
+def test_gate_review_payload_is_frozen_and_hashable(tmp_path):
+    # #113: GateReview's Mapping payload must be deep-frozen (immutable + hashable)
+    from assay_engine._frozen import FrozenDict
+    from assay_engine.pipeline import GateReview
+
+    r = GateReview(
+        gate="g",
+        frm=Phase.PREREGISTER,
+        to=Phase.CONFIRM,
+        summary="s",
+        payload={"a": {"b": 1}, "ids": [1, 2]},
+    )
+    assert isinstance(r.payload, FrozenDict)
+    with pytest.raises(Exception):  # noqa: B017 — any mutation must fail
+        r.payload["a"] = 2  # type: ignore[index]
+    hash(r)  # frozen record is hashable
+
+
+def test_run_study_correlates_spans_to_run_id(tmp_path):
+    # #122: every phase span must see the run's assay.run_id baggage (traces correlate to the run)
+    pytest.importorskip("opentelemetry")
+    from contextlib import contextmanager
+
+    from opentelemetry import baggage
+
+    class CapturingTracer:
+        def __init__(self):
+            self.seen = set()
+
+        @contextmanager
+        def span(self, name, attributes=None, *, kind="CHAIN"):
+            self.seen.add(baggage.get_baggage("assay.run_id"))
+            yield
+
+    class T:
+        def start_run(self, name, params):
+            return "run-xyz"
+
+        def log_metric(self, *a):
+            pass
+
+        def log_artifact(self, *a):
+            pass
+
+        def end_run(self, run_id, status="FINISHED"):
+            pass
+
+    tracer = CapturingTracer()
+    _run(tmp_path, DISCOVERY, tracer=tracer, tracker=T())
+    assert tracer.seen == {"run-xyz"}  # all phase spans saw the run id; none None
+    assert baggage.get_baggage("assay.run_id") is None  # detached after the run
+
+
 def test_plan_validates_required_callables_per_mode():
     src = type("P", (), {})()  # unused; __post_init__ fires before any run
     from assay_engine.contracts.study import StudyDefinition

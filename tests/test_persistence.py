@@ -293,6 +293,58 @@ def test_vector_store_upsert_streams_batches_and_owns_client():
     assert fc.closed is False  # #117: an INJECTED client is the caller's to close, not ours
 
 
+def test_vector_store_closes_owned_client(monkeypatch):
+    # #117: a self-created client (no client injected) MUST be closed on close()/context-exit
+    pytest.importorskip("qdrant_client")
+    from assay_engine.persistence import vectorstore as vs
+
+    class FakeClient:
+        def __init__(self):
+            self.closed = False
+
+        def close(self):
+            self.closed = True
+
+    created = FakeClient()
+    monkeypatch.setattr(vs, "get_qdrant_client", lambda: created)
+    with vs.QdrantVectorStore("c", 2) as store:  # no client injected → owns it
+        assert store._owns_client is True
+    assert created.closed is True  # owned client closed on context exit (leak prevented)
+
+
+def test_vector_store_upsert_builds_one_batch_at_a_time():
+    # #118: only one batch of PointStructs may be materialized at a time — assert construction is
+    # interleaved with sends, not all-up-front.
+    pytest.importorskip("qdrant_client")
+    from assay_engine.persistence.vectorstore import QdrantVectorStore
+
+    accessed: list[int] = []
+
+    class TrackingVectors:
+        def __init__(self, data):
+            self._d = data
+
+        def __len__(self):
+            return len(self._d)
+
+        def __getitem__(self, i):
+            accessed.append(i)  # records when each vector is consumed
+            return self._d[i]
+
+    class FakeClient:
+        def __init__(self):
+            self.accessed_at_call = []
+
+        def upsert(self, collection, points):
+            self.accessed_at_call.append(len(accessed))  # how many vectors consumed so far
+
+    fc = FakeClient()
+    store = QdrantVectorStore("c", 2, client=fc)
+    store.upsert([f"u{i}" for i in range(6)], TrackingVectors([[0.0, 1.0]] * 6), batch_size=2)
+    # per-batch construction → 2,4,6 consumed at each send; all-up-front would be 6,6,6
+    assert fc.accessed_at_call == [2, 4, 6]
+
+
 # ---- hardened checkpointer invariants (fake backends injected, no Postgres) ----
 
 

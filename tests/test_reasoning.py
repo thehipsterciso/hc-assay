@@ -360,10 +360,10 @@ def test_run_json_varies_seed_and_never_lowers_temperature(monkeypatch):
     monkeypatch.setattr(rc, "JSON_REROLLS", 2)
     seen: list[tuple] = []
 
-    # patch the retry layer so we observe exactly run_json's re-rolls (not transient retries)
-    def fake_run_with_retries(req):
+    # the generation SUCCEEDS but returns unparseable text → run_json re-rolls (parse failure)
+    def fake_run_with_retries(req, *, deadline=None):
         seen.append((req.params.get("_seed"), req.params["temperature"]))
-        raise rc.ReasoningError("bad json")  # force all re-rolls
+        return "not json at all"  # parse failure forces a re-roll
 
     monkeypatch.setattr(rc, "_run_with_retries", fake_run_with_retries)
     with pytest.raises(rc.ReasoningError):
@@ -381,14 +381,34 @@ def test_run_json_overall_deadline_bounds_rerolls(monkeypatch):
     monkeypatch.setattr(rc, "RUN_JSON_DEADLINE", 0.0)  # deadline already passed after attempt 0
     calls = {"n": 0}
 
-    def fail(_req):
+    def bad_text(_req, *, deadline=None):
         calls["n"] += 1
-        raise rc.ReasoningError("bad json")
+        return "not json"  # parse failure would re-roll, but the deadline must stop it
 
-    monkeypatch.setattr(rc, "_run_with_retries", fail)
+    monkeypatch.setattr(rc, "_run_with_retries", bad_text)
     with pytest.raises(rc.ReasoningError):
         TieredReasoningSeam().run_json(_req())
     assert calls["n"] == 1  # stopped at the deadline, did NOT run all 51 re-rolls
+
+
+def test_run_json_does_not_reroll_on_reasoning_error_no_multiplication(monkeypatch):
+    # #102: a transient/exhausted reasoning error must PROPAGATE (no outer re-roll), so the inner
+    # retry budget and the re-roll budget never multiply. _attempt is called only MAX_RETRIES+1
+    # times total, NOT (MAX_RETRIES+1) * (JSON_REROLLS+1).
+    monkeypatch.delenv("ASSAY_DISABLE_REASONING", raising=False)
+    monkeypatch.setattr(rc.time, "sleep", lambda *_: None)
+    monkeypatch.setattr(rc, "MAX_RETRIES", 2)
+    monkeypatch.setattr(rc, "JSON_REROLLS", 5)
+    calls = {"n": 0}
+
+    def always_transient(_req):
+        calls["n"] += 1
+        raise rc.ReasoningError("transient")
+
+    monkeypatch.setattr(rc, "_attempt", always_transient)
+    with pytest.raises(rc.ReasoningError):
+        TieredReasoningSeam().run_json(_req())
+    assert calls["n"] == rc.MAX_RETRIES + 1  # 3, not 3*6 — budgets did not multiply
 
 
 # ---- public seam ----

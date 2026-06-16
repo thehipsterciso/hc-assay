@@ -57,6 +57,12 @@ def compile_graph(
     gate nodes, so this is the caller's responsibility: **any study wiring**
     :func:`~assay_engine.orchestration.gatenode.make_gate_node` **must pass
     ``requires_checkpointer=True``** (see GOVERNANCE.md "Gate interrupt/resume protocol").
+
+    Provenance note (#111): a gate node records its decision into LangGraph ``gate_decisions``
+    state, which is **not** the hash-chained, tamper-evident trail. To get GOVERNANCE §3
+    integrity on the durable path, pass ``make_gate_node`` a ``recorder`` that writes each
+    decision into a :class:`~assay_engine.provenance.ProvenanceTrail`; without it, the graph
+    path's gate decisions live only as graph state.
     """
     if requires_checkpointer and checkpointer is None:
         raise RuntimeError(

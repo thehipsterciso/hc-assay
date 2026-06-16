@@ -268,6 +268,25 @@ def test_cosine_matrix_array_matches_list_and_is_ndarray():
     assert cosine_similarity_matrix_array([]).shape == (0, 0)
 
 
+def test_build_baseline_reuses_precomputed_corpus_hash(monkeypatch):
+    # #119: a caller that already has the fingerprint can pass it to skip the redundant recompute
+    import assay_engine.baseline.determinism as d
+
+    corpus = Corpus(units=(Unit("u0", "t0"), Unit("u1", "t1")))
+    calls = {"n": 0}
+    orig = d.corpus_fingerprint
+
+    def counting(c):
+        calls["n"] += 1
+        return orig(c)
+
+    monkeypatch.setattr(d, "corpus_fingerprint", counting)
+    art = d.build_baseline_artifact(corpus, {"k": 1}, corpus_hash="deadbeef" * 8)
+    assert art.corpus_fingerprint == "deadbeef" * 8 and calls["n"] == 0  # no recompute
+    d.build_baseline_artifact(corpus, {"k": 1})  # without it → recomputes
+    assert calls["n"] == 1
+
+
 def test_freeze_keeps_ndarray_opaque_o1():
     # #107: a numpy array in baseline contents is frozen to a small (kind, shape, bytes)
     # descriptor — NOT a recursively tuple-ized cell-by-cell copy.
