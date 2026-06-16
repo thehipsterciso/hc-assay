@@ -36,10 +36,20 @@ def test_discovery_only_study_cannot_enter_adjudication():
     assert not legal_transition(Phase.CONFIRM, Phase.ADJUDICATE, DISCOVERY)
 
 
-def test_adjudication_study_follows_full_path():
-    assert legal_transition(Phase.CONFIRM, Phase.ADJUDICATE, ADJUDICATE)
+def test_adjudicate_only_study_skips_the_discovery_spine():
+    # modes are independent: an adjudicate-only study goes BASELINE->ADJUDICATE->SCORE->REPORT
+    # and never enters the discovery spine (DISCOVERY/PREREGISTER/CONFIRM).
+    assert legal_transition(Phase.BASELINE, Phase.ADJUDICATE, ADJUDICATE)
     assert legal_transition(Phase.ADJUDICATE, Phase.SCORE, ADJUDICATE)
-    assert not legal_transition(Phase.CONFIRM, Phase.REPORT, ADJUDICATE)
+    assert not legal_transition(Phase.CONFIRM, Phase.ADJUDICATE, ADJUDICATE)  # no CONFIRM phase
+    assert not legal_transition(Phase.BASELINE, Phase.DISCOVERY, ADJUDICATE)
+
+
+def test_combined_study_follows_full_path():
+    both = DISCOVERY | ADJUDICATE
+    assert legal_transition(Phase.CONFIRM, Phase.ADJUDICATE, both)
+    assert legal_transition(Phase.ADJUDICATE, Phase.SCORE, both)
+    assert not legal_transition(Phase.CONFIRM, Phase.REPORT, both)
 
 
 # ---- gates (#11) ----

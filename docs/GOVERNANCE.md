@@ -86,10 +86,21 @@ An **append-only** audit trail (W3C PROV-DM style) records every action before t
 executes. No step can be retroactively removed or reordered. This is the spine of
 reproducibility and of the independence claim.
 
-> **Implementation status (engine):** the engine ships the *seams* for this — gate decisions
-> are emitted as append-only `gate_decisions` records, and a `ProvenanceRecorder` hook is
-> available at the gate. The persistent, ordered provenance *store* itself is wired by a
-> study/runner; the present-tense guarantees above describe that wired end-state.
+> **Implementation status (engine):** wired (ADR-0010). `assay_engine.provenance.ProvenanceTrail`
+> is an append-only, hash-chained trail; the study runner (`assay_engine.pipeline.run_study`)
+> records every action — ingest, blind baseline, each locked hypothesis (discovery *and*
+> claim-derived), every gate decision, each verdict, the scorecard, the report — *before the next
+> runs*, and verifies the chain before returning. There is no remove/edit/reorder API.
+> **Integrity, honestly, in two tiers:** the default unkeyed chain is *tamper-evident against
+> naive tampering and accidental corruption* (a single-entry edit, a reorder, or a deletion is
+> caught by `verify_records`) but is **not** forgery-proof — a party who controls the serialized
+> bytes can edit a payload and recompute the whole SHA-256 chain. Pass a `secret=` and the chain
+> is HMAC-keyed, so the head cannot be recomputed without the secret (a downstream store cannot
+> silently rewrite and re-seal history); `verify_records` must be given the same secret. An
+> in-memory trail is still as trustworthy as its process, and non-repudiable third-party
+> attestation of the trail's *time* is the same pluggable concern as pre-registration (§2),
+> out of scope here. A caller may pass its own trail to `run_study` so a run that *raises* (a
+> blocked gate, a firewall violation) still leaves an auditable partial trail.
 
 ## 4. Single-operator structural independence
 

@@ -22,7 +22,7 @@ from __future__ import annotations
 
 import datetime as _dt
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Callable, Protocol
+from typing import TYPE_CHECKING, Callable, Iterable, Protocol
 
 from assay_engine.contracts.claims import ClaimRecord, ExternalClaimsSource
 from assay_engine.contracts.schema import Corpus
@@ -154,8 +154,40 @@ def adjudicate(
     with guard.sealed():
         baseline = baseline_builder.build(corpus, claim_guard=guard)
 
+    scorecard = adjudicate_with_baseline(
+        baseline, claims_source.claims(),
+        hypothesis_for=hypothesis_for, confirm=confirm, authority=authority,
+        not_after=not_after, source_name=source_name,
+    )
+    return baseline, scorecard
+
+
+def adjudicate_with_baseline(
+    baseline: BaselineArtifact,
+    claims: "Iterable[ClaimRecord]",
+    *,
+    hypothesis_for: Callable[[ClaimRecord], Hypothesis],
+    confirm: ClaimConfirmer,
+    authority: TimestampAuthority,
+    not_after: _dt.datetime,
+    source_name: str = "external",
+    on_step: "Callable[[Hypothesis, Verdict], None] | None" = None,
+) -> SourceScorecard:
+    """Adjudicate a **materialized claim set** against an already-built blind baseline (core).
+
+    Factored out of :func:`adjudicate` so a composed pipeline that builds the baseline once
+    (and shares it with discovery) can reuse the identical, hardened Firewall-A loop instead of
+    rebuilding the baseline. The caller is responsible for having built ``baseline`` blind and
+    for passing the ``not_after`` ordering instant captured *before* that build — so the
+    lock-before-baseline guarantee is preserved across the shared-baseline composition.
+
+    ``claims`` is **materialized once** here (not re-pulled from a source): a caller that gated
+    or recorded a claim snapshot must adjudicate *that* snapshot, not a set a re-iterable source
+    could change between the gate and the scoring (adversarial review #95). Enforces the same
+    claim↔hypothesis↔verdict identity + pre-registration checks as :func:`adjudicate`.
+    """
     verdicts: list[Verdict] = []
-    for claim in claims_source.claims():  # claims used only after the blind baseline is built
+    for claim in list(claims):  # claims used only after the blind baseline is built
         hypothesis = hypothesis_for(claim)
         if hypothesis.origin is not HypothesisOrigin.EXTERNAL_CLAIM:
             raise FirewallViolation(
@@ -167,9 +199,9 @@ def adjudicate(
                 f"hypothesis for claim {claim.claim_id!r} carries source_claim_id "
                 f"{hypothesis.source_claim_id!r} — claim↔hypothesis misattribution"
             )
-        # Pre-registration enforced by the runner: the proof must bind THIS hypothesis's content
-        # (no post-lock content swap) and its attested lock time must precede the baseline build
-        # (so the claim-derived hypothesis cannot have been tuned to the baseline).
+        # Pre-registration: the proof must bind THIS hypothesis's content (no post-lock content
+        # swap) and its attested lock time must precede the baseline build (so the claim-derived
+        # hypothesis cannot have been tuned to the baseline).
         require_preregistered(hypothesis, authority=authority, not_after=not_after)
         verdict = confirm(hypothesis, baseline, claim)
         if verdict.hypothesis_id != hypothesis.hypothesis_id:
@@ -178,5 +210,9 @@ def adjudicate(
                 f"{verdict.hypothesis_id!r} — hypothesis↔verdict misattribution"
             )
         verdicts.append(verdict)
+        if on_step is not None:
+            # per-claim hook (in order) so a caller can record the pre-registered hypothesis AND
+            # its verdict to provenance as each happens, not in a post-hoc batch (#93).
+            on_step(hypothesis, verdict)
 
-    return baseline, _score(source_name, verdicts)
+    return _score(source_name, verdicts)
