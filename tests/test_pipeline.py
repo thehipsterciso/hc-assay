@@ -406,3 +406,71 @@ def test_plan_validates_required_callables_per_mode():
             baseline_builder=ref.ReferenceBaselineBuilder(),
             authority=ref.AUTHORITY,
         )  # missing split/discover/confirm_held_out
+
+
+def test_plan_validates_adjudication_callables():
+    from assay_engine.contracts.study import StudyDefinition
+
+    defn = StudyDefinition(
+        name="s",
+        modes=ADJUDICATE,
+        parser=ref.ReferenceParser(),
+        research_questions=("q",),
+        claims_source=ref.ReferenceClaims(),
+    )
+    with pytest.raises(ValueError, match="ADJUDICATE_EXTERNAL_CLAIMS mode requires"):
+        StudyPlan(
+            definition=defn,
+            source=type("P", (), {})(),
+            baseline_builder=ref.ReferenceBaselineBuilder(),
+            authority=ref.AUTHORITY,
+        )
+
+
+def test_empty_corpus_raises_ingestion_error(tmp_path):
+    from assay_engine.contracts.schema import Corpus
+    from assay_engine.pipeline import IngestionError
+
+    class EmptyParser:
+        def parse(self, source):
+            return Corpus(units=())
+
+        def source_fingerprint(self, source):
+            return "empty"
+
+    src = ref.write_source(tmp_path / "c.json")
+    plan = ref.make_plan(src, modes=DISCOVERY)
+    plan = replace(plan, definition=replace(plan.definition, parser=EmptyParser()))
+    with pytest.raises(IngestionError, match="empty corpus"):
+        run_study(plan, gate_handler=auto_approve)
+
+
+def test_tracker_start_and_end_failures_are_swallowed(tmp_path):
+    class Cranky:
+        def start_run(self, name, params):
+            raise RuntimeError("start boom")
+
+        def log_metric(self, *a):
+            pass
+
+        def log_artifact(self, *a):
+            pass
+
+        def end_run(self, run_id):
+            raise RuntimeError("end boom")
+
+    # start_run failing -> run_id stays None, run still completes; end_run failure swallowed
+    res = _run(tmp_path, DISCOVERY, tracker=Cranky())
+    assert res.experiment_run_id is None
+    assert any(e.kind == "tracking_error" for e in res.provenance)
+
+
+def test_empty_discovery_partition_rejected(tmp_path):
+    from assay_engine.methodology.firewalls import DiscoverConfirmSplit
+
+    src = ref.write_source(tmp_path / "c.json")
+    plan = ref.make_plan(src, modes=DISCOVERY)
+    # valid (in-corpus) but empty discovery partition -> subset yields no units
+    empty_disc = DiscoverConfirmSplit.from_partition(set(), {"u3", "u4", "u5"})
+    with pytest.raises(FirewallViolation, match="discovery partition selects no corpus units"):
+        run_study(replace(plan, split=empty_disc), gate_handler=auto_approve)
