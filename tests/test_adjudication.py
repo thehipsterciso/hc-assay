@@ -5,6 +5,8 @@ peeks at the claims during construction must be STRUCTURALLY stopped, and the so
 must honestly reflect the verdicts.
 """
 
+import datetime as _dt
+
 import pytest
 
 from assay_engine.baseline.toolkit import BaselineArtifact
@@ -13,7 +15,14 @@ from assay_engine.contracts.schema import Corpus, Unit
 from assay_engine.methodology.adjudication import adjudicate
 from assay_engine.methodology.firewalls import ClaimBlindGuard, FirewallViolation
 from assay_engine.methodology.hypothesis import Hypothesis, HypothesisKind, HypothesisOrigin
+from assay_engine.methodology.preregistration import LocalHmacAuthority, lock_hypothesis
 from assay_engine.methodology.verdict import Verdict, VerdictLabel
+
+# A real (data-sovereign) pre-registration authority for the tests; the runner now verifies
+# the lock, so hypotheses must be genuinely locked, not hand-stamped with a fake proof.
+_AUTH = LocalHmacAuthority(b"adjudication-test-secret-key-0001")
+# Lock comfortably in the past so it is always strictly before the runner's confirmation moment.
+_LOCK_INSTANT = _dt.datetime.now(tz=_dt.timezone.utc) - _dt.timedelta(hours=1)
 
 
 class _Claims:
@@ -42,16 +51,18 @@ def _corpus():
 
 
 def _hypothesis_for(claim: ClaimRecord) -> Hypothesis:
-    return Hypothesis(
-        hypothesis_id=f"H-{claim.claim_id}",
-        statement="claim holds against the baseline",
-        kind=HypothesisKind.WHOLE_CORPUS,
-        origin=HypothesisOrigin.EXTERNAL_CLAIM,
-        test_name="adjudication",
-        decision_rule="baseline corroborates the asserted relationship",
-        source_claim_id=claim.claim_id,
-        locked_at="2026-06-16T00:00:00Z",
-        timestamp_proof="rfc3161:demo",
+    return lock_hypothesis(
+        Hypothesis(
+            hypothesis_id=f"H-{claim.claim_id}",
+            statement="claim holds against the baseline",
+            kind=HypothesisKind.WHOLE_CORPUS,
+            origin=HypothesisOrigin.EXTERNAL_CLAIM,
+            test_name="adjudication",
+            decision_rule="baseline corroborates the asserted relationship",
+            source_claim_id=claim.claim_id,
+        ),
+        authority=_AUTH,
+        instant=_LOCK_INSTANT,
     )
 
 
@@ -86,7 +97,7 @@ def test_sneaky_builder_cannot_read_claims_during_build():
         adjudicate(
             _corpus(), claims,
             baseline_builder=_SneakyBuilder(),
-            hypothesis_for=_hypothesis_for,
+            hypothesis_for=_hypothesis_for, authority=_AUTH,
             confirm=_confirmer(),
         )
 
@@ -106,7 +117,7 @@ def test_builder_is_handed_no_claims_source():
 
     adjudicate(
         _corpus(), claims, baseline_builder=_InspectingBuilder(),
-        hypothesis_for=_hypothesis_for,
+        hypothesis_for=_hypothesis_for, authority=_AUTH,
         confirm=_confirmer(),
     )
     assert seen["guard_holds"] is None  # the guard handed to the builder holds no claims
@@ -125,7 +136,7 @@ def test_good_builder_never_receives_claims_but_adjudication_then_sees_them():
 
     baseline, scorecard = adjudicate(
         _corpus(), claims,
-        baseline_builder=builder, hypothesis_for=_hypothesis_for, confirm=confirm,
+        baseline_builder=builder, hypothesis_for=_hypothesis_for, authority=_AUTH, confirm=confirm,
         source_name="src",
     )
     assert captured["baseline_contents"] == {"n_units": 2}  # baseline built from corpus only
@@ -148,7 +159,7 @@ def test_non_external_claim_hypothesis_is_rejected():
     with pytest.raises(FirewallViolation, match="EXTERNAL_CLAIM"):
         adjudicate(
             _corpus(), claims, baseline_builder=_GoodBuilder(),
-            hypothesis_for=discovery_hypothesis,
+            hypothesis_for=discovery_hypothesis, authority=_AUTH,
             confirm=_confirmer(),
         )
 
@@ -168,7 +179,7 @@ def test_runner_rejects_mismatched_source_claim_id():
 
     with pytest.raises(FirewallViolation, match="misattribution"):
         adjudicate(_corpus(), claims, baseline_builder=_GoodBuilder(),
-                   hypothesis_for=wrong_source, confirm=_confirmer())
+                   hypothesis_for=wrong_source, authority=_AUTH, confirm=_confirmer())
 
 
 def test_runner_rejects_verdict_for_wrong_hypothesis():
@@ -179,7 +190,26 @@ def test_runner_rejects_verdict_for_wrong_hypothesis():
 
     with pytest.raises(FirewallViolation, match="misattribution"):
         adjudicate(_corpus(), claims, baseline_builder=_GoodBuilder(),
-                   hypothesis_for=_hypothesis_for, confirm=mislabeled)
+                   hypothesis_for=_hypothesis_for, authority=_AUTH, confirm=mislabeled)
+
+
+def test_runner_rejects_hypothesis_locked_after_baseline():
+    # #83: adjudicate captures not_after BEFORE the baseline build, so a hypothesis locked
+    # on demand (i.e. after the baseline/answer exists) is rejected — claim-derived hypotheses
+    # must be pre-locked before the baseline.
+    claims = _Claims([_claim("c1")])
+
+    def lock_on_demand(claim):  # locks at "now", which is after the runner captured not_after
+        h = Hypothesis(
+            hypothesis_id=f"H-{claim.claim_id}", statement="s",
+            kind=HypothesisKind.WHOLE_CORPUS, origin=HypothesisOrigin.EXTERNAL_CLAIM,
+            test_name="t", decision_rule="r", source_claim_id=claim.claim_id,
+        )
+        return lock_hypothesis(h, authority=_AUTH)  # default instant = now()
+
+    with pytest.raises(FirewallViolation, match="precede|strictly before"):
+        adjudicate(_corpus(), claims, baseline_builder=_GoodBuilder(),
+                   hypothesis_for=lock_on_demand, authority=_AUTH, confirm=_confirmer())
 
 
 def test_runner_rejects_unlocked_hypothesis():
@@ -195,7 +225,7 @@ def test_runner_rejects_unlocked_hypothesis():
 
     with pytest.raises(FirewallViolation):  # require_locked
         adjudicate(_corpus(), claims, baseline_builder=_GoodBuilder(),
-                   hypothesis_for=unlocked, confirm=_confirmer())
+                   hypothesis_for=unlocked, authority=_AUTH, confirm=_confirmer())
 
 
 # ---- the source scorecard (METHODOLOGY.md §5) ----
@@ -214,7 +244,7 @@ def test_scorecard_counts_and_alignment_rate_excludes_indeterminate():
 
     _, sc = adjudicate(
         _corpus(), claims, baseline_builder=_GoodBuilder(),
-        hypothesis_for=_hypothesis_for, confirm=confirm, source_name="SCF-like",
+        hypothesis_for=_hypothesis_for, authority=_AUTH, confirm=confirm, source_name="SCF-like",
     )
     assert (sc.n_supported, sc.n_contradicted, sc.n_indeterminate) == (2, 1, 1)
     assert sc.total == 4 and sc.decisive == 3
@@ -230,7 +260,7 @@ def test_scorecard_alignment_rate_none_when_no_decisive_verdicts():
 
     _, sc = adjudicate(
         _corpus(), claims, baseline_builder=_GoodBuilder(),
-        hypothesis_for=_hypothesis_for, confirm=confirm,
+        hypothesis_for=_hypothesis_for, authority=_AUTH, confirm=confirm,
     )
     assert sc.alignment_rate is None and sc.n_indeterminate == 1
 
@@ -238,7 +268,7 @@ def test_scorecard_alignment_rate_none_when_no_decisive_verdicts():
 def test_adjudicate_runs_with_no_claims():
     _, sc = adjudicate(
         _corpus(), _Claims([]), baseline_builder=_GoodBuilder(),
-        hypothesis_for=_hypothesis_for,
+        hypothesis_for=_hypothesis_for, authority=_AUTH,
         confirm=_confirmer(),
     )
     assert sc.total == 0 and sc.alignment_rate is None

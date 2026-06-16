@@ -61,12 +61,24 @@ This is honestly characterized as a **timestamped adaptive design**: methods are
 first; the data informs the questions; the questions are then locked and timestamped before
 they are tested. It is not claimed to be "predictions registered before any data."
 
-> **Implementation status (engine scaffold):** the engine's lock check is currently a
-> *presence sentinel* — it verifies a hypothesis carries both a lock time and a timestamp
-> proof before confirmation. RFC-3161 token verification against a trusted timestamp
-> authority, and enforcing that the lock precedes the confirmation run, are part of the
-> pre-registration infrastructure not yet wired (audit pass 1, issue #6). Until then, treat
-> the lock as a procedural sentinel, not a cryptographic guarantee.
+> **Implementation status (engine):** pre-registration is enforced by construction **in the
+> confirmatory runners** (`adjudicate`, `discover_and_confirm`; ADR-0009). They verify, via a
+> supplied `TimestampAuthority`, that a hypothesis's proof **binds its content and id** (the
+> canonical digest of its decision-bearing fields), that the attested **timestamp is
+> verifiable**, and that the lock **precedes confirmation** — a hand-set sentinel string, a
+> post-lock content/id swap, a forged proof, or a lock dated at/after the ordering instant are
+> all refused. (In adjudication the ordering instant is captured *before the baseline build*, so
+> a claim-derived hypothesis must be locked before the baseline exists; in discovery a
+> data-surfaced hypothesis is necessarily locked inside the runner, so there the *content*
+> binding is the load-bearing guarantee — see ADR-0009.) The engine ships one real,
+> data-sovereign authority (`LocalHmacAuthority`, on-box HMAC) and the Protocol so a study can
+> plug an RFC-3161 TSA. Honest scope: the local authority is tamper-evidence *relative to an
+> on-box secret*, not third-party non-repudiation. The lower-level confirm *primitives*
+> (`confirm_whole_corpus`/`confirm_unit_level`) gate on the cheap presence predicate by default
+> and take an optional `authority=` to opt into the full check; a study that confirms outside a
+> runner must pass it (or call `require_preregistered` itself). `Hypothesis.locked` is only a
+> presence predicate; `methodology.preregistration.require_preregistered` is the
+> methodology-grade check.
 
 ## 3. Provenance
 

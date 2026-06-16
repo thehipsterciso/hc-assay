@@ -19,7 +19,7 @@ dataset-specific vocabulary; this file defines only blueprint terms.
 | **Firewall A — claim-blindness** | The baseline is built blind to any external claims, so adjudication is not circular. |
 | **Firewall B — discover/confirm separation** | The data used to discover a hypothesis is not the data used to confirm it. |
 | **Null / permutation test** | Confirmation mechanism for whole-corpus claims that cannot be held out: the observed pattern must beat randomized versions of the data. |
-| **Pre-registration** | Locking + RFC-3161 timestamping the hypotheses before confirmation. |
+| **Pre-registration** | Locking a hypothesis before confirmation with a proof that **binds its content and id** and carries a **verifiable timestamp** from a trusted authority (on-box HMAC by default, RFC-3161 pluggable); the confirmatory runners enforce content-binding + lock-before-confirm, and the confirm primitives take an optional `authority=` to opt into the same check (ADR-0009). |
 | **Provenance** | The append-only audit trail of every action. |
 | **Measurement ↔ interpretation fence** | The hard boundary keeping interpretation downstream so it cannot contaminate upstream measurement. |
 | **Scoped independence** | Independence of an external source's *judgments* even when the baseline is built from artifacts that source also *worded*. |
