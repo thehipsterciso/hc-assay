@@ -25,8 +25,19 @@ def test_bootstrap_returns_none_when_disabled(monkeypatch):
 
 
 def test_bootstrap_returns_none_when_extra_absent(monkeypatch):
-    # phoenix is not installed in this env -> graceful degradation, never raises
+    # graceful degradation when the observability extra (phoenix) is not installed.
+    import importlib.util
+
+    if importlib.util.find_spec("phoenix") is not None:
+        pytest.skip("phoenix installed — real bootstrap is exercised in the integration suite")
     monkeypatch.delenv("ASSAY_DISABLE_TRACING", raising=False)
+    monkeypatch.setattr(tr, "_provider", None)
+    assert bootstrap_tracing() is None
+
+
+def test_bootstrap_returns_none_when_disabled_even_with_extra(monkeypatch):
+    # the kill switch must win regardless of whether the extra is installed
+    monkeypatch.setenv("ASSAY_DISABLE_TRACING", "1")
     monkeypatch.setattr(tr, "_provider", None)
     assert bootstrap_tracing() is None
 
