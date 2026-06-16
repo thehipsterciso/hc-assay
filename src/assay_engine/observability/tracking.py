@@ -49,34 +49,37 @@ class MlflowExperimentTracker:
         self._experiment = experiment
         self._uri = get_tracking_uri()  # validates local before anything else
 
-    def _mlflow(self) -> Any:
+    def _client(self) -> Any:
+        """An MlflowClient bound to the local store. Uses the client API (keyed by run_id)
+        throughout, so no run ever sits on the global active-run stack — start_run followed by
+        log_metric cannot collide (audit issue #O1)."""
         try:
-            import mlflow
+            from mlflow.tracking import MlflowClient
         except ImportError as exc:  # pragma: no cover - exercised only without the extra
             raise RuntimeError(
                 "experiment tracking requires the 'observability' extra (mlflow) — not installed"
             ) from exc
-        mlflow.set_tracking_uri(self._uri)
-        mlflow.set_experiment(self._experiment)
-        return mlflow
+        return MlflowClient(tracking_uri=self._uri)
+
+    def _experiment_id(self, client: Any) -> str:
+        exp = client.get_experiment_by_name(self._experiment)
+        if exp is not None:
+            return str(exp.experiment_id)
+        return str(client.create_experiment(self._experiment))
 
     def start_run(self, name: str, params: Mapping[str, Any]) -> str:
-        mlflow = self._mlflow()
-        run = mlflow.start_run(run_name=name)
-        if params:
-            mlflow.log_params(dict(params))
-        return str(run.info.run_id)
+        client = self._client()
+        run = client.create_run(self._experiment_id(client), run_name=name)
+        run_id = str(run.info.run_id)
+        for k, v in dict(params).items():
+            client.log_param(run_id, k, v)
+        return run_id
 
     def log_metric(self, run_id: str, key: str, value: float) -> None:
-        mlflow = self._mlflow()
-        with mlflow.start_run(run_id=run_id):
-            mlflow.log_metric(key, value)
+        self._client().log_metric(run_id, key, value)
 
     def log_artifact(self, run_id: str, path: str) -> None:
-        mlflow = self._mlflow()
-        with mlflow.start_run(run_id=run_id):
-            mlflow.log_artifact(path)
+        self._client().log_artifact(run_id, path)
 
     def end_run(self, run_id: str) -> None:
-        mlflow = self._mlflow()
-        mlflow.end_run()
+        self._client().set_terminated(run_id)

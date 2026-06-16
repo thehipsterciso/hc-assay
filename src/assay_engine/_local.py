@@ -60,8 +60,9 @@ def require_local_uri(uri: str, *, what: str) -> str:
     A bare path or ``sqlite:///`` file is local; any networked scheme (http/https/postgresql/
     mysql/mssql/…) must point at a loopback host. Rejects remote stores that would exfiltrate.
     """
-    if uri.startswith("sqlite:") or "://" not in uri:
-        return uri  # local sqlite file or a bare path/dir store
+    # Check the host regardless of scheme first: a networked host smuggled into a sqlite:// or
+    # scheme-less spelling (e.g. sqlite://evil.com/x, //evil.com/share) must NOT slip past
+    # (audit issue #O4). A host-less sqlite:///file, bare path, or file:///path is local.
     host = (urlparse(uri).hostname or "").strip()
     if host and not is_loopback_host(host):
         raise NonLocalEndpointError(

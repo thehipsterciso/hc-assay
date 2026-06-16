@@ -65,10 +65,31 @@ def test_unconfigured_tracer_fails_loud():
 
 # ---- experiment tracking ----
 
-def test_get_tracking_uri_resolves_sqlite_absolute(monkeypatch):
+def test_bootstrap_is_idempotent(monkeypatch):
+    monkeypatch.delenv("ASSAY_DISABLE_TRACING", raising=False)
+    sentinel = object()
+    monkeypatch.setattr(tr, "_provider", sentinel)
+    assert bootstrap_tracing() is sentinel  # cached provider returned, not re-registered
+
+
+def test_get_tracking_uri_resolves_sqlite_to_absolute_path(monkeypatch):
+    import os
+
     monkeypatch.delenv("ASSAY_TRACKING_URI", raising=False)
     uri = get_tracking_uri()
-    assert uri.startswith("sqlite:////") or uri.startswith("sqlite:///" + "/")  # absolute path
+    assert uri.startswith("sqlite:///")
+    path = uri[len("sqlite:///") :]
+    assert os.path.isabs(path)  # genuinely absolute, not a circular prefix check
+
+
+@pytest.mark.parametrize(
+    "uri",
+    ["sqlite://evil.com/x.db", "//evil.com/share", "http://0.0.0.0:5000", "postgresql://db.example.com/m"],
+)
+def test_get_tracking_uri_rejects_non_local(monkeypatch, uri):
+    monkeypatch.setenv("ASSAY_TRACKING_URI", uri)
+    with pytest.raises(NonLocalEndpointError):
+        get_tracking_uri()
 
 
 def test_get_tracking_uri_rejects_remote(monkeypatch):
@@ -95,3 +116,23 @@ def test_tracker_start_run_fails_loud_without_mlflow(monkeypatch):
     tracker = MlflowExperimentTracker()
     with pytest.raises(RuntimeError, match="observability' extra"):
         tracker.start_run("r", {})
+
+
+def test_tracker_full_lifecycle_against_local_store(monkeypatch, tmp_path):
+    # issue #O1: start_run -> log_metric -> log_artifact -> end_run must not collide on the
+    # active-run stack. Runs only when the observability extra (mlflow) is installed.
+    pytest.importorskip("mlflow")
+    db = tmp_path / "mlflow.db"
+    monkeypatch.setenv("ASSAY_TRACKING_URI", f"sqlite:///{db}")
+    tracker = MlflowExperimentTracker(experiment="lifecycle-test")
+    run_id = tracker.start_run("r1", {"alpha": "0.05"})
+    tracker.log_metric(run_id, "score", 0.9)  # would raise on the old active-stack design
+    artifact = tmp_path / "note.txt"
+    artifact.write_text("hi")
+    tracker.log_artifact(run_id, str(artifact))
+    tracker.end_run(run_id)
+    from mlflow.tracking import MlflowClient
+
+    run = MlflowClient(tracking_uri=f"sqlite:///{db}").get_run(run_id)
+    assert run.data.metrics["score"] == 0.9
+    assert run.info.status == "FINISHED"

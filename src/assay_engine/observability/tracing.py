@@ -13,11 +13,17 @@ tracing degrades to a silent no-op.
 
 from __future__ import annotations
 
+import atexit
+import logging
 import os
+import signal
+import threading
 from contextlib import contextmanager
 from typing import Any, Iterator, Mapping, Protocol, runtime_checkable
 
 from assay_engine._local import require_loopback_host
+
+_log = logging.getLogger("assay_engine.observability")
 
 # Local collector endpoint (loopback-enforced).
 TRACING_HOST = os.environ.get("ASSAY_TRACING_HOST", "localhost")
@@ -54,17 +60,80 @@ def bootstrap_tracing() -> Any:
         return _provider
     try:
         require_loopback_host(TRACING_HOST, what="tracing collector host")
+        # Bound the OTLP export so a downed collector can never hang teardown (#O3).
+        os.environ.setdefault("OTEL_EXPORTER_OTLP_TRACES_TIMEOUT", "2")
         from phoenix.otel import register
 
-        _provider = register(
+        provider = register(
             project_name=PROJECT_NAME,
             endpoint=tracing_endpoint(),
             set_global_tracer_provider=True,
+            batch=True,  # async BatchSpanProcessor — never block the run on export (#O2)
         )
+        _provider = provider
+        _warn_if_not_global(provider)
+        _instrument_langchain()
+        _install_flush_on_exit(provider)
         return _provider
     except Exception:
         # Missing extra / collector down / registration race — run untraced.
         return None
+
+
+def _warn_if_not_global(provider: Any) -> None:
+    """If another provider already won the global slot, our manual spans would vanish (#O6)."""
+    try:
+        from opentelemetry import trace
+
+        if trace.get_tracer_provider() is not provider:
+            _log.warning(
+                "assay tracing: another OpenTelemetry provider holds the global slot; "
+                "manually-emitted spans may not reach the local collector"
+            )
+    except Exception:
+        pass
+
+
+def _instrument_langchain() -> None:
+    """Capture LangChain auto-spans (the bulk reasoning tier uses LangChain) — best-effort (#O5)."""
+    try:
+        from openinference.instrumentation.langchain import LangChainInstrumentor
+
+        LangChainInstrumentor().instrument(skip_dep_check=True)
+    except Exception:
+        pass
+
+
+def _install_flush_on_exit(provider: Any) -> None:
+    """Flush buffered spans on clean exit (atexit) and on SIGTERM (#O3).
+
+    atexit does not run on ``kill``/container-stop, so a main-thread SIGTERM handler also
+    flushes+shuts down. Both are guarded — tracing teardown must never raise.
+    """
+    flush = getattr(provider, "force_flush", None)
+    if not callable(flush):
+        return
+    atexit.register(lambda: _safe(flush))
+    if threading.current_thread() is threading.main_thread():
+        try:
+            prior = signal.getsignal(signal.SIGTERM)
+
+            def _handler(signum: int, frame: Any) -> None:
+                _safe(flush)
+                _safe(getattr(provider, "shutdown", lambda: None))
+                if callable(prior):
+                    prior(signum, frame)
+
+            signal.signal(signal.SIGTERM, _handler)
+        except (ValueError, OSError):  # pragma: no cover - not on main thread / unsupported
+            pass
+
+
+def _safe(fn: Any) -> None:
+    try:
+        fn()
+    except Exception:
+        pass
 
 
 @contextmanager
