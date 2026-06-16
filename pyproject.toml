@@ -42,6 +42,9 @@ persistence = [
     "psycopg[binary,pool]>=3.2,<4",
     "qdrant-client>=1.9,<2",
 ]
+orchestration = [
+    "langgraph>=1.2,<2",
+]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/assay_engine"]

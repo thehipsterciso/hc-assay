@@ -26,6 +26,29 @@ transitions a gate guards:
 A concrete study maps its phases onto these transitions; the exact count and labels are an
 engine convention, not a dataset concern.
 
+### Gate interrupt/resume protocol (engine mechanics)
+
+A gate node parks the run via an `interrupt` and resumes when the operator's decision is
+delivered (`{gate_id, decision, rationale}`). The engine enforces three properties so the
+governance trail is sound; a cloning study must respect the state-shape requirement:
+
+- **Correlation guard** — a resumed decision must name the gate currently parked; a stale or
+  misrouted decision aimed at another gate is refused, not applied to whatever is waiting.
+- **Recoverable, never bricked** — `interrupt` persists the resume value into the checkpoint
+  before the node returns, so a malformed/mis-correlated value re-fires a fresh interrupt
+  (the operator can re-submit) instead of raising and stranding the gate forever. Only an
+  **approved** decision is terminal (re-entry is a no-op); a **rejected/deferred** gate
+  re-prompts so a revise→re-review loop works.
+- **Durable parking** — gate graphs must be compiled with the durable checkpointer
+  (`compile_graph(..., requires_checkpointer=True)`); without one `interrupt` is a silent
+  no-op and the gate would never pause. Resume must use the *same* checkpointer (keyed by
+  `run_id` as `thread_id`).
+
+**State-shape requirement for cloners:** gate decisions are returned as
+`{"gate_decisions": [record]}` partial updates, so a study's graph state must declare
+`gate_decisions` with a list/append reducer — otherwise each gate would overwrite the prior
+one and the append-only trail would lose all but the last decision.
+
 ## 2. Pre-registration
 
 Before any confirmatory test runs, the relevant hypotheses are:
