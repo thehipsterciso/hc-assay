@@ -195,13 +195,20 @@ def _submit_bounded(fn: Callable[[], Any]) -> Any:
     global _inflight
     with _inflight_lock:
         if _inflight >= _POOL_WORKERS:
-            raise PermanentReasoningError(
+            # Saturation is a TRANSIENT condition — surface a retryable backpressure signal so
+            # _run_with_retries waits and re-tries rather than failing the caller permanently
+            # (#104). Concurrent callers thus queue briefly instead of erroring out.
+            raise RateLimitError(
                 f"reasoning timeout pool saturated ({_inflight}/{_POOL_WORKERS} in-flight) — "
-                "hung backend call(s) have leaked every worker slot"
+                "backpressure; retry shortly"
             )
         _inflight += 1
     try:
         future = _pool.submit(fn)
+    except RuntimeError as exc:  # pool shut down at interpreter exit — normalize, don't leak (#116)
+        with _inflight_lock:
+            _inflight -= 1
+        raise PermanentReasoningError(f"reasoning pool is shut down: {exc}") from exc
     except BaseException:
         with _inflight_lock:
             _inflight -= 1

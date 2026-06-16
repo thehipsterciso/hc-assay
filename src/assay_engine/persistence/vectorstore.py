@@ -61,7 +61,23 @@ class QdrantVectorStore:
     def __init__(self, collection: str, dim: int, *, client: Any | None = None) -> None:
         self._collection = collection
         self._dim = dim
+        # Track ownership: only close a client we created ourselves; an injected client is the
+        # caller's to manage (#117).
+        self._owns_client = client is None
         self._client = client if client is not None else get_qdrant_client()
+
+    def close(self) -> None:
+        """Close the underlying client if this store created it (no-op for an injected one)."""
+        if self._owns_client:
+            close = getattr(self._client, "close", None)
+            if callable(close):
+                close()
+
+    def __enter__(self) -> "QdrantVectorStore":
+        return self
+
+    def __exit__(self, *_exc: object) -> None:
+        self.close()
 
     def ensure_collection(self) -> None:
         from qdrant_client.models import Distance, VectorParams
@@ -79,14 +95,17 @@ class QdrantVectorStore:
 
         if len(ids) != len(vectors):
             raise ValueError("ids and vectors must have equal length")
-        points = [
-            PointStruct(id=_point_id(i), vector=list(v), payload={"ref": i})
-            for i, v in zip(ids, vectors)
-        ]
-        # Chunk so a large ingest cannot exceed the server's request payload limit (Qdrant
-        # guidance: do not upload points one-by-one, but bound the batch size).
-        for start in range(0, len(points), batch_size):
-            self._client.upsert(self._collection, points=points[start : start + batch_size])
+        if batch_size < 1:
+            raise ValueError("batch_size must be >= 1")
+        # Build each batch of PointStructs lazily, so only one batch is materialized in memory at
+        # a time (bounding BOTH payload AND memory) rather than boxing the whole corpus up front
+        # (#118). Qdrant guidance: don't upload point-by-point, but bound the batch.
+        for start in range(0, len(ids), batch_size):
+            batch = [
+                PointStruct(id=_point_id(ids[j]), vector=list(vectors[j]), payload={"ref": ids[j]})
+                for j in range(start, min(start + batch_size, len(ids)))
+            ]
+            self._client.upsert(self._collection, points=batch)
 
     def query(self, vector: Sequence[float], k: int) -> list[tuple[str, float]]:
         res = self._client.query_points(

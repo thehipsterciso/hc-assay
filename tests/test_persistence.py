@@ -257,6 +257,42 @@ def test_versioner_rejects_non_file(tmp_path):
         v.fingerprint(str(tmp_path / "missing"))
 
 
+def test_versioner_path_for_rejects_traversal(tmp_path):
+    # #112: path_for must reject non-digest ids that would escape the store
+    v = LocalDataVersioner(store_dir=str(tmp_path / "s"))
+    for bad in ["../../etc/passwd", "..", "a/b", "g" * 64, "abc", "/etc/passwd"]:
+        with pytest.raises(ValueError, match="invalid version id"):
+            v.path_for(bad)
+    assert v.path_for("a" * 64).name == "a" * 64  # a valid digest is accepted
+
+
+def test_vector_store_upsert_streams_batches_and_owns_client():
+    import pytest as _pytest
+
+    _pytest.importorskip("qdrant_client")
+    from assay_engine.persistence.vectorstore import QdrantVectorStore
+
+    class FakeClient:
+        def __init__(self):
+            self.batches = []
+            self.closed = False
+
+        def upsert(self, collection, points):
+            self.batches.append(len(points))
+
+        def close(self):
+            self.closed = True
+
+    fc = FakeClient()
+    store = QdrantVectorStore("c", 2, client=fc)
+    store.upsert([f"u{i}" for i in range(5)], [[0.0, 1.0]] * 5, batch_size=2)
+    assert fc.batches == [2, 2, 1]  # #118: streamed in bounded batches
+    with pytest.raises(ValueError):
+        store.upsert(["u0"], [[0.0], [1.0]])  # length mismatch
+    store.close()
+    assert fc.closed is False  # #117: an INJECTED client is the caller's to close, not ours
+
+
 # ---- hardened checkpointer invariants (fake backends injected, no Postgres) ----
 
 
@@ -356,6 +392,34 @@ def test_atexit_pool_cleanup_registered_once(fake_pg):
     assert len(state["pools"]) == 2
     assert len(cp._OPEN_POOLS) == 2
     assert state["atexit_registered"] == 1
+
+
+def test_pool_closed_and_unregistered_when_bootstrap_fails(fake_pg):
+    # #105: if schema bootstrap fails AFTER the pool opened, the pool must be closed and dropped
+    # from the cleanup registry — not leaked.
+    import sys
+
+    cp, state = fake_pg
+    closed: list = []
+    Pool = sys.modules["psycopg_pool"].ConnectionPool
+    orig_close = Pool.close
+    Pool.close = lambda self: (closed.append(self), orig_close(self))[1]  # record close
+    Saver = sys.modules["langgraph.checkpoint.postgres"].PostgresSaver
+    orig_setup = Saver.setup
+
+    def boom(self):
+        raise RuntimeError("setup failed (schema DDL)")
+
+    Saver.setup = boom
+    try:
+        with pytest.raises(RuntimeError, match="connection failed"):
+            cp.get_checkpointer()
+        assert len(state["pools"]) == 1  # a pool was opened
+        assert closed and closed[0] is state["pools"][0]  # and it was closed
+        assert cp._OPEN_POOLS == []  # and removed from the cleanup registry (no leak)
+    finally:
+        Pool.close = orig_close
+        Saver.setup = orig_setup
 
 
 def test_connection_failure_redacts_and_leaks_no_context(fake_pg, monkeypatch):

@@ -185,10 +185,27 @@ def test_rate_limit_uses_long_backpressure(monkeypatch):
 # ---- timeout pool + saturation guard ----
 
 
-def test_submit_bounded_fails_fast_when_saturated(monkeypatch):
+def test_submit_bounded_saturation_is_retryable_backpressure(monkeypatch):
+    # #104: saturation is transient — must be a retryable RateLimitError (backpressure), not a
+    # permanent failure that drops the caller with no retry.
     monkeypatch.setattr(rc, "_inflight", rc._POOL_WORKERS)
-    with pytest.raises(PermanentReasoningError, match="saturated"):
+    with pytest.raises(RateLimitError, match="saturated"):
         rc._submit_bounded(lambda: 42)
+
+
+def test_submit_bounded_normalizes_pool_shutdown(monkeypatch):
+    # #116: a RuntimeError from a shut-down pool must surface as the documented seam error type,
+    # not leak the raw RuntimeError.
+    monkeypatch.setattr(rc, "_inflight", 0)
+
+    class DeadPool:
+        def submit(self, fn):
+            raise RuntimeError("cannot schedule new futures after shutdown")
+
+    monkeypatch.setattr(rc, "_pool", DeadPool())
+    with pytest.raises(PermanentReasoningError, match="shut down"):
+        rc._submit_bounded(lambda: 1)
+    assert rc._inflight == 0  # slot reservation rolled back
 
 
 def test_submit_bounded_releases_slot(monkeypatch):
@@ -221,7 +238,7 @@ def test_pool_saturation_and_release_under_real_threads(monkeypatch):
     monkeypatch.setattr(rc, "_inflight", 0)
     gate = threading.Event()
     futures = [rc._submit_bounded(lambda: gate.wait(5)) for _ in range(rc._POOL_WORKERS)]
-    with pytest.raises(PermanentReasoningError, match="saturated"):
+    with pytest.raises(RateLimitError, match="saturated"):  # retryable backpressure (#104)
         rc._submit_bounded(lambda: 1)
     gate.set()
     for f in futures:

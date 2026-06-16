@@ -105,6 +105,16 @@ def test_fence_is_one_directional():
     assert not hasattr(interp, "as_measurement")
 
 
+def test_measurement_rejects_interpretation_smuggled_as_dict_key():
+    # #115: the fence must scan dict KEYS, not just values — an Interpretation used as a key
+    # would otherwise be smuggled back into a Measurement.
+    interp = Interpretation(value="judged", basis=(), rationale="r", judged_by="op")
+    with pytest.raises(TypeError):
+        Measurement(value={interp: 1}, produced_by="p", inputs_hash="h")
+    with pytest.raises(TypeError):
+        Measurement(value=[{("nested", interp): 2}], produced_by="p", inputs_hash="h")
+
+
 def test_engine_imports_no_adapter():
     """The engine must be self-contained: every submodule imports without an adapter present."""
     failures = []
