@@ -26,3 +26,72 @@ or taxonomy.
 """
 
 __version__ = "0.0.1"
+
+# Public API — the surface a cloning study uses. Heavy/optional backends stay behind their
+# subpackages (imported lazily there); these names are dependency-free to import.
+from assay_engine.contracts import (  # noqa: E402
+    ClaimRecord,
+    Corpus,
+    ExternalClaimsSource,
+    FeatureBuilder,
+    FeatureMatrix,
+    IngestionParser,
+    Relation,
+    StudyDefinition,
+    StudyMode,
+    Unit,
+)
+from assay_engine.pipeline import (  # noqa: E402
+    GateHandler,
+    GateReview,
+    IngestionError,
+    StudyPlan,
+    StudyResult,
+    auto_approve,
+    run_study,
+)
+from assay_engine.provenance import (  # noqa: E402
+    ProvenanceEntry,
+    ProvenanceError,
+    ProvenanceTrail,
+    from_records,
+    verify_records,
+)
+from assay_engine.registry import (  # noqa: E402
+    get_study,
+    register_study,
+    registered_studies,
+)
+
+__all__ = [
+    "__version__",
+    # contracts
+    "ClaimRecord",
+    "Corpus",
+    "ExternalClaimsSource",
+    "FeatureBuilder",
+    "FeatureMatrix",
+    "IngestionParser",
+    "Relation",
+    "StudyDefinition",
+    "StudyMode",
+    "Unit",
+    # pipeline
+    "GateHandler",
+    "GateReview",
+    "IngestionError",
+    "StudyPlan",
+    "StudyResult",
+    "auto_approve",
+    "run_study",
+    # provenance
+    "ProvenanceEntry",
+    "ProvenanceError",
+    "ProvenanceTrail",
+    "from_records",
+    "verify_records",
+    # registry
+    "get_study",
+    "register_study",
+    "registered_studies",
+]

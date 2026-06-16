@@ -47,7 +47,8 @@ def test_full_pipeline_emits_real_spans_per_phase(tmp_path):
     exporter = _exporter()
     src = ref.write_source(tmp_path / "corpus.json")
 
-    result = run_study(ref.make_plan(src, modes=ALL), tracer=OtelTracer())
+    from assay_engine.pipeline import auto_approve
+    result = run_study(ref.make_plan(src, modes=ALL), tracer=OtelTracer(), gate_handler=auto_approve)
 
     # the composed workflow produced real artifacts
     assert result.discovery_verdicts and result.scorecard is not None
