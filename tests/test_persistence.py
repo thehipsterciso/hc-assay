@@ -126,6 +126,41 @@ def test_connection_string_accepts_uri_with_loopback_query_host(monkeypatch):
     assert get_postgres_connection_string().endswith("?host=127.0.0.1")
 
 
+@pytest.mark.parametrize(
+    "uri",
+    [
+        "postgresql://localhost:5432,evil.com:5432/db",     # multi-host: 2nd is remote (#D3)
+        "postgresql://127.0.0.1:5432,8.8.8.8:5432/db",
+        "postgresql://localhost:5432,a.evil.com,b.evil.com/db",
+        "postgresql://[::1]:5432,evil.com:5432/db",
+    ],
+)
+def test_connection_string_rejects_multihost_with_remote(monkeypatch, uri):
+    monkeypatch.setenv("ASSAY_POSTGRES_URL", uri)
+    with pytest.raises(NonLocalEndpointError):
+        get_postgres_connection_string()
+
+
+def test_connection_string_accepts_all_loopback_multihost(monkeypatch):
+    monkeypatch.setenv("ASSAY_POSTGRES_URL", "postgresql://localhost:5432,127.0.0.1:5433/db")
+    assert "127.0.0.1" in get_postgres_connection_string()
+
+
+def test_require_local_uri_rejects_unc_path():
+    from assay_engine._local import require_local_uri
+
+    with pytest.raises(NonLocalEndpointError):
+        require_local_uri(r"\\server\share\db.sqlite", what="x")
+
+
+def test_require_local_uri_fails_closed_on_unparseable():
+    from assay_engine._local import require_local_uri
+
+    # a malformed IPv6 authority must reject (fail closed), not raise a bare ValueError
+    with pytest.raises(NonLocalEndpointError):
+        require_local_uri("postgresql://[:::oops]/db", what="x")
+
+
 def test_redact_strips_dsn_password():
     out = redact_creds("OperationalError: host=localhost password=s3cr#t dbname=x failed")
     assert "s3cr#t" not in out and "password=***" in out
