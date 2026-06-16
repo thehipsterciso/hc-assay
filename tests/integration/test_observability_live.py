@@ -49,6 +49,35 @@ def test_otel_tracer_span_emits_without_error():
         pass
 
 
+@pytest.mark.skipif(not have("opentelemetry"), reason="opentelemetry not installed")
+def test_otel_tracer_span_sets_openinference_kind():
+    # Phoenix classifies spans by openinference.span.kind; a manual span must carry it (audit #1).
+    from opentelemetry import trace
+    from opentelemetry.sdk.trace import TracerProvider
+    from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+    from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
+
+    from assay_engine.observability.tracing import OtelTracer
+
+    exporter = InMemorySpanExporter()
+    provider = trace.get_tracer_provider()
+    if hasattr(provider, "add_span_processor"):
+        provider.add_span_processor(SimpleSpanProcessor(exporter))
+    else:
+        sdk = TracerProvider()
+        sdk.add_span_processor(SimpleSpanProcessor(exporter))
+        trace.set_tracer_provider(sdk)
+
+    with OtelTracer().span("kind.default"):
+        pass
+    with OtelTracer().span("kind.llm", kind="LLM"):
+        pass
+    trace.get_tracer_provider().force_flush()
+    by_name = {s.name: s for s in exporter.get_finished_spans()}
+    assert by_name["kind.default"].attributes["openinference.span.kind"] == "CHAIN"
+    assert by_name["kind.llm"].attributes["openinference.span.kind"] == "LLM"
+
+
 @pytest.mark.skipif(not have("phoenix"), reason="observability extra (phoenix) not installed")
 def test_bootstrap_tracing_real_provider_and_idempotent(monkeypatch):
     import assay_engine.observability.tracing as tr

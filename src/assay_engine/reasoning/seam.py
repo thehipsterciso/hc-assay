@@ -91,6 +91,11 @@ BULK_BASE_URL = _env("ASSAY_BULK_BASE_URL", "http://localhost:11434")
 HIGH_STAKES_MODEL = os.environ.get("ASSAY_HIGH_STAKES_MODEL") or None
 
 BULK_TIMEOUT = max(1.0, float(_env("ASSAY_BULK_TIMEOUT", "120")))
+# Cap BULK generation length. ChatOllama/Ollama default to unbounded (-1); without a cap a
+# local model can run away to context exhaustion, and the wall-clock timeout cannot interrupt a
+# call already blocked in the backend (a leaked pool slot). Bounding output tokens is the real
+# guard (LangChain's own ChatOllama example sets num_predict explicitly).
+BULK_NUM_PREDICT = max(1, int(_env("ASSAY_BULK_NUM_PREDICT", "2048")))
 HIGH_STAKES_TIMEOUT = max(1.0, float(_env("ASSAY_HIGH_STAKES_TIMEOUT", "300")))
 
 MAX_RETRIES = max(0, int(_env("ASSAY_REASONING_RETRIES", "2")))
@@ -227,9 +232,22 @@ def extract_json(text: str) -> Any:
 # Tier backends (lazy imports — module loads without them)
 # --------------------------------------------------------------------------------------
 def _bulk_complete(
-    prompt: str, system: str | None, temperature: float, model: str, json_mode: bool = False
+    prompt: str,
+    system: str | None,
+    temperature: float,
+    model: str,
+    json_mode: bool = False,
+    *,
+    seed: int | None = None,
+    json_schema: dict[str, Any] | None = None,
 ) -> str:
-    """Tier: BULK — local model runtime (loopback-enforced)."""
+    """Tier: BULK — local model runtime (loopback-enforced).
+
+    ``num_predict`` is always set (bounded generation). For JSON, a caller-supplied
+    ``json_schema`` uses Ollama's schema-constrained decoding (the reliable path); otherwise
+    ``json_mode`` falls back to loose ``format="json"``. ``seed`` lets a retry force a different
+    deterministic decode without sharpening temperature.
+    """
     require_loopback_url(BULK_BASE_URL, what="bulk-tier model base URL")
     try:
         from langchain_ollama import ChatOllama
@@ -242,10 +260,15 @@ def _bulk_complete(
         model=model,
         base_url=BULK_BASE_URL,
         temperature=temperature,
+        num_predict=BULK_NUM_PREDICT,  # bound generation length (H1)
         client_kwargs={"timeout": BULK_TIMEOUT},
     )
-    if json_mode:
-        kwargs["format"] = "json"  # Ollama native constrained JSON decoding
+    if seed is not None:
+        kwargs["seed"] = seed
+    if json_schema is not None:
+        kwargs["format"] = json_schema  # Ollama schema-constrained decoding (reliable JSON)
+    elif json_mode:
+        kwargs["format"] = "json"  # loose native JSON decoding (syntactic only)
     client = ChatOllama(**kwargs)
     messages: list[tuple[str, str]] = []
     if system:
@@ -364,26 +387,45 @@ def _attempt(request: ReasoningRequest) -> str:
     temperature = float(p.get("temperature", 0.0))
     model = p.get("model")
     json_mode = bool(p.get("_json_mode", False))
+    seed = p.get("_seed")
+    json_schema = p.get("json_schema")  # optional caller schema → constrained JSON decoding
     if request.tier is StakesTier.BULK:
         return cast(
             str,
             _with_timeout(
                 lambda: _bulk_complete(
-                    request.prompt, system, temperature, model or BULK_MODEL, json_mode
+                    request.prompt,
+                    system,
+                    temperature,
+                    model or BULK_MODEL,
+                    json_mode,
+                    seed=int(seed) if seed is not None else None,
+                    json_schema=json_schema,
                 ),
                 BULK_TIMEOUT + 10,
                 "bulk tier",
             ),
         )
     if request.tier is StakesTier.HIGH_STAKES:
-        return cast(
-            str,
-            _with_timeout(
-                lambda: _high_stakes_complete(request.prompt, system, model or HIGH_STAKES_MODEL),
-                HIGH_STAKES_TIMEOUT + 30,
-                "high-stakes tier",
-            ),
-        )
+        # The high-stakes tier runs the Claude CLI subprocess (not the in-process Anthropic SDK,
+        # so no auto-instrumentor covers it) — emit an explicit OpenInference LLM span so Phoenix
+        # records the model/provider for this otherwise-untraced tier (#2).
+        llm_attrs = {
+            "llm.provider": "anthropic",
+            "llm.system": "anthropic",
+            "llm.model_name": str(model or HIGH_STAKES_MODEL or "subscription-default"),
+        }
+        with _span("reasoning.high_stakes", llm_attrs, kind="LLM"):
+            return cast(
+                str,
+                _with_timeout(
+                    lambda: _high_stakes_complete(
+                        request.prompt, system, model or HIGH_STAKES_MODEL
+                    ),
+                    HIGH_STAKES_TIMEOUT + 30,
+                    "high-stakes tier",
+                ),
+            )
     raise PermanentReasoningError(f"unknown tier: {request.tier!r}")
 
 
@@ -419,11 +461,13 @@ class ReasoningSeam(Protocol):
 
 
 @contextmanager
-def _span(name: str, attributes: Mapping[str, Any]) -> Iterator[None]:
+def _span(name: str, attributes: Mapping[str, Any], *, kind: str = "AGENT") -> Iterator[None]:
     """Emit an OpenTelemetry span if a provider is registered; a cheap no-op otherwise.
 
-    OpenTelemetry is imported lazily, so the seam traces when the (self-hosted, on-box)
-    observability stack is wired and is a silent no-op in tests / offline (ADR-0003).
+    Stamps the OpenInference ``openinference.span.kind`` (default ``AGENT`` — a reasoning call)
+    so Phoenix classifies the span instead of rendering it UNKNOWN. OpenTelemetry is imported
+    lazily, so the seam traces when the (self-hosted, on-box) observability stack is wired and is
+    a silent no-op in tests / offline (ADR-0003).
     """
     try:
         from opentelemetry import trace
@@ -432,6 +476,7 @@ def _span(name: str, attributes: Mapping[str, Any]) -> Iterator[None]:
         return
     tracer = trace.get_tracer("assay_engine.reasoning")
     with tracer.start_as_current_span(name) as span:
+        span.set_attribute("openinference.span.kind", kind)
         for k, v in attributes.items():
             span.set_attribute(k, v)
         yield
@@ -452,11 +497,15 @@ class TieredReasoningSeam:
             return _run_with_retries(request)
 
     def run_json(self, request: ReasoningRequest) -> Any:
-        """Generate and parse JSON, regenerating with a varied temperature on parse failure.
+        """Generate and parse JSON, re-rolling on parse failure.
 
-        BULK decoding can be deterministic (fixed seed, temp 0), so re-issuing the identical
-        prompt would yield a byte-identical bad reply; each retry bumps the temperature.
-        ``params`` is frozen, so each attempt builds a fresh request (issue #R6).
+        If the caller supplies ``params["json_schema"]``, the BULK tier uses Ollama's
+        schema-constrained decoding (the reliable path). Otherwise it falls back to loose JSON
+        mode + prompt instruction. BULK decoding can be deterministic (temp 0), so re-issuing the
+        identical prompt would yield a byte-identical bad reply; each retry **varies the seed**
+        (forcing a different deterministic decode) and *monotonically* raises temperature toward
+        1.0 — never lowering it, so re-rolls never sharpen back toward the same output. ``params``
+        is frozen, so each attempt builds a fresh request (issue #R6).
         """
         base_temp = float(request.params.get("temperature", 0.0))
         system = request.params.get("system")
@@ -471,10 +520,9 @@ class TieredReasoningSeam:
             {"assay.tier": request.tier.value, "assay.purpose": request.purpose},
         ):
             for attempt in range(MAX_RETRIES + 1):
-                bump = 0.2 * attempt
-                temp = base_temp + bump if base_temp + bump <= 1.0 else max(0.0, base_temp - bump)
+                temp = min(1.0, base_temp + 0.2 * attempt)  # monotonic, never decreases (M3)
                 params = dict(request.params)
-                params.update(temperature=temp, system=json_system, _json_mode=True)
+                params.update(temperature=temp, system=json_system, _json_mode=True, _seed=attempt)
                 attempt_req = ReasoningRequest(
                     prompt=request.prompt,
                     tier=request.tier,

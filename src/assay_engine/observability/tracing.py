@@ -71,8 +71,10 @@ def bootstrap_tracing() -> Any:
             provider = register(
                 project_name=PROJECT_NAME,
                 endpoint=tracing_endpoint(),
+                protocol="http/protobuf",  # pin: endpoint is .../v1/traces — never flip to gRPC
                 set_global_tracer_provider=True,
                 batch=True,  # async BatchSpanProcessor — never block the run on export (#O2)
+                verbose=False,  # no stdout banner from a library context
             )
             _provider = provider
             _warn_if_not_global(provider)
@@ -161,21 +163,32 @@ def run_trace_context(run_id: str | None) -> Iterator[None]:
         context.detach(token)
 
 
+# OpenInference requires every span carry a span kind so Phoenix classifies it (CHAIN/LLM/
+# AGENT/TOOL); a plain OTel span with no kind renders as UNKNOWN in the Phoenix UI. We set the
+# raw semantic-convention attribute directly (no openinference import needed for a manual span).
+_OPENINFERENCE_SPAN_KIND = "openinference.span.kind"
+
+
 @runtime_checkable
 class Tracer(Protocol):
     @contextmanager
-    def span(self, name: str, attributes: Mapping[str, Any] | None = None) -> Iterator[None]: ...
+    def span(
+        self, name: str, attributes: Mapping[str, Any] | None = None, *, kind: str = "CHAIN"
+    ) -> Iterator[None]: ...
 
 
 class OtelTracer:
     """A tracer that emits OpenTelemetry spans via the global provider (no-op if OTel absent).
 
     Use this where a component wants explicit spans rather than relying on auto-instrumentation;
-    it honors whatever provider :func:`bootstrap_tracing` registered.
+    it honors whatever provider :func:`bootstrap_tracing` registered. Each span is stamped with
+    its OpenInference ``kind`` so Phoenix classifies it (default ``CHAIN``).
     """
 
     @contextmanager
-    def span(self, name: str, attributes: Mapping[str, Any] | None = None) -> Iterator[None]:
+    def span(
+        self, name: str, attributes: Mapping[str, Any] | None = None, *, kind: str = "CHAIN"
+    ) -> Iterator[None]:
         try:
             from opentelemetry import trace
         except ImportError:
@@ -183,6 +196,7 @@ class OtelTracer:
             return
         tracer = trace.get_tracer("assay_engine")
         with tracer.start_as_current_span(name) as sp:
+            sp.set_attribute(_OPENINFERENCE_SPAN_KIND, kind)
             for k, v in (attributes or {}).items():
                 sp.set_attribute(k, v)
             yield
@@ -192,7 +206,9 @@ class UnconfiguredTracer:
     """Fail-loud placeholder for contexts that must not silently drop spans."""
 
     @contextmanager
-    def span(self, name: str, attributes: Mapping[str, Any] | None = None) -> Iterator[None]:
+    def span(
+        self, name: str, attributes: Mapping[str, Any] | None = None, *, kind: str = "CHAIN"
+    ) -> Iterator[None]:
         raise NotImplementedError(
             "no tracer configured — call bootstrap_tracing() and use OtelTracer, or supply a "
             "test double"

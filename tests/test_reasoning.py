@@ -251,6 +251,53 @@ def test_bulk_tier_rejects_non_loopback_base_url(monkeypatch):
         rc._bulk_complete("p", None, 0.0, "m")
 
 
+def _fake_ollama(monkeypatch, captured):
+    """Inject a fake langchain_ollama whose ChatOllama records its constructor kwargs."""
+    import sys
+    import types
+
+    class FakeClient:
+        def __init__(self, **kwargs):
+            captured.append(kwargs)
+
+        def invoke(self, messages):
+            return type("R", (), {"content": '{"ok": 1}'})()
+
+    mod = types.SimpleNamespace(ChatOllama=FakeClient)
+    monkeypatch.setitem(sys.modules, "langchain_ollama", mod)
+
+
+def test_bulk_complete_bounds_generation_and_passes_seed_and_schema(monkeypatch):
+    monkeypatch.delenv("ASSAY_DISABLE_REASONING", raising=False)
+    captured: list[dict] = []
+    _fake_ollama(monkeypatch, captured)
+    schema = {"type": "object", "properties": {"ok": {"type": "integer"}}}
+    rc._bulk_complete("p", None, 0.0, "m", seed=3, json_schema=schema)
+    kw = captured[0]
+    assert kw["num_predict"] == rc.BULK_NUM_PREDICT  # generation is bounded (H1)
+    assert kw["seed"] == 3  # seed threaded for deterministic re-rolls (M3)
+    assert kw["format"] == schema  # schema-constrained JSON decoding (M2), not loose "json"
+
+
+def test_run_json_varies_seed_and_never_lowers_temperature(monkeypatch):
+    monkeypatch.delenv("ASSAY_DISABLE_REASONING", raising=False)
+    monkeypatch.setattr(rc, "MAX_RETRIES", 2)
+    seen: list[tuple] = []
+
+    # patch the retry layer so we observe exactly run_json's re-rolls (not transient retries)
+    def fake_run_with_retries(req):
+        seen.append((req.params.get("_seed"), req.params["temperature"]))
+        raise rc.ReasoningError("bad json")  # force all re-rolls
+
+    monkeypatch.setattr(rc, "_run_with_retries", fake_run_with_retries)
+    with pytest.raises(rc.ReasoningError):
+        TieredReasoningSeam().run_json(_req())
+    seeds = [s for s, _ in seen]
+    temps = [t for _, t in seen]
+    assert seeds == [0, 1, 2]  # each re-roll forces a different deterministic decode
+    assert temps == sorted(temps) and max(temps) <= 1.0  # monotonic non-decreasing, capped
+
+
 # ---- public seam ----
 
 
