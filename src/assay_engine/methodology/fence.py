@@ -42,7 +42,11 @@ def _contains_interpretation(obj: Any) -> bool:
     if isinstance(obj, Interpretation):
         return True
     if isinstance(obj, AbcMapping):
-        return any(_contains_interpretation(v) for v in obj.values())
+        # scan KEYS as well as values — an Interpretation used as a dict key would otherwise be
+        # smuggled into a Measurement undetected (#115)
+        return any(
+            _contains_interpretation(k) or _contains_interpretation(v) for k, v in obj.items()
+        )
     if isinstance(obj, (list, tuple, set, frozenset)):
         return any(_contains_interpretation(v) for v in obj)
     return False

@@ -178,6 +178,7 @@ def get_checkpointer(use_memory: bool = False) -> Any:
 
     conn_str = get_postgres_connection_string()
     failure: str | None = None
+    pool: Any = None
     try:
         pool = ConnectionPool(
             conn_str,
@@ -218,6 +219,13 @@ def get_checkpointer(use_memory: bool = False) -> Any:
             f"{_sanitize_conn_str(conn_str)}?): {redact_creds(str(exc), conn_str)}. "
             "For tests without Postgres, use get_checkpointer(use_memory=True)."
         )
+        # The pool may have opened before bootstrap failed — close it and drop it from the
+        # cleanup registry so a failed init does not leak the connection/worker thread (#105).
+        if pool is not None:
+            _safe_close(pool)
+            with _init_lock:
+                if pool in _OPEN_POOLS:
+                    _OPEN_POOLS.remove(pool)
     raise RuntimeError(failure)
 
 

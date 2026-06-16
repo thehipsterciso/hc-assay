@@ -17,6 +17,7 @@ from assay_engine.reasoning.seam import (
     TieredReasoningSeam,
     extract_json,
     is_metered_anthropic_credential,
+    is_unsafe_subprocess_var,
     scrubbed_env,
 )
 
@@ -44,16 +45,52 @@ def test_is_metered_credential_matches_shape(key, metered):
     assert is_metered_anthropic_credential(key) is metered
 
 
-def test_scrubbed_env_strips_metered_keeps_subscription(monkeypatch):
-    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-remove")
-    monkeypatch.setenv("ANTHROPIC_FUTURE_TOKEN", "remove")
-    monkeypatch.setenv("ANTHROPIC_BASE_URL", "http://localhost:1234")
+@pytest.mark.parametrize(
+    "key,unsafe",
+    [
+        ("ANTHROPIC_API_KEY", True),
+        ("ANTHROPIC_AUTH_TOKEN", True),
+        ("ANTHROPIC_BASE_URL", True),  # off-box redirect (#101)
+        ("ANTHROPIC_BEDROCK_BASE_URL", True),
+        ("CLAUDE_CODE_USE_BEDROCK", True),  # metered-provider switch
+        ("CLAUDE_CODE_USE_VERTEX", True),
+        ("CLAUDE_CODE_API_KEY_HELPER", True),
+        ("HTTP_PROXY", True),
+        ("https_proxy", True),  # case-insensitive
+        ("AWS_SECRET_ACCESS_KEY", True),
+        ("GOOGLE_APPLICATION_CREDENTIALS", True),
+        ("CLAUDE_CODE_OAUTH_TOKEN", False),  # subscription auth — keep
+        ("PATH", False),
+        ("HOME", False),
+    ],
+)
+def test_is_unsafe_subprocess_var(key, unsafe):
+    assert is_unsafe_subprocess_var(key) is unsafe
+
+
+def test_scrubbed_env_overwrites_unsafe_and_survives_sdk_merge(monkeypatch):
+    # #101: the SDK builds the child env as {**os.environ, **options.env}, so omitting a key
+    # leaks the inherited value. scrubbed_env must OVERWRITE unsafe vars to "" so the merge wins.
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-metered-REMOVE")
+    monkeypatch.setenv("ANTHROPIC_BASE_URL", "http://attacker.example")
+    monkeypatch.setenv("CLAUDE_CODE_USE_BEDROCK", "1")
+    monkeypatch.setenv("HTTPS_PROXY", "http://attacker.example")
+    monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "secret")
     monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "keep")
-    env = scrubbed_env()
-    assert "ANTHROPIC_API_KEY" not in env
-    assert "ANTHROPIC_FUTURE_TOKEN" not in env
-    assert env.get("ANTHROPIC_BASE_URL") == "http://localhost:1234"
-    assert env.get("CLAUDE_CODE_OAUTH_TOKEN") == "keep"
+    scrubbed = scrubbed_env()
+    # simulate the claude-agent-sdk merge over the inherited environment
+    import os as _os
+
+    child = {**_os.environ, **scrubbed}
+    for k in (
+        "ANTHROPIC_API_KEY",
+        "ANTHROPIC_BASE_URL",
+        "CLAUDE_CODE_USE_BEDROCK",
+        "HTTPS_PROXY",
+        "AWS_SECRET_ACCESS_KEY",
+    ):
+        assert child[k] == "", f"{k} leaked into the child env: {child[k]!r}"
+    assert child["CLAUDE_CODE_OAUTH_TOKEN"] == "keep"  # subscription auth preserved
 
 
 # ---- JSON extraction / balanced-brace walker ----
@@ -148,10 +185,27 @@ def test_rate_limit_uses_long_backpressure(monkeypatch):
 # ---- timeout pool + saturation guard ----
 
 
-def test_submit_bounded_fails_fast_when_saturated(monkeypatch):
+def test_submit_bounded_saturation_is_retryable_backpressure(monkeypatch):
+    # #104: saturation is transient — must be a retryable RateLimitError (backpressure), not a
+    # permanent failure that drops the caller with no retry.
     monkeypatch.setattr(rc, "_inflight", rc._POOL_WORKERS)
-    with pytest.raises(PermanentReasoningError, match="saturated"):
+    with pytest.raises(RateLimitError, match="saturated"):
         rc._submit_bounded(lambda: 42)
+
+
+def test_submit_bounded_normalizes_pool_shutdown(monkeypatch):
+    # #116: a RuntimeError from a shut-down pool must surface as the documented seam error type,
+    # not leak the raw RuntimeError.
+    monkeypatch.setattr(rc, "_inflight", 0)
+
+    class DeadPool:
+        def submit(self, fn):
+            raise RuntimeError("cannot schedule new futures after shutdown")
+
+    monkeypatch.setattr(rc, "_pool", DeadPool())
+    with pytest.raises(PermanentReasoningError, match="shut down"):
+        rc._submit_bounded(lambda: 1)
+    assert rc._inflight == 0  # slot reservation rolled back
 
 
 def test_submit_bounded_releases_slot(monkeypatch):
@@ -184,7 +238,7 @@ def test_pool_saturation_and_release_under_real_threads(monkeypatch):
     monkeypatch.setattr(rc, "_inflight", 0)
     gate = threading.Event()
     futures = [rc._submit_bounded(lambda: gate.wait(5)) for _ in range(rc._POOL_WORKERS)]
-    with pytest.raises(PermanentReasoningError, match="saturated"):
+    with pytest.raises(RateLimitError, match="saturated"):  # retryable backpressure (#104)
         rc._submit_bounded(lambda: 1)
     gate.set()
     for f in futures:
@@ -303,13 +357,13 @@ def test_bulk_complete_classifies_404_as_permanent_by_status(monkeypatch):
 
 def test_run_json_varies_seed_and_never_lowers_temperature(monkeypatch):
     monkeypatch.delenv("ASSAY_DISABLE_REASONING", raising=False)
-    monkeypatch.setattr(rc, "MAX_RETRIES", 2)
+    monkeypatch.setattr(rc, "JSON_REROLLS", 2)
     seen: list[tuple] = []
 
-    # patch the retry layer so we observe exactly run_json's re-rolls (not transient retries)
-    def fake_run_with_retries(req):
+    # the generation SUCCEEDS but returns unparseable text → run_json re-rolls (parse failure)
+    def fake_run_with_retries(req, *, deadline=None):
         seen.append((req.params.get("_seed"), req.params["temperature"]))
-        raise rc.ReasoningError("bad json")  # force all re-rolls
+        return "not json at all"  # parse failure forces a re-roll
 
     monkeypatch.setattr(rc, "_run_with_retries", fake_run_with_retries)
     with pytest.raises(rc.ReasoningError):
@@ -318,6 +372,43 @@ def test_run_json_varies_seed_and_never_lowers_temperature(monkeypatch):
     temps = [t for _, t in seen]
     assert seeds == [0, 1, 2]  # each re-roll forces a different deterministic decode
     assert temps == sorted(temps) and max(temps) <= 1.0  # monotonic non-decreasing, capped
+
+
+def test_run_json_overall_deadline_bounds_rerolls(monkeypatch):
+    # #102: an overall deadline must cap the re-roll loop so retries can't multiply unboundedly
+    monkeypatch.delenv("ASSAY_DISABLE_REASONING", raising=False)
+    monkeypatch.setattr(rc, "JSON_REROLLS", 50)
+    monkeypatch.setattr(rc, "RUN_JSON_DEADLINE", 0.0)  # deadline already passed after attempt 0
+    calls = {"n": 0}
+
+    def bad_text(_req, *, deadline=None):
+        calls["n"] += 1
+        return "not json"  # parse failure would re-roll, but the deadline must stop it
+
+    monkeypatch.setattr(rc, "_run_with_retries", bad_text)
+    with pytest.raises(rc.ReasoningError):
+        TieredReasoningSeam().run_json(_req())
+    assert calls["n"] == 1  # stopped at the deadline, did NOT run all 51 re-rolls
+
+
+def test_run_json_does_not_reroll_on_reasoning_error_no_multiplication(monkeypatch):
+    # #102: a transient/exhausted reasoning error must PROPAGATE (no outer re-roll), so the inner
+    # retry budget and the re-roll budget never multiply. _attempt is called only MAX_RETRIES+1
+    # times total, NOT (MAX_RETRIES+1) * (JSON_REROLLS+1).
+    monkeypatch.delenv("ASSAY_DISABLE_REASONING", raising=False)
+    monkeypatch.setattr(rc.time, "sleep", lambda *_: None)
+    monkeypatch.setattr(rc, "MAX_RETRIES", 2)
+    monkeypatch.setattr(rc, "JSON_REROLLS", 5)
+    calls = {"n": 0}
+
+    def always_transient(_req):
+        calls["n"] += 1
+        raise rc.ReasoningError("transient")
+
+    monkeypatch.setattr(rc, "_attempt", always_transient)
+    with pytest.raises(rc.ReasoningError):
+        TieredReasoningSeam().run_json(_req())
+    assert calls["n"] == rc.MAX_RETRIES + 1  # 3, not 3*6 — budgets did not multiply
 
 
 # ---- public seam ----

@@ -310,13 +310,13 @@ def test_tracker_receives_run_and_metrics_and_failures_dont_abort(tmp_path):
         def log_artifact(self, run_id, path):
             self.calls.append(("artifact", path))
 
-        def end_run(self, run_id):
-            self.calls.append(("end", run_id))
+        def end_run(self, run_id, status="FINISHED"):
+            self.calls.append(("end", run_id, status))
 
     t = FakeTracker()
     res = _run(tmp_path, ALL, tracker=t)
     assert res.experiment_run_id == "run-1"
-    assert ("start", "reference-study") in t.calls and ("end", "run-1") in t.calls
+    assert ("start", "reference-study") in t.calls and ("end", "run-1", "FINISHED") in t.calls
     assert any(c[0] == "metric" and c[1] == "alignment_rate" for c in t.calls)
 
     class BoomTracker(FakeTracker):
@@ -326,6 +326,40 @@ def test_tracker_receives_run_and_metrics_and_failures_dont_abort(tmp_path):
     res2 = _run(tmp_path, ADJUDICATE, tracker=BoomTracker())  # must NOT abort the run
     assert res2.scorecard is not None
     assert any(e.kind == "tracking_error" for e in res2.provenance)
+
+
+def test_failed_run_records_failure_entry_and_marks_tracker_failed(tmp_path):
+    # #109 + #110: a raised run leaves a 'run_failed' provenance entry AND ends the tracker run
+    # as FAILED (distinguishable from success).
+    from assay_engine.provenance import ProvenanceTrail
+
+    class T:
+        def __init__(self):
+            self.ended = None
+
+        def start_run(self, name, params):
+            return "r"
+
+        def log_metric(self, *a):
+            pass
+
+        def log_artifact(self, *a):
+            pass
+
+        def end_run(self, run_id, status="FINISHED"):
+            self.ended = status
+
+    def reject(r):
+        return GateDecision(approved=False, gate=r.gate, reason="halt")
+
+    src = ref.write_source(tmp_path / "c.json")
+    trail = ProvenanceTrail()
+    t = T()
+    with pytest.raises(GateError):
+        run_study(ref.make_plan(src, modes=DISCOVERY), gate_handler=reject, tracker=t, trail=trail)
+    assert t.ended == "FAILED"
+    failed = [e for e in trail.entries if e.kind == "run_failed"]
+    assert failed and failed[0].payload["error_type"] == "GateError"
 
 
 def test_feature_builders_are_computed_and_recorded(tmp_path):
@@ -414,6 +448,59 @@ def test_gate_handler_is_required(tmp_path):
         run_study(ref.make_plan(src, modes=DISCOVERY))  # type: ignore[call-arg]
 
 
+def test_gate_review_payload_is_frozen_and_hashable(tmp_path):
+    # #113: GateReview's Mapping payload must be deep-frozen (immutable + hashable)
+    from assay_engine._frozen import FrozenDict
+    from assay_engine.pipeline import GateReview
+
+    r = GateReview(
+        gate="g",
+        frm=Phase.PREREGISTER,
+        to=Phase.CONFIRM,
+        summary="s",
+        payload={"a": {"b": 1}, "ids": [1, 2]},
+    )
+    assert isinstance(r.payload, FrozenDict)
+    with pytest.raises(Exception):  # noqa: B017 — any mutation must fail
+        r.payload["a"] = 2  # type: ignore[index]
+    hash(r)  # frozen record is hashable
+
+
+def test_run_study_correlates_spans_to_run_id(tmp_path):
+    # #122: every phase span must see the run's assay.run_id baggage (traces correlate to the run)
+    pytest.importorskip("opentelemetry")
+    from contextlib import contextmanager
+
+    from opentelemetry import baggage
+
+    class CapturingTracer:
+        def __init__(self):
+            self.seen = set()
+
+        @contextmanager
+        def span(self, name, attributes=None, *, kind="CHAIN"):
+            self.seen.add(baggage.get_baggage("assay.run_id"))
+            yield
+
+    class T:
+        def start_run(self, name, params):
+            return "run-xyz"
+
+        def log_metric(self, *a):
+            pass
+
+        def log_artifact(self, *a):
+            pass
+
+        def end_run(self, run_id, status="FINISHED"):
+            pass
+
+    tracer = CapturingTracer()
+    _run(tmp_path, DISCOVERY, tracer=tracer, tracker=T())
+    assert tracer.seen == {"run-xyz"}  # all phase spans saw the run id; none None
+    assert baggage.get_baggage("assay.run_id") is None  # detached after the run
+
+
 def test_plan_validates_required_callables_per_mode():
     src = type("P", (), {})()  # unused; __post_init__ fires before any run
     from assay_engine.contracts.study import StudyDefinition
@@ -476,7 +563,7 @@ def test_tracker_start_and_end_failures_are_swallowed(tmp_path):
         def log_artifact(self, *a):
             pass
 
-        def end_run(self, run_id):
+        def end_run(self, run_id, status="FINISHED"):
             raise RuntimeError("end boom")
 
     # start_run failing -> run_id stays None, run still completes; end_run failure swallowed

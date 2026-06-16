@@ -29,10 +29,13 @@ versioning*. Reasoning enters only inside the study's own callables (which may u
 from __future__ import annotations
 
 import datetime as _dt
+import uuid
+from contextlib import ExitStack
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Iterable, Mapping
 
+from assay_engine._frozen import freeze_mapping
 from assay_engine.baseline.determinism import corpus_fingerprint
 from assay_engine.baseline.toolkit import BaselineArtifact, BaselineBuilder
 from assay_engine.contracts.claims import ClaimRecord
@@ -53,7 +56,12 @@ from assay_engine.methodology.firewalls import (
 from assay_engine.methodology.hypothesis import Hypothesis, HypothesisOrigin
 from assay_engine.methodology.preregistration import TimestampAuthority, require_preregistered
 from assay_engine.methodology.verdict import Verdict
-from assay_engine.observability.tracing import OtelTracer, Tracer
+from assay_engine.observability.tracing import (
+    OtelTracer,
+    Tracer,
+    bootstrap_tracing,
+    run_trace_context,
+)
 from assay_engine.observability.tracking import ExperimentTracker
 from assay_engine.orchestration.gates import GateDecision, GateError
 from assay_engine.orchestration.phases import Phase, required_phases
@@ -78,6 +86,10 @@ class GateReview:
     to: Phase
     summary: str
     payload: Mapping[str, Any]
+
+    def __post_init__(self) -> None:
+        # deep-freeze the payload so this frozen record is truly immutable + hashable (#113)
+        object.__setattr__(self, "payload", freeze_mapping(self.payload))
 
 
 GateHandler = Callable[[GateReview], GateDecision]
@@ -266,6 +278,13 @@ def run_study(
         except Exception as exc:  # noqa: BLE001
             trail.record("tracking_error", f"experiment tracker start_run failed: {exc}")
 
+    # Bootstrap tracing once and correlate every phase/reasoning span to this run via baggage,
+    # so a run's spans are findable by id and join the experiment-tracker run (#122). Best-effort.
+    bootstrap_tracing()
+    corr_id = run_id or uuid.uuid4().hex
+    ok = False
+    trace_ctx = ExitStack()
+    trace_ctx.enter_context(run_trace_context(corr_id))
     try:
         # ---- INGEST ----
         with tracer.span("phase:INGEST"):
@@ -519,10 +538,28 @@ def run_study(
                 f"{[p.name for p in required]}"
             )
         trail.verify()  # the provenance chain must be intact before we hand back the result
+        ok = True
+    except Exception as exc:
+        # Record a terminal failure entry BEFORE re-raising so the abort reason is recoverable
+        # from the (caller-owned) trail, not lost (#109).
+        last_phase = visited[-1].name if visited else "start"
+        try:
+            trail.record(
+                "run_failed",
+                f"{type(exc).__name__} during {last_phase}",
+                error_type=type(exc).__name__,
+                message=str(exc)[:2000],
+                last_phase=last_phase,
+            )
+        except Exception:  # noqa: BLE001,S110 — never mask the original failure
+            pass
+        raise
     finally:
+        trace_ctx.close()
         if tracker is not None and run_id is not None:
             try:
-                tracker.end_run(run_id)
+                # a failed run must be distinguishable from a successful one in the store (#110)
+                tracker.end_run(run_id, status="FINISHED" if ok else "FAILED")
             except Exception:  # noqa: BLE001,S110 — best-effort cleanup
                 pass
 

@@ -15,7 +15,7 @@ added later under the optional ``baseline`` extra, but the contract here stays d
 from __future__ import annotations
 
 import math
-from typing import Sequence
+from typing import Any, Sequence
 
 Vector = Sequence[float]
 
@@ -86,7 +86,8 @@ def _cosine_matrix_pure(rows: Sequence[Vector]) -> list[list[float]]:
     return out
 
 
-def _cosine_matrix_numpy(rows: Sequence[Vector]) -> list[list[float]]:
+def _cosine_ndarray(rows: Sequence[Vector]) -> Any:
+    """Compute the cosine matrix as a numpy ndarray (no nested-list boxing)."""
     import numpy as np
 
     x = np.asarray(rows, dtype=float)
@@ -109,7 +110,30 @@ def _cosine_matrix_numpy(rows: Sequence[Vector]) -> list[list[float]]:
         m[zero, :] = 0.0
         m[:, zero] = 0.0
     np.fill_diagonal(m, np.where(zero, 0.0, 1.0))
-    return [[float(v) for v in row] for row in m]
+    return m
+
+
+def _cosine_matrix_numpy(rows: Sequence[Vector]) -> list[list[float]]:
+    return [[float(v) for v in row] for row in _cosine_ndarray(rows)]
+
+
+def cosine_similarity_matrix_array(rows: Sequence[Vector]) -> Any:
+    """The cosine matrix as a numpy ndarray — no nested-list boxing (#106).
+
+    For large corpora the nested-list form of :func:`cosine_similarity_matrix` multiplies peak
+    memory several-fold; a builder operating at scale should keep the ndarray and store it in the
+    baseline's ``contents`` (the determinism freeze keeps an array opaque/O(1), unlike a nested
+    list). Requires numpy (the ``baseline`` extra).
+    """
+    try:
+        import numpy as np
+    except ImportError as exc:  # pragma: no cover - exercised only without the extra
+        raise RuntimeError(
+            "cosine_similarity_matrix_array requires numpy (the 'baseline' extra)"
+        ) from exc
+    if not rows:
+        return np.empty((0, 0), dtype=float)
+    return _cosine_ndarray(rows)
 
 
 def cosine_similarity_matrix(rows: Sequence[Vector]) -> list[list[float]]:

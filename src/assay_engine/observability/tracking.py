@@ -35,7 +35,7 @@ class ExperimentTracker(Protocol):
     def start_run(self, name: str, params: Mapping[str, Any]) -> str: ...
     def log_metric(self, run_id: str, key: str, value: float) -> None: ...
     def log_artifact(self, run_id: str, path: str) -> None: ...
-    def end_run(self, run_id: str) -> None: ...
+    def end_run(self, run_id: str, status: str = "FINISHED") -> None: ...
 
 
 class MlflowExperimentTracker:
@@ -81,5 +81,7 @@ class MlflowExperimentTracker:
     def log_artifact(self, run_id: str, path: str) -> None:
         self._client().log_artifact(run_id, path)
 
-    def end_run(self, run_id: str) -> None:
-        self._client().set_terminated(run_id)
+    def end_run(self, run_id: str, status: str = "FINISHED") -> None:
+        # MLflow run statuses: FINISHED / FAILED / KILLED. Recording FAILED makes a failed run
+        # distinguishable from a successful one in the store (#110).
+        self._client().set_terminated(run_id, status=status)

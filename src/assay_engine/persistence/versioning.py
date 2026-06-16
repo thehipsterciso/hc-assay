@@ -11,12 +11,14 @@ from __future__ import annotations
 
 import hashlib
 import os
+import re
 import shutil
 import tempfile
 from pathlib import Path
 from typing import Protocol, runtime_checkable
 
 _CHUNK = 1 << 20  # 1 MiB
+_SHA256_HEX = re.compile(r"[0-9a-f]{64}")
 
 
 @runtime_checkable
@@ -80,5 +82,14 @@ class LocalDataVersioner:
         return digest
 
     def path_for(self, digest: str) -> Path:
-        """Local path of a previously-stored artifact by its version id."""
+        """Local path of a previously-stored artifact by its version id.
+
+        The version id MUST be a SHA-256 hex digest (the only form :meth:`put` ever returns).
+        Validating it rejects path-traversal payloads (e.g. ``../../etc/passwd``) that would
+        otherwise compose a path outside the store (#112).
+        """
+        if not _SHA256_HEX.fullmatch(digest):
+            raise ValueError(
+                f"invalid version id {digest!r} (expected a 64-char sha256 hex digest)"
+            )
         return self._root / digest[:2] / digest
