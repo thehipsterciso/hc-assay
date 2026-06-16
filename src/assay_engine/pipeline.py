@@ -148,13 +148,19 @@ def run_study(
     tracer: Tracer | None = None,
     gate_handler: GateHandler = auto_approve,
     clock: Clock | None = None,
+    trail: ProvenanceTrail | None = None,
 ) -> StudyResult:
     """Run one study end-to-end through its governed phase sequence. See module docstring.
 
     ``tracer`` defaults to :class:`OtelTracer` (real spans if OpenTelemetry + a provider are
-    present, a graceful no-op otherwise). ``gate_handler`` decides the human governance gate
+    present, a graceful no-op otherwise). ``gate_handler`` decides the human governance gates
     (default auto-approves, recording the decision). ``clock`` injects a deterministic clock for
     the provenance timestamps only (ordering checks always use real time).
+
+    ``trail`` may be a caller-owned :class:`ProvenanceTrail` (optionally keyed): the runner
+    records into it, so if the run *raises* (a blocked gate, a firewall violation) the caller
+    still holds the partial trail — including the blocking decision — for audit (#92). If
+    omitted, an internal unkeyed trail is used and surfaced only on success.
 
     Raises ``FirewallViolation``/``PreRegistrationError`` on any methodological breach,
     ``GateError`` if a gate blocks a transition, and ``ValueError`` on a malformed run.
@@ -163,12 +169,32 @@ def run_study(
     defn = plan.definition
     modes = defn.modes
     required = required_phases(modes)
-    trail = ProvenanceTrail(clock=clock)
+    trail = trail if trail is not None else ProvenanceTrail(clock=clock)
     visited: list[Phase] = []
 
     def enter(phase: Phase, **payload: Any) -> None:
         visited.append(phase)
         trail.record("phase", f"enter {phase.name}", phase=phase.name, **payload)
+
+    def run_gate(review: GateReview) -> None:
+        """Invoke the governance gate, recording the decision once and blocking on rejection.
+
+        The decision's ``approved``/``reason`` are read EXACTLY ONCE (snapshotted) and used for
+        both the recorded entry and the control-flow branch, so a side-effecting decision object
+        cannot diverge what is recorded from what is enforced (#94).
+        """
+        decision = gate_handler(review)
+        approved = bool(getattr(decision, "approved", False))
+        reason = str(getattr(decision, "reason", ""))
+        trail.record(
+            "gate", f"gate {review.gate!r}: {'approved' if approved else 'blocked'}",
+            gate=review.gate, approved=approved, reason=reason,
+            transition=f"{review.frm.name}->{review.to.name}",
+        )
+        if not approved:
+            raise GateError(
+                f"gate {review.gate!r} blocked {review.frm.name}->{review.to.name}: {reason}"
+            )
 
     trail.record(
         "run_start", f"study {defn.name!r} starting",
@@ -246,20 +272,14 @@ def run_study(
                     hypothesis_id=h.hypothesis_id, digest=vt.digest, locked_at=vt.instant.isoformat(),
                 )
             # GOVERNANCE GATE: human review of the locked hypotheses before any confirmatory test.
-            review = GateReview(
+            run_gate(GateReview(
                 gate="review-locked-hypotheses", frm=Phase.PREREGISTER, to=Phase.CONFIRM,
                 summary="review locked hypotheses before confirmatory testing",
                 payload={
                     "hypothesis_ids": [h.hypothesis_id for h in hypotheses],
                     "research_questions": list(defn.research_questions),
                 },
-            )
-            decision = gate_handler(review)
-            trail.as_recorder()(decision)
-            if not decision.approved:
-                raise GateError(
-                    f"gate {review.gate!r} blocked PREREGISTER->CONFIRM: {decision.reason}"
-                )
+            ))
 
         with tracer.span("phase:CONFIRM"):
             enter(Phase.CONFIRM)
@@ -283,20 +303,50 @@ def run_study(
     if StudyMode.ADJUDICATE_EXTERNAL_CLAIMS in modes:
         assert defn.claims_source is not None  # StudyDefinition enforces this for the mode
         assert plan.hypothesis_for is not None and plan.confirm_claim is not None
+        claim_records = list(defn.claims_source.claims())
+        if not claim_records:
+            # symmetry with the discovery empty-partition guard: adjudication mode with zero
+            # claims is a vacuous "success" otherwise (#87). Fail loud.
+            raise ValueError(
+                "adjudication mode but the claims source yielded no claims — nothing to adjudicate"
+            )
+        # GOVERNANCE GATE: adjudication is a confirmatory step (it emits verdicts + a scorecard),
+        # so it is gated too — the operator reviews the blind baseline + the claim set before any
+        # claim is scored against it (#86). frm is the phase actually preceding ADJUDICATE.
+        prev_phase = Phase.CONFIRM if StudyMode.DISCOVERY in modes else Phase.BASELINE
+        run_gate(GateReview(
+            gate="review-baseline-and-claims", frm=prev_phase, to=Phase.ADJUDICATE,
+            summary="review the blind baseline and the external claim set before adjudication",
+            payload={
+                "n_claims": len(claim_records),
+                "claim_fingerprint": defn.claims_source.claim_fingerprint(),
+                "baseline_fingerprint": baseline.corpus_fingerprint,
+                "research_questions": list(defn.research_questions),
+            },
+        ))
         with tracer.span("phase:ADJUDICATE"):
             enter(Phase.ADJUDICATE)
+
+            def _record_adjudication_step(h: Hypothesis, v: Verdict) -> None:
+                # per-claim, in order: the pre-registered hypothesis AND its verdict (#93)
+                trail.record(
+                    "preregister", f"locked claim hypothesis {h.hypothesis_id!r}",
+                    hypothesis_id=h.hypothesis_id, source_claim_id=h.source_claim_id,
+                    locked_at=h.locked_at,
+                )
+                trail.record(
+                    "verdict", f"adjudicated {v.hypothesis_id!r}: {v.label.value}",
+                    hypothesis_id=v.hypothesis_id, label=v.label.value, rule=v.decision_rule,
+                )
+
             # not_after = baseline_instant: a claim-derived hypothesis must have been locked
             # before the (shared) baseline existed, so it cannot have been tuned to it.
             scorecard = adjudicate_with_baseline(
                 baseline, defn.claims_source,
                 hypothesis_for=plan.hypothesis_for, confirm=plan.confirm_claim,
                 authority=plan.authority, not_after=baseline_instant, source_name=defn.name,
+                on_step=_record_adjudication_step,
             )
-            for v in scorecard.verdicts:
-                trail.record(
-                    "verdict", f"adjudicated {v.hypothesis_id!r}: {v.label.value}",
-                    hypothesis_id=v.hypothesis_id, label=v.label.value, rule=v.decision_rule,
-                )
         with tracer.span("phase:SCORE"):
             enter(Phase.SCORE)
             trail.record(

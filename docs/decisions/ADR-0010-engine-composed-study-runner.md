@@ -21,13 +21,19 @@ Two concrete gaps:
 ## Decision
 
 1. **Append-only provenance trail** (`assay_engine/provenance.py`). A `ProvenanceTrail` records
-   every action — run start, ingest, baseline, each discovered/locked hypothesis, every gate
-   decision, each verdict, the scorecard, the report — *before the next step runs*. Entries form
-   a hash chain (each over `(prev_hash, seq, kind, summary, payload, timestamp)` via the one
-   type-faithful hasher, `_canonical`) rooted at a fixed genesis. There is no remove/edit/reorder
-   API; the exposed view is an immutable tuple; `verify()`/`verify_records()`/`from_records()`
-   detect any removal, reorder, or edit in a serialized trail. This makes GOVERNANCE §3's "no step
-   can be retroactively removed or reordered" structural.
+   every action — run start, ingest, baseline, each discovered *and* claim-derived locked
+   hypothesis, every gate decision, each verdict, the scorecard, the report — *before the next
+   step runs*. Entries form a chain (each over `(prev_hash, seq, kind, summary, payload,
+   timestamp)` via the one type-faithful serializer, `_canonical`) rooted at a fixed genesis.
+   There is no remove/edit/reorder API; the exposed view is an immutable tuple.
+   **Integrity is honestly two-tiered** (adversarial review #88): the default unkeyed SHA-256
+   chain is tamper-evident against *naive* tampering and accidental corruption (single-entry
+   edit, reorder, deletion) but is **not** forgery-proof — a party controlling the serialized
+   bytes can recompute the whole genesis-rooted chain. Passing `secret=` makes the chain
+   HMAC-keyed, so the head cannot be recomputed without the secret (`verify_records` needs the
+   same secret) — local tamper-*resistance*, the provenance analogue of ADR-0009. Recording is
+   robust: a non-finite/exotic/deeply-nested payload, a non-datetime clock, or a booby-trapped
+   gate decision raises a typed `ProvenanceError`, never a raw exception (#89/#90/#91).
 
 2. **Study runner** (`assay_engine/pipeline.py`, `run_study`). The engine-owned executor that
    walks `required_phases(modes)` and at each phase: opens a trace span (observability seam),
@@ -53,10 +59,15 @@ Two concrete gaps:
    is now conditional on `DISCOVERY` mode, mirroring how ADJUDICATE/SCORE are conditional on
    adjudication mode. An adjudicate-only study is INGEST→BASELINE→ADJUDICATE→SCORE→REPORT.
 
-4. **The governance gate is a pluggable handoff.** `run_study` takes a `gate_handler`
-   (`GateReview → GateDecision`); the default auto-approves and records, and an operator/LangGraph
-   handler can block (raising `GateError`) or park. This is where human-in-the-loop review of the
-   pre-registered hypotheses happens, before any confirmatory test.
+4. **The governance gate is a pluggable handoff, before *every* confirmatory step.** `run_study`
+   takes a `gate_handler` (`GateReview → GateDecision`); the default auto-approves and records, and
+   an operator/LangGraph handler can block (raising `GateError`) or park. There are two gates so
+   no confirmatory step is ungated (adversarial review #86): `review-locked-hypotheses` before
+   CONFIRM (discovery), and `review-baseline-and-claims` before ADJUDICATE (adjudication). The
+   decision's `approved` is snapshotted once and used for both the recorded entry and the
+   control-flow branch, so it cannot diverge (#94). A caller may pass its own `trail` to
+   `run_study` so a *blocked* run still leaves an auditable partial trail including the blocking
+   decision (#92).
 
 ## Consequences
 

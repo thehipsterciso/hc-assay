@@ -8,27 +8,35 @@ independence claim — "no step can be retroactively removed or reordered" (GOVE
 The trail enforces that structurally, not by promise:
 
 - **Append-only.** Entries are added through :meth:`ProvenanceTrail.record` only; there is no
-  remove/edit/reorder API and the exposed view is an immutable tuple.
-- **Tamper-evident.** Each entry carries ``prev_hash`` and an ``entry_hash`` over
+  remove/edit/reorder API and the exposed view is an immutable tuple of frozen entries.
+- **Chained.** Each entry carries ``prev_hash`` and an ``entry_hash`` over
   ``(prev_hash, seq, kind, summary, payload, timestamp)`` using the engine's one type-faithful
-  hasher (:mod:`assay_engine._canonical`). The entries form a hash chain rooted at a fixed
-  genesis, so removing, reordering, or editing any entry in a *persisted* trail is detected by
-  :meth:`verify` (a downstream store cannot silently rewrite history).
+  serializer (:mod:`assay_engine._canonical`), rooted at a fixed genesis.
 
-Honest scope: an in-memory trail held by one process is as trustworthy as that process; the
-hash chain's value is that a *serialized* trail (``to_records``) round-trips through
-``from_records`` only if untouched, so an external store or reviewer can verify integrity.
-Non-repudiable third-party attestation of the trail's *time* is the same pluggable concern as
-pre-registration (see :mod:`assay_engine.methodology.preregistration`) and is out of scope here.
+Integrity — honest scope, two tiers:
+
+- **Unkeyed (default).** The chain is plain SHA-256. It is *tamper-evident against naive
+  tampering and accidental corruption*: editing one entry without recomputing downstream
+  hashes, reordering, or deleting an entry is caught by :func:`verify_records`. It is **not**
+  forgery-proof: a motivated party who controls the serialized bytes can edit a payload and
+  recompute the whole genesis-rooted chain, and the result verifies. Unkeyed integrity buys
+  "is this a valid chain?", not "is this *the* chain the engine produced."
+- **Keyed (``secret=...``).** Pass an on-box secret (as pre-registration does, ADR-0009) and
+  the chain is HMAC-SHA256. The head cannot be recomputed without the secret, so a downstream
+  store cannot silently rewrite history and re-seal it; :func:`verify_records` must be given
+  the same secret. This is local tamper-*resistance*; non-repudiable third-party attestation of
+  the trail's time remains the same pluggable concern as pre-registration, out of scope here.
 """
 
 from __future__ import annotations
 
 import datetime as _dt
+import hashlib
+import hmac
 from dataclasses import dataclass
 from typing import Any, Callable, Mapping
 
-from assay_engine._canonical import canonical_json, hash_text
+from assay_engine._canonical import canonical_json
 from assay_engine._frozen import freeze_mapping
 
 _UTC = _dt.timezone.utc
@@ -38,12 +46,12 @@ Clock = Callable[[], _dt.datetime]
 
 
 class ProvenanceError(RuntimeError):
-    """The provenance trail is inconsistent (a broken hash chain) or cannot be recorded."""
+    """The provenance trail is inconsistent (a broken chain) or an entry cannot be recorded."""
 
 
 @dataclass(frozen=True, slots=True)
 class ProvenanceEntry:
-    """One immutable, hash-chained record of a single action."""
+    """One immutable, chained record of a single action."""
 
     seq: int
     kind: str
@@ -57,17 +65,24 @@ class ProvenanceEntry:
         object.__setattr__(self, "payload", freeze_mapping(self.payload))
 
 
-def _digest(seq: int, kind: str, summary: str, payload: Mapping[str, Any],
-            timestamp: str, prev_hash: str) -> str:
+def _digest(
+    seq: int, kind: str, summary: str, payload: Mapping[str, Any],
+    timestamp: str, prev_hash: str, secret: bytes | None,
+) -> str:
     try:
-        return hash_text(canonical_json(
+        msg = canonical_json(
             ["assay-prov:v1", prev_hash, seq, kind, summary, dict(payload), timestamp]
-        ))
-    except (ValueError, TypeError) as exc:
+        ).encode("utf-8")
+    except (ValueError, TypeError, RecursionError) as exc:
+        # RecursionError (deeply nested payload) is a RuntimeError, not Value/TypeError — catch it
+        # too so the entrypoints surface a typed ProvenanceError, never a raw exception (#89).
         raise ProvenanceError(
-            f"provenance payload for {kind!r} cannot be canonicalized reproducibly ({exc}); "
-            "record only JSON-native / hashable values"
+            f"provenance payload for {kind!r} cannot be serialized reproducibly ({exc}); "
+            "record only JSON-native / hashable values of bounded depth"
         ) from None
+    if secret is None:
+        return hashlib.sha256(msg).hexdigest()
+    return hmac.new(secret, msg, "sha256").hexdigest()
 
 
 def _utc_now() -> _dt.datetime:
@@ -75,10 +90,18 @@ def _utc_now() -> _dt.datetime:
 
 
 class ProvenanceTrail:
-    """An append-only, tamper-evident audit trail for one study run."""
+    """An append-only, chained audit trail for one study run.
 
-    def __init__(self, *, clock: Clock | None = None) -> None:
+    ``secret`` (>= 16 bytes) keys the chain with HMAC so a serialized trail cannot be forged
+    without it (see module docstring). ``clock`` injects the timestamp source (deterministic
+    tests); it must return a timezone-aware ``datetime``.
+    """
+
+    def __init__(self, *, secret: bytes | None = None, clock: Clock | None = None) -> None:
+        if secret is not None and (not isinstance(secret, (bytes, bytearray)) or len(secret) < 16):
+            raise ValueError("provenance secret must be >= 16 bytes of key material")
         self._entries: list[ProvenanceEntry] = []
+        self._secret: bytes | None = bytes(secret) if secret is not None else None
         self._clock: Clock = clock or _utc_now
 
     def record(self, kind: str, summary: str, **payload: Any) -> ProvenanceEntry:
@@ -88,28 +111,39 @@ class ProvenanceTrail:
         seq = len(self._entries)
         prev_hash = self._entries[-1].entry_hash if self._entries else _GENESIS
         instant = self._clock()
+        if not isinstance(instant, _dt.datetime):
+            raise ProvenanceError("provenance clock must return a datetime")
         if instant.tzinfo is None or instant.utcoffset() is None:
             raise ProvenanceError("provenance clock must return a timezone-aware datetime")
         timestamp = instant.astimezone(_UTC).isoformat()
-        entry_hash = _digest(seq, kind, summary, payload, timestamp, prev_hash)
-        entry = ProvenanceEntry(
-            seq=seq, kind=kind, summary=summary, payload=payload,
-            timestamp=timestamp, prev_hash=prev_hash, entry_hash=entry_hash,
-        )
+        entry_hash = _digest(seq, kind, summary, payload, timestamp, prev_hash, self._secret)
+        try:
+            entry = ProvenanceEntry(
+                seq=seq, kind=kind, summary=summary, payload=payload,
+                timestamp=timestamp, prev_hash=prev_hash, entry_hash=entry_hash,
+            )
+        except (ValueError, TypeError, RecursionError) as exc:
+            raise ProvenanceError(f"provenance entry for {kind!r} could not be frozen ({exc})") from None
         self._entries.append(entry)
         return entry
 
     def as_recorder(self) -> Callable[[Any], None]:
-        """A :data:`gates.ProvenanceRecorder` bound to this trail (records GateDecisions)."""
+        """A :data:`gates.ProvenanceRecorder` bound to this trail (records GateDecisions).
+
+        Reads each attribute exactly once and defensively, so a booby-trapped decision object
+        (a property that raises) surfaces a typed ``ProvenanceError`` rather than a raw error.
+        """
         def _record(decision: Any) -> None:
+            try:
+                gate = getattr(decision, "gate", None)
+                approved = bool(getattr(decision, "approved", False))
+                reason = getattr(decision, "reason", "")
+                evidence = dict(getattr(decision, "evidence", {}) or {})
+            except Exception as exc:  # noqa: BLE001 — the decision is on the trust boundary
+                raise ProvenanceError(f"could not read gate decision for provenance: {exc}") from None
             self.record(
-                "gate",
-                f"gate {getattr(decision, 'gate', '?')!r}: "
-                f"{'approved' if getattr(decision, 'approved', False) else 'blocked'}",
-                gate=getattr(decision, "gate", None),
-                approved=bool(getattr(decision, "approved", False)),
-                reason=getattr(decision, "reason", ""),
-                evidence=dict(getattr(decision, "evidence", {}) or {}),
+                "gate", f"gate {gate!r}: {'approved' if approved else 'blocked'}",
+                gate=gate, approved=approved, reason=reason, evidence=evidence,
             )
         return _record
 
@@ -127,7 +161,7 @@ class ProvenanceTrail:
 
     def verify(self) -> None:
         """Recompute the chain; raise :class:`ProvenanceError` on any inconsistency."""
-        verify_records(self._entries)
+        verify_records(self._entries, secret=self._secret)
 
     def to_records(self) -> tuple[dict[str, Any], ...]:
         """Serialize to plain dicts (for a persistent store); re-checkable via :func:`verify_records`."""
@@ -141,21 +175,35 @@ class ProvenanceTrail:
         )
 
 
-def verify_records(entries: "list[ProvenanceEntry] | tuple[ProvenanceEntry, ...]") -> None:
-    """Verify a sequence of entries forms an intact hash chain (order, linkage, content)."""
+def verify_records(
+    entries: "list[ProvenanceEntry] | tuple[ProvenanceEntry, ...]",
+    *,
+    secret: bytes | None = None,
+) -> None:
+    """Verify a sequence of entries forms an intact chain (order, linkage, content).
+
+    Pass the same ``secret`` the trail was keyed with; an unkeyed trail verifies with
+    ``secret=None``. A keyed trail will not verify under the wrong/absent secret.
+    """
     prev = _GENESIS
     for i, e in enumerate(entries):
         if e.seq != i:
             raise ProvenanceError(f"provenance entry {i} has seq {e.seq} (reordered or removed)")
         if e.prev_hash != prev:
             raise ProvenanceError(f"provenance entry {i} prev_hash breaks the chain")
-        recomputed = _digest(e.seq, e.kind, e.summary, e.payload, e.timestamp, e.prev_hash)
-        if recomputed != e.entry_hash:
-            raise ProvenanceError(f"provenance entry {i} content was altered (hash mismatch)")
+        recomputed = _digest(e.seq, e.kind, e.summary, e.payload, e.timestamp, e.prev_hash, secret)
+        if not hmac.compare_digest(recomputed, e.entry_hash):
+            raise ProvenanceError(
+                f"provenance entry {i} content was altered, or the wrong key was used (hash mismatch)"
+            )
         prev = e.entry_hash
 
 
-def from_records(records: "list[Mapping[str, Any]] | tuple[Mapping[str, Any], ...]") -> tuple[ProvenanceEntry, ...]:
+def from_records(
+    records: "list[Mapping[str, Any]] | tuple[Mapping[str, Any], ...]",
+    *,
+    secret: bytes | None = None,
+) -> tuple[ProvenanceEntry, ...]:
     """Rebuild entries from :meth:`ProvenanceTrail.to_records` output and verify the chain."""
     entries = tuple(
         ProvenanceEntry(
@@ -164,5 +212,5 @@ def from_records(records: "list[Mapping[str, Any]] | tuple[Mapping[str, Any], ..
         )
         for r in records
     )
-    verify_records(entries)
+    verify_records(entries, secret=secret)
     return entries

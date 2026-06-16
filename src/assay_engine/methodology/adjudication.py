@@ -171,6 +171,7 @@ def adjudicate_with_baseline(
     authority: TimestampAuthority,
     not_after: _dt.datetime,
     source_name: str = "external",
+    on_step: "Callable[[Hypothesis, Verdict], None] | None" = None,
 ) -> SourceScorecard:
     """Adjudicate claims against an **already-built blind baseline** (the composable core).
 
@@ -205,5 +206,9 @@ def adjudicate_with_baseline(
                 f"{verdict.hypothesis_id!r} — hypothesis↔verdict misattribution"
             )
         verdicts.append(verdict)
+        if on_step is not None:
+            # per-claim hook (in order) so a caller can record the pre-registered hypothesis AND
+            # its verdict to provenance as each happens, not in a post-hoc batch (#93).
+            on_step(hypothesis, verdict)
 
     return _score(source_name, verdicts)

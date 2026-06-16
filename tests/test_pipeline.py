@@ -117,6 +117,59 @@ def test_gate_rejection_halts_before_confirm(tmp_path):
         _run(tmp_path, DISCOVERY, gate_handler=reject)
 
 
+def test_adjudication_is_also_gated(tmp_path):
+    # #86: adjudication is a confirmatory step and must be gated too — a rejecting handler halts
+    # an adjudicate-only run before any claim is scored.
+    def reject(r):
+        return GateDecision(approved=False, gate=r.gate, reason="rejected")
+    with pytest.raises(GateError, match="review-baseline-and-claims"):
+        _run(tmp_path, ADJUDICATE, gate_handler=reject)
+
+
+def test_every_confirmatory_path_invokes_a_gate(tmp_path):
+    seen = []
+    def handler(review):
+        seen.append(review.gate)
+        return GateDecision(approved=True, gate=review.gate, reason="ok")
+    _run(tmp_path, ADJUDICATE, gate_handler=handler)
+    assert "review-baseline-and-claims" in seen  # adjudicate-only path is gated
+    seen.clear()
+    _run(tmp_path, ALL, gate_handler=handler)
+    assert seen == ["review-locked-hypotheses", "review-baseline-and-claims"]
+
+
+def test_empty_claims_source_fails_loud(tmp_path):
+    src = ref.write_source(tmp_path / "c.json")
+    plan = ref.make_plan(src, modes=ADJUDICATE)
+    # swap in a claims source that yields nothing
+    empty = type("E", (), {"claims": lambda self: [], "claim_fingerprint": lambda self: "fp"})()
+    plan = replace(plan, definition=replace(plan.definition, claims_source=empty))
+    with pytest.raises(ValueError, match="no claims"):
+        run_study(plan)
+
+
+def test_adjudication_records_per_claim_preregistration(tmp_path):
+    res = _run(tmp_path, ADJUDICATE)
+    pre = [e for e in res.provenance if e.kind == "preregister"]
+    assert {e.payload["hypothesis_id"] for e in pre} == {"H-c1", "H-c2"}  # one per claim
+    assert all("source_claim_id" in e.payload for e in pre)
+
+
+def test_caller_owned_trail_survives_a_raise(tmp_path):
+    from assay_engine.provenance import ProvenanceTrail
+    trail = ProvenanceTrail()
+    def reject(r):
+        return GateDecision(approved=False, gate=r.gate, reason="halt")
+    src = ref.write_source(tmp_path / "c.json")
+    with pytest.raises(GateError):
+        run_study(ref.make_plan(src, modes=DISCOVERY), gate_handler=reject, trail=trail)
+    # the partial trail — including the blocking gate decision — is auditable after the raise
+    kinds = [e.kind for e in trail.entries]
+    assert "baseline" in kinds
+    gate = [e for e in trail.entries if e.kind == "gate"][-1]
+    assert gate.payload["approved"] is False
+
+
 def test_gate_handler_sees_locked_hypotheses(tmp_path):
     seen = {}
     def handler(review):
