@@ -357,10 +357,18 @@ def fake_pg(monkeypatch):
 
     from assay_engine.persistence import checkpoint as cp
 
-    state = {"setup_on": [], "lock_on": [], "pools": [], "atexit_registered": 0}
+    state = {
+        "setup_on": [],
+        "lock_on": [],
+        "lock_timeout_on": [],
+        "pools": [],
+        "atexit_registered": 0,
+    }
 
     class FakeConn:
         def execute(self, sql, params=None):
+            if "lock_timeout" in sql:
+                state["lock_timeout_on"].append(params)
             if "pg_advisory_lock" in sql:
                 state["lock_on"].append(id(self))
 
@@ -413,6 +421,8 @@ def fake_pg(monkeypatch):
     monkeypatch.setattr(cp, "_INITIALIZED_CONN_STRS", set())
     monkeypatch.setattr(cp, "_OPEN_POOLS", [])
     monkeypatch.setattr(cp, "_atexit_registered", False)
+    monkeypatch.setattr(cp, "_CONN_INIT_LOCKS", {})
+    monkeypatch.setattr(cp, "_POOLS_BY_CONN", {})
     monkeypatch.setattr(
         cp,
         "atexit",
@@ -436,14 +446,136 @@ def test_setup_runs_once_per_conn_and_on_locked_connection(fake_pg):
     assert state["lock_on"] == state["setup_on"]
 
 
-def test_atexit_pool_cleanup_registered_once(fake_pg):
+def test_pool_is_cached_and_reused_per_conn_str(fake_pg):
+    # #144: repeated calls for the SAME conn_str must reuse one pool (not open a new pool +
+    # worker thread each time); a DIFFERENT conn_str gets its own pool.
     cp, state = fake_pg
     cp.get_checkpointer()
     cp.get_checkpointer()
+    assert len(state["pools"]) == 1  # one pool reused, not two (#144)
+    assert len(cp._OPEN_POOLS) == 1
+    import os
+
+    os.environ["ASSAY_POSTGRES_URL"] = "postgresql://localhost:5433/other"
+    cp.get_checkpointer()  # distinct conn_str → its own pool
+    assert len(state["pools"]) == 2
+
+
+def test_migration_lock_is_bounded(fake_pg):
+    # #129: the advisory lock must be acquired under a bounded lock_timeout so a stuck peer
+    # holding it cannot hang bootstrap forever. set_config('lock_timeout', ...) runs before the
+    # pg_advisory_lock on the same connection.
+    cp, state = fake_pg
+    cp.get_checkpointer()
+    assert state["lock_timeout_on"], "no lock_timeout set before advisory lock (#129)"
+    # the configured bound is a positive integer-millisecond value
+    (params,) = state["lock_timeout_on"]
+    assert int(params[0]) > 0
+
+
+def test_concurrent_init_of_distinct_conn_strs_does_not_serialize(fake_pg, monkeypatch):
+    # #129: a stuck advisory-lock wait on conn_A must NOT block bootstrap of an unrelated conn_B.
+    # We make conn_A's advisory lock block on an Event; conn_B (different conn_str) must still
+    # complete. The pre-#129 code held a single process-global mutex across the advisory wait, so
+    # conn_B would be blocked behind conn_A — this test discriminates that regression.
+    import os
+    import sys
+    import threading
+
+    cp, state = fake_pg
+    release_a = threading.Event()
+    a_in_lock = threading.Event()
+
+    BlockPool = sys.modules["psycopg_pool"].ConnectionPool
+
+    class BlockingConn:
+        def __init__(self, conn_str):
+            self.conn_str = conn_str
+
+        def execute(self, sql, params=None):
+            if "pg_advisory_lock" in sql and "5432/assay" in self.conn_str:
+                a_in_lock.set()
+                release_a.wait(5)  # hold the lock until released
+
+    class _PoolWrap(BlockPool):
+        def __init__(self, conn_str, **kw):
+            super().__init__(conn_str, **kw)
+            self._conn = BlockingConn(conn_str)
+
+    monkeypatch.setattr(sys.modules["psycopg_pool"], "ConnectionPool", _PoolWrap)
+
+    results: dict = {}
+
+    def init_a():
+        os.environ["ASSAY_POSTGRES_URL"] = "postgresql://localhost:5432/assay"
+        cp.get_checkpointer()
+        results["a"] = True
+
+    def init_b():
+        a_in_lock.wait(5)  # ensure A is parked inside its advisory-lock wait
+        os.environ["ASSAY_POSTGRES_URL"] = "postgresql://localhost:5433/other_db"
+        cp.get_checkpointer()
+        results["b"] = True
+
+    ta = threading.Thread(target=init_a)
+    tb = threading.Thread(target=init_b)
+    ta.start()
+    tb.start()
+    tb.join(5)
+    assert results.get("b") is True, "conn_B blocked behind conn_A's advisory wait (#129)"
+    release_a.set()
+    ta.join(5)
+    assert results.get("a") is True
+
+
+def test_atexit_pool_cleanup_registered_once(fake_pg):
+    cp, state = fake_pg
+    import os
+
+    cp.get_checkpointer()
+    os.environ["ASSAY_POSTGRES_URL"] = "postgresql://localhost:5433/second"
+    cp.get_checkpointer()  # distinct conn_str → a second pool
     # two pools opened and tracked, but only one shared atexit handler registered
     assert len(state["pools"]) == 2
     assert len(cp._OPEN_POOLS) == 2
     assert state["atexit_registered"] == 1
+
+
+def test_concurrent_get_checkpointer_runs_setup_once(fake_pg):
+    # #143: under real concurrent threads (not sequential calls), the once-per-conn guard must
+    # still run setup() exactly once for a single conn_str. A trivially-fast fake setup() does not
+    # exercise the race (each thread finishes the bootstrap section before the next is scheduled),
+    # so we WIDEN the cache-empty→setup→cache-write window with a small sleep inside setup — this
+    # makes the test discriminating: it fails ("setup ran 8 times") if the per-conn lock is removed.
+    import sys
+    import threading
+    import time
+
+    cp, state = fake_pg
+    Saver = sys.modules["langgraph.checkpoint.postgres"].PostgresSaver
+    orig_setup = Saver.setup
+
+    def slow_setup(self):
+        time.sleep(0.05)  # widen the window so concurrent callers genuinely overlap
+        orig_setup(self)
+
+    Saver.setup = slow_setup
+    try:
+        barrier = threading.Barrier(8)
+
+        def worker():
+            barrier.wait()  # maximize the race on the bootstrap section
+            cp.get_checkpointer()
+
+        threads = [threading.Thread(target=worker) for _ in range(8)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join(5)
+    finally:
+        Saver.setup = orig_setup
+    assert len(state["setup_on"]) == 1, "setup() ran more than once under concurrency (#143)"
+    assert len(state["pools"]) == 1  # exactly one pool built despite 8 racing callers
 
 
 def test_pool_closed_and_unregistered_when_bootstrap_fails(fake_pg):

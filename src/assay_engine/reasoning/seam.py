@@ -37,7 +37,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Any, Callable, Iterator, Mapping, Protocol, cast, runtime_checkable
+from typing import Any, Callable, Iterator, Mapping, Protocol, cast
 
 from assay_engine._frozen import freeze_mapping
 from assay_engine._local import require_loopback_url
@@ -395,6 +395,17 @@ def _high_stakes_complete(prompt: str, system: str | None, model: str | None) ->
         # The CLI/SDK signals rate windows and API failures by COMPLETING the stream
         # (a RateLimitEvent, or a terminal ResultMessage with is_error) — NOT by raising.
         # We must inspect the stream, not just catch exceptions (issue #R4).
+        #
+        # Inner cancellation (#127): wrap the stream in anyio.fail_after so a hung subprocess is
+        # actually CANCELLED (the cancellation propagates into query() and tears down the child),
+        # freeing the bounded-pool worker. The outer _with_timeout only raises in the caller; it
+        # cannot cancel this thread, so without this a hung HIGH_STAKES call would leak its slot
+        # permanently. Fires before the outer wall-clock (HIGH_STAKES_TIMEOUT + 30).
+        nonlocal result_error
+        with anyio.fail_after(HIGH_STAKES_TIMEOUT):
+            await _drain_stream()
+
+    async def _drain_stream() -> None:
         nonlocal result_error
         async for msg in query(prompt=prompt, options=options):
             if type(msg).__name__ == "RateLimitEvent":
@@ -532,7 +543,7 @@ def _run_with_retries(request: ReasoningRequest, *, deadline: float | None = Non
 # --------------------------------------------------------------------------------------
 # Public seam
 # --------------------------------------------------------------------------------------
-@runtime_checkable
+# Structural Protocol only — adapter/seam validation is behavior-based, not isinstance (#148).
 class ReasoningSeam(Protocol):
     """Route a reasoning request to the appropriate tier with timeouts, retries, tracing."""
 

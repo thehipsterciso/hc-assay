@@ -20,9 +20,19 @@ your dataset and calling `run_study`.
 
 ## Quickstart
 
+> **Not yet on PyPI.** Until the package is published, install from source (see
+> [CONTRIBUTING.md](CONTRIBUTING.md)): clone the repo, then `pip install -e .` (add `[all]` for
+> every optional backend). The `pip install assay-engine` lines below are the post-publication
+> path.
+
 ```bash
-pip install assay-engine            # dependency-free core
-pip install "assay-engine[all]"     # + every optional backend
+git clone <repo> && cd hc-assay
+pip install -e .                    # dependency-free core (from source)
+pip install -e ".[all]"            # + every optional backend
+
+# post-publication (once on PyPI):
+# pip install assay-engine          # dependency-free core
+# pip install "assay-engine[all]"   # + every optional backend
 ```
 
 ```python
@@ -68,7 +78,12 @@ Given a security & privacy dataset, `hc-assay`:
 4. **Scores the external source** against the validated baseline — where it aligns, where
    it doesn't — as an output of method, with interpretation fenced off from measurement.
 
-Everything runs **on-box** (local-first, data-sovereign); nothing leaves the machine.
+All engine computation, storage, observability, experiment tracking, and the local **bulk**
+reasoning tier run **on-box** (local-first, data-sovereign) — that content never leaves the
+machine. The one exception is the optional **high-stakes** reasoning tier: it routes prompt
+content to a frontier model via the subscription CLI (fixed-cost, *not* metered — but **off-box**).
+A study handling data that must never leave the box should use only the bulk tier (or
+`UnconfiguredReasoningSeam`). See [ADR-0003](docs/decisions/ADR-0003-local-first-data-sovereign.md).
 
 ## Two modes
 

@@ -73,8 +73,10 @@ jobs:
         run: pytest -q --cov=assay_engine --cov-report=term-missing
 
   # Supply-chain: fail on known-vulnerable dependencies (a security/privacy engine must not ship
-  # with advisories). An allowlist file (.pip-audit-ignore, one advisory id per line) covers
-  # accepted/unfixable ones. (#108)
+  # with advisories). The scan runs against the committed, fully-pinned, hashed lockfile
+  # (requirements.lock) so the audit is reproducible across runs and matches what installs
+  # (#108, #130, #131, #132, #145, #146). An allowlist file (.pip-audit-ignore, one advisory id
+  # per line, '#' comments and blank lines allowed) covers accepted/unfixable ones.
   audit:
     runs-on: ubuntu-latest
     steps:
@@ -82,14 +84,58 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Install (all extras) + pip-audit
+      - name: Install pip-audit
+        run: python -m pip install --upgrade pip pip-audit
+      - name: Lockfile is in sync with pyproject (reproducibility guard)
         run: |
-          python -m pip install --upgrade pip pip-audit
-          pip install -e ".[dev,all]"
-      - name: pip-audit (known-vulnerability scan)
+          python -m pip install --upgrade uv
+          uv pip compile pyproject.toml --all-extras --universal --generate-hashes -o /tmp/requirements.regen.lock
+          # ignore the auto-generated header (timestamp/command line) when diffing
+          diff <(grep -v '^#' requirements.lock) <(grep -v '^#' /tmp/requirements.regen.lock) \
+            || { echo "::error::requirements.lock is stale — run: uv pip compile pyproject.toml --all-extras --universal --generate-hashes -o requirements.lock"; exit 1; }
+      - name: pip-audit (reproducible known-vulnerability scan)
         run: |
-          IGNORES=""
+          set -euo pipefail
+          # --strict: any dependency that cannot be collected/audited FAILS the gate (no silent
+          # skips). --require-hashes: every pin must carry a hash. Build --ignore-vuln args as an
+          # array so allowlist entries can't word-split or glob-expand, and read the file
+          # newline-agnostically so the last line is honored even without a trailing newline.
+          IGNORES=()
           if [ -f .pip-audit-ignore ]; then
-            while read -r id; do [ -n "$id" ] && IGNORES="$IGNORES --ignore-vuln $id"; done < .pip-audit-ignore
+            while IFS= read -r id || [ -n "$id" ]; do
+              case "$id" in ''|\#*) continue ;; esac
+              IGNORES+=(--ignore-vuln "$id")
+            done < .pip-audit-ignore
           fi
-          pip-audit --progress-spinner off $IGNORES
+          pip-audit --strict --require-hashes --progress-spinner off -r requirements.lock "${IGNORES[@]}"
+      - name: SBOM (CycloneDX) from the lockfile
+        run: |
+          set -euo pipefail
+          # Emit a machine-readable software bill of materials for the pinned dependency set so
+          # downstream license/transitive monitoring has a stable artifact to track (#147).
+          pip-audit --progress-spinner off -r requirements.lock --format cyclonedx-json -o sbom.cyclonedx.json || true
+          test -s sbom.cyclonedx.json && echo "SBOM emitted ($(wc -c < sbom.cyclonedx.json) bytes)"
+      - name: Upload SBOM artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom-cyclonedx
+          path: sbom.cyclonedx.json
+          if-no-files-found: warn
+      - name: License gate (deny strong-copyleft in the dependency set)
+        run: |
+          set -euo pipefail
+          # Fail if any installed dependency carries a strong-copyleft license that would be
+          # incompatible with the Apache-2.0 distribution (#147). Advisory monitoring for the
+          # rest is handled by Dependabot (.github/dependabot.yml).
+          python -m pip install --upgrade pip-licenses
+          pip install -e ".[all]" >/dev/null
+          pip-licenses --format=json --with-system > licenses.json
+          python scripts/license_gate.py licenses.json
+      - name: Upload license report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: license-report
+          path: licenses.json
+          if-no-files-found: warn

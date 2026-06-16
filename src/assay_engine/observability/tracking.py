@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Any, Mapping, Protocol, runtime_checkable
+from typing import Any, Mapping, Protocol
 
 from assay_engine._local import require_local_uri
 
@@ -30,7 +30,7 @@ def get_tracking_uri() -> str:
     return require_local_uri(uri, what="experiment tracking")
 
 
-@runtime_checkable
+# Structural Protocol only — adapter/seam validation is behavior-based, not isinstance (#148).
 class ExperimentTracker(Protocol):
     def start_run(self, name: str, params: Mapping[str, Any]) -> str: ...
     def log_metric(self, run_id: str, key: str, value: float) -> None: ...

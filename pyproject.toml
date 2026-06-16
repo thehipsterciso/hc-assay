@@ -52,7 +52,7 @@ reasoning = [
 observability = [
     "opentelemetry-sdk>=1.25,<2",
     "opentelemetry-exporter-otlp>=1.25,<2",
-    "arize-phoenix>=7.0,<18",
+    "arize-phoenix>=17,<18",  # single current major — a >=7 floor admitted 10 majors (#146)
     "openinference-instrumentation-langchain>=0.1.40,<1",
     "mlflow>=3.1,<4",
 ]

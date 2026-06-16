@@ -1,7 +1,9 @@
 # hc-assay — Charter
 
-**Status:** Active development — engine skeleton and methodology core implemented (see
-ARCHITECTURE.md / ADR-0002); infrastructure seams are stubs being wired.
+**Status:** Engine implemented and composed — the methodology core, all five infrastructure
+seams (tiered reasoning, self-hosted observability, persistence, orchestration, baseline
+toolkit), append-only provenance, and the composed `run_study` runner are in place and hardened
+(see ARCHITECTURE.md / ADR-0002 / ADR-0010).
 
 ---
 
@@ -29,8 +31,11 @@ and in the **instance repository** for a given study — never in the engine.
 4. **Method, not interpretation.** Truths, alignment, gaps, and misgivings are outputs of
    measurement. Where interpretation is required, it is fenced off downstream so it cannot
    contaminate upstream measurement.
-5. **Local-first and data-sovereign.** All computation, storage, and observability run
-   on-box. No data leaves the machine.
+5. **Local-first and data-sovereign.** All computation, storage, observability, and the local
+   (bulk) reasoning tier run on-box — that content never leaves the machine. The optional
+   high-stakes reasoning tier is the one exception: it sends prompt content to a frontier model
+   via a fixed-cost subscription (not metered, but off-box). A study handling data that must
+   never leave the box uses only the bulk tier. (See ADR-0003.)
 6. **Null and indeterminate results are first-class.** "No effect" and "cannot decide" are
    findings, structured identically to positive findings.
 

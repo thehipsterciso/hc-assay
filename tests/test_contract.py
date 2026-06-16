@@ -115,6 +115,103 @@ def test_measurement_rejects_interpretation_smuggled_as_dict_key():
         Measurement(value=[{("nested", interp): 2}], produced_by="p", inputs_hash="h")
 
 
+def test_verdict_rejects_non_enum_label():
+    # #133: a study-supplied confirmer returning a bare-string label must fail fast and
+    # attributable at construction, not as an opaque KeyError during scoring.
+    from assay_engine.methodology.verdict import Verdict, VerdictLabel
+
+    with pytest.raises(TypeError, match="VerdictLabel"):
+        Verdict("h1", label="supported", decision_rule="rule")  # type: ignore[arg-type]
+    with pytest.raises(ValueError, match="hypothesis_id"):
+        Verdict("", label=VerdictLabel.SUPPORTED, decision_rule="rule")
+    # a correct verdict still constructs
+    assert Verdict("h1", VerdictLabel.SUPPORTED, "rule").label is VerdictLabel.SUPPORTED
+
+
+def test_study_definition_coerces_modes_to_frozenset():
+    # #135: the raw constructor must coerce a plain set so the frozen record stays hashable.
+    d = StudyDefinition(
+        name="s",
+        modes={StudyMode.DISCOVERY},  # type: ignore[arg-type]
+        parser=_StubParser(),
+        research_questions=("q",),
+    )
+    assert isinstance(d.modes, frozenset)
+    assert isinstance(hash(d), int)  # would raise TypeError pre-fix (unhashable set)
+    with pytest.raises(TypeError, match="StudyMode"):
+        StudyDefinition(
+            name="s",
+            modes=frozenset({"discovery"}),  # type: ignore[arg-type]
+            parser=_StubParser(),
+            research_questions=("q",),
+        )
+
+
+def test_discover_confirm_split_coerces_and_stays_immutable():
+    # #135: the raw constructor must coerce mutable sets so the disjointness invariant can't be
+    # defeated by post-construction in-place mutation.
+    from assay_engine.methodology.firewalls import DiscoverConfirmSplit
+
+    s = DiscoverConfirmSplit(discovery_ids={"a"}, confirm_ids={"b"})  # type: ignore[arg-type]
+    assert isinstance(s.discovery_ids, frozenset) and isinstance(s.confirm_ids, frozenset)
+    with pytest.raises(AttributeError):
+        s.confirm_ids.add("a")  # type: ignore[attr-defined]  # frozenset has no .add
+
+
+def test_feature_matrix_rejects_non_numeric_and_non_finite_rows():
+    # #149: a misimplemented builder returning a non-numeric / non-finite cell must fail at
+    # construction, not flow into baseline math as an opaque downstream error.
+    from assay_engine.contracts.features import FeatureMatrix
+
+    with pytest.raises(TypeError):
+        FeatureMatrix(unit_ids=("a",), feature_names=("f",), rows=(("x",),))  # type: ignore[arg-type]
+    with pytest.raises(TypeError):
+        FeatureMatrix(unit_ids=("a",), feature_names=("f",), rows=((True,),))  # bool excluded
+    with pytest.raises(ValueError):
+        FeatureMatrix(unit_ids=("a",), feature_names=("f",), rows=((float("nan"),),))
+    # a valid numeric matrix still constructs
+    FeatureMatrix(unit_ids=("a",), feature_names=("f",), rows=((1.0,),))
+
+
+def test_no_seam_protocol_is_runtime_checkable():
+    # #148: consistent policy — adapter/seam validation is behavior-based, so no Protocol is
+    # @runtime_checkable (which would give false-confidence name-only isinstance checks).
+    import inspect
+
+    from assay_engine.observability import tracing, tracking
+    from assay_engine.persistence import vectorstore, versioning
+    from assay_engine.reasoning import seam
+
+    for mod in (tracing, tracking, vectorstore, versioning, seam):
+        for _, obj in inspect.getmembers(mod, inspect.isclass):
+            if getattr(obj, "_is_runtime_protocol", False):
+                raise AssertionError(f"{mod.__name__}.{obj.__name__} is still runtime_checkable")
+
+
+def test_measurement_rejects_interpretation_in_duck_typed_mapping():
+    # #140: a dict-like that is NOT a collections.abc.Mapping (exposes keys()+__getitem__ only)
+    # must still be scanned by the fence AND deep-frozen — otherwise an Interpretation hidden in
+    # it slips into a Measurement and the "frozen" value stays a live mutable object.
+    from assay_engine._frozen import FrozenDict, freeze
+
+    class DuckMap:
+        def __init__(self, d):
+            self._d = dict(d)
+
+        def keys(self):
+            return self._d.keys()
+
+        def __getitem__(self, k):
+            return self._d[k]
+
+    interp = Interpretation(value="judged", basis=(), rationale="r", judged_by="op")
+    with pytest.raises(TypeError):
+        Measurement(value=DuckMap({"k": interp}), produced_by="p", inputs_hash="h")
+    # freeze() must convert a duck-mapping to a FrozenDict, not pass it through as a live leaf
+    frozen = freeze(DuckMap({"a": 1}))
+    assert isinstance(frozen, FrozenDict) and frozen["a"] == 1
+
+
 def test_engine_imports_no_adapter():
     """The engine must be self-contained: every submodule imports without an adapter present."""
     failures = []

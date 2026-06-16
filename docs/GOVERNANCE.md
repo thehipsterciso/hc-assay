@@ -55,7 +55,9 @@ Before any confirmatory test runs, the relevant hypotheses are:
 
 1. made specific and typed (what is claimed, the test, the data, the decision rule),
 2. content-hashed and committed,
-3. **RFC-3161 timestamped** against a trusted timestamp authority.
+3. **cryptographically timestamped** before confirmation — on-box HMAC by default
+   (`LocalHmacAuthority`, local tamper-evidence); an RFC-3161 TSA against a trusted third-party
+   timestamp authority is pluggable for external non-repudiation.
 
 This is honestly characterized as a **timestamped adaptive design**: methods are fixed
 first; the data informs the questions; the questions are then locked and timestamped before
@@ -122,10 +124,14 @@ This is a deliberate methodological position and is stated explicitly in any out
 
 ## 5. Data sovereignty
 
-All computation, storage, tracing, and experiment tracking run **on-box**. No data,
-embeddings, traces, or results leave the machine. SaaS observability and any service that
-would ship analyzed content off-box are disqualified by this constraint, independent of
-cost.
+All computation, storage, tracing, experiment tracking, and the local **bulk** reasoning tier
+run **on-box** — no data, embeddings, traces, or results from those paths leave the machine.
+SaaS observability and any service that would ship analyzed content off-box are disqualified by
+this constraint, independent of cost. The one deliberate exception is the optional **high-stakes**
+reasoning tier, which sends prompt content to a frontier model via a fixed-cost subscription
+(not metered, but off-box); a study handling data that must never leave the box uses only the
+bulk tier. This is a billing-vs-residency distinction: "no metered API" is not the same as
+"on-box".
 
 ## 6. Reproducibility guarantees (summary)
 
