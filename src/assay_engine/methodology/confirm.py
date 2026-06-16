@@ -33,7 +33,15 @@ from assay_engine.methodology.verdict import Verdict
 
 
 def require_locked(hypothesis: Hypothesis) -> None:
-    """Gate: a hypothesis must be locked + timestamped before any confirmatory step."""
+    """Cheap **presence** gate: refuse a hypothesis that carries no lock fields at all.
+
+    This is defense-in-depth, not the methodology-grade check. It does not verify the proof
+    binds the content or that the lock precedes confirmation — that is
+    :func:`~assay_engine.methodology.preregistration.require_preregistered`, which the
+    confirmatory *runners* (:mod:`adjudication`, :mod:`discovery`) call before they confirm.
+    A study driving :func:`confirm_whole_corpus`/:func:`confirm_unit_level` directly (outside a
+    runner) should call ``require_preregistered`` itself to get the real guarantee.
+    """
     if not hypothesis.locked:
         raise FirewallViolation(
             f"hypothesis {hypothesis.hypothesis_id!r} is not locked; confirm is forbidden "

@@ -5,13 +5,21 @@ the confirm step only the held-out partition, and misuse (non-discovery / unlock
 misattributed verdict) must be structurally caught.
 """
 
+import datetime as _dt
+
 import pytest
 
 from assay_engine.contracts.schema import Corpus, Relation, Unit
 from assay_engine.methodology.discovery import discover_and_confirm, subset_corpus
 from assay_engine.methodology.firewalls import DiscoverConfirmSplit, FirewallViolation
 from assay_engine.methodology.hypothesis import Hypothesis, HypothesisKind, HypothesisOrigin
+from assay_engine.methodology.preregistration import LocalHmacAuthority, lock_hypothesis
 from assay_engine.methodology.verdict import Verdict, VerdictLabel
+
+# Real pre-registration authority for the tests: discovered hypotheses must be genuinely locked
+# (the runner verifies the content-binding proof and lock-before-confirm ordering).
+_AUTH = LocalHmacAuthority(b"discovery-test-secret-key-000001")
+_LOCK_INSTANT = _dt.datetime.now(tz=_dt.timezone.utc) - _dt.timedelta(hours=1)
 
 
 def _corpus():
@@ -29,10 +37,13 @@ def _split():
 
 
 def _locked_discovery(hid="H1"):
-    return Hypothesis(
-        hypothesis_id=hid, statement="pattern", kind=HypothesisKind.UNIT_LEVEL,
-        origin=HypothesisOrigin.DISCOVERY, test_name="t", decision_rule="r",
-        locked_at="2026-06-16T00:00:00Z", timestamp_proof="rfc3161:demo",
+    return lock_hypothesis(
+        Hypothesis(
+            hypothesis_id=hid, statement="pattern", kind=HypothesisKind.UNIT_LEVEL,
+            origin=HypothesisOrigin.DISCOVERY, test_name="t", decision_rule="r",
+        ),
+        authority=_AUTH,
+        instant=_LOCK_INSTANT,
     )
 
 
@@ -66,7 +77,7 @@ def test_discover_sees_only_discovery_partition_confirm_only_held_out():
         seen["confirm_ids"] = {u.unit_id for u in held_out.units}
         return Verdict(hypothesis.hypothesis_id, VerdictLabel.SUPPORTED, "r")
 
-    discover_and_confirm(_corpus(), _split(), discover=discover, confirm=confirm)
+    discover_and_confirm(_corpus(), _split(), discover=discover, confirm=confirm, authority=_AUTH)
     assert seen["discover_ids"] == {"u0", "u1", "u2"}   # discovery never sees held-out data
     assert seen["confirm_ids"] == {"u3", "u4", "u5"}    # confirm never sees discovery data
     assert seen["discover_ids"].isdisjoint(seen["confirm_ids"])
@@ -86,6 +97,7 @@ def test_rejects_non_discovery_hypothesis():
         discover_and_confirm(
             _corpus(), _split(), discover=discover,
             confirm=lambda h, c: Verdict.supported(h.hypothesis_id, "r"),
+            authority=_AUTH,
         )
 
 
@@ -100,6 +112,7 @@ def test_rejects_unlocked_hypothesis():
         discover_and_confirm(
             _corpus(), _split(), discover=discover,
             confirm=lambda h, c: Verdict.supported(h.hypothesis_id, "r"),
+            authority=_AUTH,
         )
 
 
@@ -109,6 +122,7 @@ def test_rejects_misattributed_verdict():
             _corpus(), _split(),
             discover=lambda c: [_locked_discovery("H1")],
             confirm=lambda h, c: Verdict.supported("WRONG-H", "r"),
+            authority=_AUTH,
         )
 
 
@@ -120,6 +134,7 @@ def test_rejects_held_out_partition_absent_from_corpus():
             _corpus(), bad_split,
             discover=lambda c: [_locked_discovery("H1")],
             confirm=lambda h, c: Verdict.supported(h.hypothesis_id, "r"),
+            authority=_AUTH,
         )
 
 
@@ -138,6 +153,7 @@ def test_rejects_discovery_partition_absent_from_corpus():
         discover_and_confirm(
             _corpus(), bad_split, discover=discover,
             confirm=lambda h, c: Verdict.supported(h.hypothesis_id, "r"),
+            authority=_AUTH,
         )
     assert called["discover"] is False  # guarded before discovery ran
 
@@ -147,6 +163,7 @@ def test_end_to_end_returns_verdicts():
         _corpus(), _split(),
         discover=lambda c: [_locked_discovery("H1"), _locked_discovery("H2")],
         confirm=lambda h, c: Verdict(h.hypothesis_id, VerdictLabel.SUPPORTED, "r"),
+        authority=_AUTH,
     )
     assert [v.hypothesis_id for v in verdicts] == ["H1", "H2"]
     assert all(v.label is VerdictLabel.SUPPORTED for v in verdicts)

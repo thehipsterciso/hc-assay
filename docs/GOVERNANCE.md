@@ -61,12 +61,17 @@ This is honestly characterized as a **timestamped adaptive design**: methods are
 first; the data informs the questions; the questions are then locked and timestamped before
 they are tested. It is not claimed to be "predictions registered before any data."
 
-> **Implementation status (engine scaffold):** the engine's lock check is currently a
-> *presence sentinel* — it verifies a hypothesis carries both a lock time and a timestamp
-> proof before confirmation. RFC-3161 token verification against a trusted timestamp
-> authority, and enforcing that the lock precedes the confirmation run, are part of the
-> pre-registration infrastructure not yet wired (audit pass 1, issue #6). Until then, treat
-> the lock as a procedural sentinel, not a cryptographic guarantee.
+> **Implementation status (engine):** pre-registration is now enforced by construction
+> (ADR-0009). The confirmatory runners verify, via a supplied `TimestampAuthority`, that a
+> hypothesis's proof **binds its content** (the canonical digest of its decision-bearing
+> fields), that the attested **timestamp is verifiable**, and that the lock **precedes
+> confirmation** — a hand-set sentinel string, a post-lock content swap, a forged proof, or a
+> lock dated at/after confirmation are all refused. The engine ships one real, data-sovereign
+> authority (`LocalHmacAuthority`, on-box HMAC) and the Protocol so a study can plug an
+> RFC-3161 TSA. Honest scope: the local authority is tamper-evidence *relative to an on-box
+> secret*, not third-party non-repudiation — use an RFC-3161 authority when you need a third
+> party to vouch for the time. `Hypothesis.locked` remains a cheap presence predicate;
+> `methodology.preregistration.require_preregistered` is the methodology-grade check.
 
 ## 3. Provenance
 

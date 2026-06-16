@@ -8,11 +8,18 @@ the engine exists to support, exercised composed rather than as isolated units.
 
 from __future__ import annotations
 
+import datetime as _dt
+
 from assay_engine.baseline.determinism import build_baseline_artifact, corpus_fingerprint
 from assay_engine.baseline.primitives import cosine_similarity_matrix, descriptive_stats
 from assay_engine.contracts.schema import Corpus, Unit
 from assay_engine.methodology.confirm import confirm_whole_corpus
 from assay_engine.methodology.hypothesis import Hypothesis, HypothesisKind, HypothesisOrigin
+from assay_engine.methodology.preregistration import (
+    LocalHmacAuthority,
+    lock_hypothesis,
+    verify_preregistration,
+)
 from assay_engine.methodology.verdict import VerdictLabel
 
 
@@ -34,19 +41,25 @@ def test_baseline_to_verdict_pipeline_supported():
     assert artifact.corpus_fingerprint == corpus_fingerprint(corpus)
     assert "seed" in artifact.determinism and artifact.determinism["input_hashes"]["corpus"]
 
-    # a pre-registered, locked, direction-bound hypothesis: "mean off-diagonal similarity is
-    # higher than a null permutation of the structure"
-    hypo = Hypothesis(
-        hypothesis_id="H1",
-        statement="corpus exhibits above-chance internal similarity",
-        kind=HypothesisKind.WHOLE_CORPUS,
-        origin=HypothesisOrigin.DISCOVERY,
-        test_name="permutation",
-        decision_rule="empirical p<=0.05 in the 'greater' tail, stable across resamples",
-        locked_at="2026-06-16T00:00:00Z",
-        timestamp_proof="rfc3161:demo",
-        predicted_direction="greater",
+    # a genuinely pre-registered, content-bound, direction-fixed hypothesis: "mean off-diagonal
+    # similarity is higher than a null permutation of the structure". Locked through the engine's
+    # blessed path so the proof actually verifies (not a hand-set sentinel string).
+    authority = LocalHmacAuthority(b"e2e-preregistration-secret-key-1")
+    hypo = lock_hypothesis(
+        Hypothesis(
+            hypothesis_id="H1",
+            statement="corpus exhibits above-chance internal similarity",
+            kind=HypothesisKind.WHOLE_CORPUS,
+            origin=HypothesisOrigin.DISCOVERY,
+            test_name="permutation",
+            decision_rule="empirical p<=0.05 in the 'greater' tail, stable across resamples",
+            predicted_direction="greater",
+        ),
+        authority=authority,
+        instant=_dt.datetime.now(tz=_dt.timezone.utc) - _dt.timedelta(hours=1),
     )
+    # the lock verifies end-to-end (content-binding + timestamp attestation)
+    assert verify_preregistration(hypo, authority=authority).digest
     # null: similarity means from shuffled/independent structure, all well below `observed`.
     # Needs enough samples that the smallest empirical p (1/(n+1)) can clear alpha=0.05.
     null = [0.05 + 0.0005 * i for i in range(100)]  # 100 nulls in ~[0.05, 0.10], << observed
