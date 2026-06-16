@@ -74,6 +74,11 @@ An **append-only** audit trail (W3C PROV-DM style) records every action before t
 executes. No step can be retroactively removed or reordered. This is the spine of
 reproducibility and of the independence claim.
 
+> **Implementation status (engine):** the engine ships the *seams* for this — gate decisions
+> are emitted as append-only `gate_decisions` records, and a `ProvenanceRecorder` hook is
+> available at the gate. The persistent, ordered provenance *store* itself is wired by a
+> study/runner; the present-tense guarantees above describe that wired end-state.
+
 ## 4. Single-operator structural independence
 
 Independence from operator bias is achieved structurally, not by a co-reviewer:
