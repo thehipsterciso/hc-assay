@@ -8,7 +8,12 @@ address fails loud rather than silently shipping data off the machine.
 from __future__ import annotations
 
 import ipaddress
-from urllib.parse import urlparse
+import re
+from urllib.parse import parse_qs, urlparse
+
+# A libpq keyword/value token: ``key = value`` with optional whitespace around ``=`` (libpq
+# permits it) and an optionally single/double-quoted value (which may contain spaces).
+_DSN_TOKEN_RE = re.compile(r"(\w+)\s*=\s*('[^']*'|\"[^\"]*\"|\S+)")
 
 
 class NonLocalEndpointError(RuntimeError):
@@ -54,19 +59,107 @@ def require_loopback_host(host: str, *, what: str) -> str:
     return host
 
 
-def require_local_uri(uri: str, *, what: str) -> str:
-    """Return ``uri`` if it is local (ADR-0003).
+def _authority_hosts(netloc: str) -> list[str]:
+    """Every host in a URI authority, supporting libpq's comma-separated multi-host form.
 
-    A bare path or ``sqlite:///`` file is local; any networked scheme (http/https/postgresql/
-    mysql/mssql/…) must point at a loopback host. Rejects remote stores that would exfiltrate.
+    ``urlparse().hostname`` returns only the *first* host of a multi-host authority
+    (``host1:port1,host2:port2``), so a remote second host would slip past a single-host
+    check (audit #D3). Each host may carry its own ``:port`` and IPv6 hosts are bracketed.
+
+    Userinfo is stripped at the **first** ``@`` — matching libpq, which (unlike ``urlparse``,
+    which uses the last ``@``) treats the first ``@`` as the userinfo delimiter. A string like
+    ``user@evil.com:5432@localhost`` is therefore read as host ``evil.com`` here, not
+    ``localhost`` (audit #D5). Any host element still containing ``@`` after that is ambiguous
+    and is returned verbatim so the caller's loopback check fails it closed.
     """
-    # Check the host regardless of scheme first: a networked host smuggled into a sqlite:// or
-    # scheme-less spelling (e.g. sqlite://evil.com/x, //evil.com/share) must NOT slip past
-    # (audit issue #O4). A host-less sqlite:///file, bare path, or file:///path is local.
-    host = (urlparse(uri).hostname or "").strip()
-    if host and not is_loopback_host(host):
+    if "@" in netloc:
+        netloc = netloc.split("@", 1)[1]
+    hosts: list[str] = []
+    for part in netloc.split(","):
+        p = part.strip()
+        if not p:
+            continue
+        if p.startswith("["):  # [ipv6] or [ipv6]:port
+            end = p.find("]")
+            hosts.append(p[1:end] if end != -1 else p[1:])
+        else:
+            hosts.append(p.rsplit(":", 1)[0] if ":" in p else p)
+    return hosts
+
+
+def require_local_uri(uri: str, *, what: str) -> str:
+    """Return ``uri`` if it is local (ADR-0003), else raise :class:`NonLocalEndpointError`.
+
+    Three forms are recognized, validated against what the real client (libpq for postgres,
+    urllib for http, sqlite for files) actually connects to — not merely what ``urlparse``
+    reports, since the two can disagree:
+
+    - **URI with an authority** (``scheme://host…`` or scheme-relative ``//host…``): *every*
+      host in the authority must be loopback (incl. each of a comma-separated multi-host
+      authority, #D3), AND any ``host``/``hostaddr`` query parameter that libpq would use to
+      override the authority host (#D2). ``hostaddr`` is checked independently of ``host``.
+    - **libpq keyword/value DSN** (no authority but ``key=value`` tokens): ``host``/``hostaddr``
+      must be loopback, tolerating libpq's whitespace/quoting around ``=`` (#P1, #D1).
+    - **bare path** (no authority, no ``=``): a local file/dir — but a Windows UNC path
+      (``\\\\server\\share``) is rejected as remote.
+
+    Inputs that cannot be parsed safely fail closed (rejected), never accepted.
+    """
+    try:
+        parsed = urlparse(uri)
+        netloc = parsed.netloc
+        query = parsed.query
+    except ValueError:
+        # e.g. a malformed IPv6 authority — we cannot determine the host, so refuse.
         raise NonLocalEndpointError(
-            f"{what} must be a local store (ADR-0003 data sovereignty); got host {host!r} "
-            f"from {uri!r}"
+            f"{what}: endpoint could not be parsed safely; rejecting (ADR-0003)"
+        ) from None
+
+    if netloc:
+        # A backslash never legitimately appears in a URI authority; a WHATWG-normalizing
+        # client (e.g. some HTTP stacks) treats '\' as '/', so it could read a different host
+        # than urlparse. Refuse rather than risk that differential (audit #D6, defense-in-depth).
+        if "\\" in netloc:
+            raise NonLocalEndpointError(
+                f"{what}: backslash in URI authority is not permitted (ADR-0003); rejecting"
+            )
+        for h in _authority_hosts(netloc):
+            # A residual '@' means the authority is ambiguous between this parser and libpq —
+            # fail closed (audit #D5).
+            if "@" in h or not is_loopback_host(h):
+                raise NonLocalEndpointError(
+                    f"{what} must be a local store (ADR-0003 data sovereignty); authority "
+                    f"names non-loopback host {h!r}"
+                )
+        for key in ("host", "hostaddr"):
+            for val in parse_qs(query).get(key, []):
+                h = val.strip()
+                if h and not is_loopback_host(h):
+                    raise NonLocalEndpointError(
+                        f"{what} must be a local store (ADR-0003 data sovereignty); URI query "
+                        f"{key}={h!r} points off-box"
+                    )
+        return uri
+
+    if "=" in uri:  # libpq keyword/value DSN (no URI authority)
+        for match in _DSN_TOKEN_RE.finditer(uri):
+            if match.group(1).strip().lower() in {"host", "hostaddr"}:
+                h = match.group(2).strip().strip("'\"")
+                if h and not is_loopback_host(h):
+                    raise NonLocalEndpointError(
+                        f"{what} must be a local store (ADR-0003 data sovereignty); DSN names "
+                        f"non-loopback host {h!r}"
+                    )
+        return uri
+
+    stripped = uri.lstrip()
+    # Windows treats ANY two leading separators (in any mix of '\' and '/') as a UNC prefix
+    # to a remote SMB share — \\srv, //srv, /\srv, \/srv all resolve off-box (audit #D6).
+    # (The pure '//host' form is already caught by the authority branch above; covering it
+    # here too keeps the branch self-contained.)
+    if len(stripped) >= 2 and stripped[0] in "\\/" and stripped[1] in "\\/":
+        raise NonLocalEndpointError(
+            f"{what} must be a local store (ADR-0003 data sovereignty); UNC-style path "
+            f"{uri!r} is a remote share"
         )
-    return uri
+    return uri  # bare path / dir store
