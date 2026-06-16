@@ -19,7 +19,7 @@ clean.
 | **Reasoning seam** | A single abstraction over LLM execution by *stakes tier* — local model for bulk/low-stakes, frontier model for high-stakes — with timeouts, retries, and tracing. No component talks to an LLM directly. |
 | **Observability** | Self-hosted tracing (OpenTelemetry → on-box collector) and experiment tracking. On-box only; no SaaS. |
 | **Persistence** | Durable run state / checkpointing, data versioning, and a vector store — all local. |
-| **Baseline toolkit** | Generic, dataset-agnostic builders: embeddings, similarity/distance, graph/topology, clustering, descriptive statistics. The raw material for any baseline. |
+| **Baseline toolkit** | Dataset-agnostic primitives (similarity/distance, descriptive statistics) and a determinism/reproducibility harness — the raw material. The choice-bearing builders (embeddings, clustering, graph/topology) are supplied per-study by the adapter's `BaselineBuilder` (ADR-0002), not shipped by the engine. |
 | **Methodology core** | Hypothesis types; the three-verdict confirmatory test (supported / contradicted / indeterminate); the two firewalls (claim-blindness, discover/confirm); the measurement↔interpretation fence; null/permutation + stability machinery for whole-corpus confirmation. |
 
 The engine knows nothing about *what* the data is. It knows how to build a baseline from a
@@ -59,8 +59,10 @@ process.
 Local-first, on-box, data-sovereign:
 
 - Python; LangGraph / LangChain for the analysis graph and agent orchestration.
-- Reasoning seam over a local LLM runtime (bulk) and a frontier model via fixed-cost
-  subscription (high-stakes) — no metered API.
+- Reasoning seam over a local LLM runtime (bulk, on-box) and a frontier model via fixed-cost
+  subscription (high-stakes) — no metered API. The high-stakes tier is off-box by construction
+  (prompt content reaches the hosted frontier model); "no metered API" is a billing claim, not a
+  residency claim (ADR-0003). Data that must never leave the box uses only the bulk tier.
 - Self-hosted OpenTelemetry tracing collector + a local experiment-tracking store.
 - Durable checkpointer (local database), data versioning, and a local vector store.
 

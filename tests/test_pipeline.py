@@ -121,6 +121,47 @@ def test_provenance_records_baseline_and_each_verdict(tmp_path):
 # ---- the governance gate is real ----
 
 
+def test_parser_returning_non_corpus_raises_ingestion_error(tmp_path):
+    # #134: a misimplemented parser that returns a non-Corpus (None/list/dict) must surface the
+    # documented IngestionError, not an opaque AttributeError at `corpus.units`.
+    from assay_engine.pipeline import IngestionError
+
+    class _NoneParser:
+        def parse(self, source):
+            return None  # forgot to return a Corpus
+
+        def source_fingerprint(self, source):
+            return "fp"
+
+    plan = ref.make_plan(ref.write_source(tmp_path / "c.json"), modes=DISCOVERY)
+    bad_defn = replace(plan.definition, parser=_NoneParser())
+    with pytest.raises(IngestionError, match="expected Corpus"):
+        run_study(replace(plan, definition=bad_defn), gate_handler=auto_approve)
+
+
+def test_gate_review_payload_is_immutable_but_json_serializable(tmp_path):
+    # #141: GateReview.payload is a deep-frozen FrozenDict (immutable, #113) — but the public
+    # operator-review extension point must still be serializable. payload_dict() thaws it so an
+    # operator can json.dumps the review without a custom encoder.
+    import json
+
+    from assay_engine.pipeline import GateReview
+
+    review = GateReview(
+        gate="g",
+        frm=Phase.PREREGISTER,
+        to=Phase.CONFIRM,
+        summary="s",
+        payload={"hypothesis_ids": ["h1", "h2"], "nested": {"k": 1}},
+    )
+    # raw payload is frozen (immutable) and NOT directly json-serializable
+    with pytest.raises(TypeError):
+        json.dumps(review.payload)
+    # the thawed view round-trips through json cleanly
+    out = json.loads(json.dumps(review.payload_dict()))
+    assert out == {"hypothesis_ids": ["h1", "h2"], "nested": {"k": 1}}
+
+
 def test_gate_rejection_halts_before_confirm(tmp_path):
     def reject(r):
         return GateDecision(approved=False, gate=r.gate, reason="operator rejected")
@@ -186,6 +227,58 @@ def test_adjudication_scores_the_gated_claim_snapshot_not_a_remutated_source(tmp
     scored = {v.hypothesis_id for v in res.scorecard.verdicts}
     assert seen["ids"] == ["c-A"]  # the gate reviewed the materialized snapshot
     assert scored == {"H-c-A"}  # and exactly that snapshot was scored (not c-B)
+
+
+def test_duplicate_claim_ids_are_rejected(tmp_path):
+    # #138: a claims source repeating a claim_id would inflate the scorecard denominator — the
+    # runner must reject it rather than count the same claim N times.
+    from assay_engine.contracts.claims import ClaimRecord
+
+    dup = type(
+        "Dup",
+        (),
+        {
+            "claims": lambda self: [
+                ClaimRecord(claim_id="c1", subject="c1", referents=("c1",), assertion={"e": 1}),
+                ClaimRecord(claim_id="c1", subject="c1", referents=("c1",), assertion={"e": 1}),
+            ],
+            "claim_fingerprint": lambda self: "fp",
+        },
+    )()
+    plan = ref.make_plan(ref.write_source(tmp_path / "c.json"), modes=ADJUDICATE)
+    plan = replace(plan, definition=replace(plan.definition, claims_source=dup))
+    with pytest.raises(FirewallViolation, match="duplicate claim_id"):
+        run_study(plan, gate_handler=auto_approve)
+
+
+def test_recorded_claim_fingerprint_is_engine_computed_over_scored_claims(tmp_path):
+    # #137: the recorded claim_fingerprint must be the engine's own hash of the EXACT claims
+    # scored — not the source's unverified self-report. A source lying about its fingerprint must
+    # not corrupt the trail's claim identity.
+    from assay_engine.contracts.claims import ClaimRecord
+    from assay_engine.pipeline import _engine_claim_fingerprint
+
+    records = [
+        ClaimRecord(claim_id="c1", subject="c1", referents=("c1",), assertion={"e": "high"}),
+        ClaimRecord(claim_id="c2", subject="c2", referents=("c2",), assertion={"e": "low"}),
+    ]
+    lying = type(
+        "Lying",
+        (),
+        {"claims": lambda self: list(records), "claim_fingerprint": lambda self: "0" * 64},
+    )()
+    plan = ref.make_plan(ref.write_source(tmp_path / "c.json"), modes=ADJUDICATE)
+    plan = replace(plan, definition=replace(plan.definition, claims_source=lying))
+    seen = {}
+
+    def handler(review):
+        seen.update(review.payload_dict())
+        return GateDecision(approved=True, gate=review.gate, reason="ok")
+
+    run_study(plan, gate_handler=handler)
+    assert seen["claim_fingerprint"] == _engine_claim_fingerprint(records)  # engine-computed
+    assert seen["source_reported_claim_fingerprint"] == "0" * 64  # self-report kept for cross-check
+    assert seen["claim_fingerprint_matches_source"] is False  # mismatch surfaced, not hidden
 
 
 def test_empty_claims_source_fails_loud(tmp_path):
@@ -360,6 +453,38 @@ def test_failed_run_records_failure_entry_and_marks_tracker_failed(tmp_path):
     assert t.ended == "FAILED"
     failed = [e for e in trail.entries if e.kind == "run_failed"]
     assert failed and failed[0].payload["error_type"] == "GateError"
+
+
+def test_tracing_setup_failure_still_ends_the_tracker_run(tmp_path, monkeypatch):
+    # #156: if tracing bootstrap raises AFTER the tracker run started, the finally must still run
+    # end_run — an already-started run must not leak in RUNNING state. Pre-fix the bootstrap ran
+    # outside the try, so end_run was never reached.
+    import assay_engine.pipeline as pl
+
+    class T:
+        def __init__(self):
+            self.ended = None
+
+        def start_run(self, name, params):
+            return "r"
+
+        def log_metric(self, *a):
+            pass
+
+        def log_artifact(self, *a):
+            pass
+
+        def end_run(self, run_id, status="FINISHED"):
+            self.ended = status
+
+    def boom():
+        raise RuntimeError("tracing bootstrap exploded")
+
+    monkeypatch.setattr(pl, "bootstrap_tracing", boom)
+    t = T()
+    with pytest.raises(RuntimeError, match="tracing bootstrap exploded"):
+        _run(tmp_path, DISCOVERY, tracker=t)
+    assert t.ended == "FAILED"  # the started run was ended, not leaked RUNNING (#156)
 
 
 def test_feature_builders_are_computed_and_recorded(tmp_path):

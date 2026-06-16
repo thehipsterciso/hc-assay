@@ -95,6 +95,13 @@ class DiscoverConfirmSplit:
     confirm_ids: frozenset[str]
 
     def __post_init__(self) -> None:
+        # Coerce to frozenset so the raw constructor (public API) cannot yield a "frozen" record
+        # backed by mutable sets — otherwise the disjointness invariant below could be defeated by
+        # post-construction in-place mutation (s.confirm_ids.add(...)) (#135).
+        if not isinstance(self.discovery_ids, frozenset):
+            object.__setattr__(self, "discovery_ids", frozenset(self.discovery_ids))
+        if not isinstance(self.confirm_ids, frozenset):
+            object.__setattr__(self, "confirm_ids", frozenset(self.confirm_ids))
         overlap = self.discovery_ids & self.confirm_ids
         if overlap:
             raise FirewallViolation(

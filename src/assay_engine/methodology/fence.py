@@ -16,7 +16,7 @@ from collections.abc import Mapping as AbcMapping
 from dataclasses import dataclass, field
 from typing import Any, Generic, Mapping, TypeVar
 
-from assay_engine._frozen import freeze, freeze_mapping
+from assay_engine._frozen import duck_mapping_items, freeze, freeze_mapping
 
 T = TypeVar("T")
 
@@ -47,6 +47,9 @@ def _contains_interpretation(obj: Any) -> bool:
         return any(
             _contains_interpretation(k) or _contains_interpretation(v) for k, v in obj.items()
         )
+    duck = duck_mapping_items(obj)
+    if duck is not None:  # lazy/proxy dict-like — scan it like a mapping, not an opaque leaf (#140)
+        return any(_contains_interpretation(k) or _contains_interpretation(v) for k, v in duck)
     if isinstance(obj, (list, tuple, set, frozenset)):
         return any(_contains_interpretation(v) for v in obj)
     return False

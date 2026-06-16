@@ -1,13 +1,13 @@
 {
-  "captured_at": "2026-06-16T22:11:36.362246+00:00",
+  "captured_at": "2026-06-16T23:01:37.091374+00:00",
   "active_session": "8d54714a-d616-4911-a386-9b4b0f2ce74d",
-  "n_files": 1374,
-  "total_bytes": 144542588,
+  "n_files": 1375,
+  "total_bytes": 146540667,
   "files": [
     {
       "path": "transcripts/sessions/8d54714a-d616-4911-a386-9b4b0f2ce74d.jsonl",
-      "bytes": 20708470,
-      "sha256": "3228177ccaace434af1ca32b875977397a541000db6c3a35699055dff52bdc02"
+      "bytes": 22643785,
+      "sha256": "8a79de790b48321ccbf2beaa926488cc7ea0c2dc37283e14ca36cda646efe5c6"
     },
     {
       "path": "transcripts/sessions/8d54714a-d616-4911-a386-9b4b0f2ce74d/subagents/agent-a05067d59cf434caf.jsonl",
@@ -6643,6 +6643,11 @@
       "path": "transcripts/sessions/8d54714a-d616-4911-a386-9b4b0f2ce74d/tool-results/byge0hpm4.txt",
       "bytes": 57015,
       "sha256": "1ee29a21421be031353cd75ae85c26c5ae802cbc77e5c14ef1aca0cbfb9d6e1f"
+    },
+    {
+      "path": "transcripts/sessions/8d54714a-d616-4911-a386-9b4b0f2ce74d/tool-results/byguw5uqc.txt",
+      "bytes": 62764,
+      "sha256": "908db2ea9e889064b7e18de80fc164a0a6b1f2a9ad144e683f3185d1bde49f10"
     },
     {
       "path": "transcripts/sessions/8d54714a-d616-4911-a386-9b4b0f2ce74d/workflows/scripts/agent-pipeline-deep-audit-wf_82001839-351.js",

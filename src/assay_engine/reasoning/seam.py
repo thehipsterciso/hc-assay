@@ -37,7 +37,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Any, Callable, Iterator, Mapping, Protocol, cast, runtime_checkable
+from typing import Any, Callable, Iterator, Mapping, Protocol, cast
 
 from assay_engine._frozen import freeze_mapping
 from assay_engine._local import require_loopback_url
@@ -543,7 +543,7 @@ def _run_with_retries(request: ReasoningRequest, *, deadline: float | None = Non
 # --------------------------------------------------------------------------------------
 # Public seam
 # --------------------------------------------------------------------------------------
-@runtime_checkable
+# Structural Protocol only — adapter/seam validation is behavior-based, not isinstance (#148).
 class ReasoningSeam(Protocol):
     """Route a reasoning request to the appropriate tier with timeouts, retries, tracing."""
 

@@ -52,11 +52,26 @@ _DEFAULT_PG = "postgresql://localhost:5432/assay"
 # stable per-logical-schema constant; "ASSY" as an int.
 _MIGRATION_LOCK_KEY = 0x4153_5359
 
-# Guards the process-local one-time-init bookkeeping. The PG advisory lock serializes DDL
-# across PROCESSES; this lock makes the in-process check-and-set sequences (atexit
-# registration, the initialized-conn set) atomic so two threads can't double-register or
-# double-setup.
+# Upper bound (milliseconds) on how long the cross-process advisory lock may be waited for
+# during schema bootstrap. A stuck/crashed peer that still holds a live PG session on the lock
+# must NOT be able to hang bootstrap forever (#129); lock_timeout aborts the wait. 0 disables
+# the bound (block indefinitely, the pre-#129 behavior).
+_MIGRATION_LOCK_TIMEOUT_MS = max(0, int(os.environ.get("ASSAY_MIGRATION_LOCK_TIMEOUT_MS", "30000")))
+
+# Brief meta-lock guarding the process-local registries below (atexit registration, the open-pool
+# list, the per-conn lock map, the pool cache). It is held ONLY for in-memory check-and-set — it
+# is NEVER held across blocking cross-process I/O (pool.connection(), the advisory-lock wait, or
+# setup() DDL). That blocking work is serialized per conn_str instead (#129), so a stuck advisory
+# lock on one database cannot block initialization of an unrelated one.
 _init_lock = threading.Lock()
+
+# Per-conn_str bootstrap locks: only same-conn_str initializers serialize; different databases
+# bootstrap concurrently. Created lazily under _init_lock.
+_CONN_INIT_LOCKS: dict[str, threading.Lock] = {}
+
+# Live pools cached by conn_str so the factory reuses one self-healing pool (and its worker
+# thread) per database rather than opening a fresh pool on every call (#144).
+_POOLS_BY_CONN: dict[str, Any] = {}
 
 # Pools opened by the factory, closed once at process exit via a single shared atexit handler
 # (registering one handler per call would accumulate handlers across repeated factory calls).
@@ -154,6 +169,35 @@ def _register_pool_cleanup(pool: Any) -> None:
             _atexit_registered = True
 
 
+def _conn_init_lock(conn_str: str) -> threading.Lock:
+    """Return the per-conn_str bootstrap lock, creating it under the brief meta-lock (#129)."""
+    with _init_lock:
+        lock = _CONN_INIT_LOCKS.get(conn_str)
+        if lock is None:
+            lock = _CONN_INIT_LOCKS[conn_str] = threading.Lock()
+        return lock
+
+
+def _cached_pool(conn_str: str) -> Any:
+    with _init_lock:
+        return _POOLS_BY_CONN.get(conn_str)
+
+
+def _acquire_migration_lock(conn: Any) -> None:
+    """Acquire the cross-process schema-migration advisory lock with a bounded wait (#129).
+
+    ``lock_timeout`` aborts the ``pg_advisory_lock`` wait if a peer holds it past the deadline,
+    so a stuck/crashed initializer cannot hang bootstrap indefinitely; the resulting error
+    propagates as a redacted ``RuntimeError`` like any other backend failure. set_config is used
+    (not ``SET``) so the value can be safely parameterized.
+    """
+    if _MIGRATION_LOCK_TIMEOUT_MS:
+        conn.execute(
+            "SELECT set_config('lock_timeout', %s, false)", (str(_MIGRATION_LOCK_TIMEOUT_MS),)
+        )
+    conn.execute("SELECT pg_advisory_lock(%s)", (_MIGRATION_LOCK_KEY,))
+
+
 def get_checkpointer(use_memory: bool = False) -> Any:
     """Return a configured LangGraph checkpointer.
 
@@ -177,56 +221,73 @@ def get_checkpointer(use_memory: bool = False) -> Any:
         ) from exc
 
     conn_str = get_postgres_connection_string()
-    failure: str | None = None
-    pool: Any = None
-    try:
-        pool = ConnectionPool(
-            conn_str,
-            min_size=1,
-            max_size=8,
-            kwargs={"autocommit": True, "prepare_threshold": 0, "row_factory": dict_row},
-            check=ConnectionPool.check_connection,  # liveness check on checkout (self-healing)
-            open=True,
-        )
-        _register_pool_cleanup(pool)
-        # Bootstrap the schema once per process per conn_str. The advisory lock and the DDL
-        # must run on the SAME connection (pg_advisory_lock is session-scoped); a pool-backed
-        # setup() would lock one connection and DDL on another, leaving the lock ineffective.
-        with _init_lock:
-            if conn_str not in _INITIALIZED_CONN_STRS:
-                with pool.connection() as conn:
-                    conn.execute("SELECT pg_advisory_lock(%s)", (_MIGRATION_LOCK_KEY,))
+
+    # Fast path: reuse a live, self-healing pool for this conn_str rather than opening a new pool
+    # (and its background worker thread) on every call (#144). The liveness check on checkout
+    # replaces dead connections, so a cached pool stays valid across transient outages.
+    cached = _cached_pool(conn_str)
+    if cached is not None:
+        return PostgresSaver(cast(Any, cached))
+
+    # Serialize bootstrap PER conn_str — NOT process-globally (#129). Unrelated databases
+    # initialize concurrently, and a stuck advisory lock on one conn_str can never block init of
+    # another. The brief meta-lock (_init_lock) is only taken inside the helpers, never held
+    # across the blocking advisory-lock wait / DDL below.
+    with _conn_init_lock(conn_str):
+        cached = _cached_pool(conn_str)  # another thread may have built it while we waited
+        if cached is not None:
+            return PostgresSaver(cast(Any, cached))
+
+        failure: str | None = None
+        pool: Any = None
+        try:
+            pool = ConnectionPool(
+                conn_str,
+                min_size=1,
+                max_size=8,
+                kwargs={"autocommit": True, "prepare_threshold": 0, "row_factory": dict_row},
+                check=ConnectionPool.check_connection,  # liveness check on checkout (self-healing)
+                open=True,
+            )
+            _register_pool_cleanup(pool)
+            # Bootstrap the schema once per process per conn_str. The advisory lock and the DDL
+            # must run on the SAME connection (pg_advisory_lock is session-scoped); a pool-backed
+            # setup() would lock one connection and DDL on another, leaving the lock ineffective.
+            with pool.connection() as conn:
+                _acquire_migration_lock(conn)  # bounded wait so a stuck peer can't hang us (#129)
+                try:
+                    # row_factory=dict_row makes this connection dict-rowed at runtime
+                    # (what PostgresSaver requires); the cast asserts that runtime truth
+                    # the type system can't infer from the pool kwargs.
+                    PostgresSaver(cast(Any, conn)).setup()  # DDL on the locked connection
+                finally:
+                    # Best-effort unlock; the lock auto-releases when the connection
+                    # returns to the pool, and raising here would mask a setup() error.
                     try:
-                        # row_factory=dict_row makes this connection dict-rowed at runtime
-                        # (what PostgresSaver requires); the cast asserts that runtime truth
-                        # the type system can't infer from the pool kwargs.
-                        PostgresSaver(cast(Any, conn)).setup()  # DDL on the locked connection
-                    finally:
-                        # Best-effort unlock; the lock auto-releases when the connection
-                        # returns to the pool, and raising here would mask a setup() error.
-                        try:
-                            conn.execute("SELECT pg_advisory_unlock(%s)", (_MIGRATION_LOCK_KEY,))
-                        except Exception:
-                            pass
-                _INITIALIZED_CONN_STRS.add(conn_str)
-        return PostgresSaver(cast(Any, pool))  # dict-rowed pool (row_factory=dict_row)
-    except Exception as exc:
-        # Build the redacted message here, but raise it OUTSIDE the handler (below) so the
-        # original — credential-bearing — exception is retained as neither __cause__ NOR
-        # __context__ (a logger walking __context__ would otherwise re-expose the password).
-        failure = (
-            f"Postgres checkpointer connection failed (is Postgres running on "
-            f"{_sanitize_conn_str(conn_str)}?): {redact_creds(str(exc), conn_str)}. "
-            "For tests without Postgres, use get_checkpointer(use_memory=True)."
-        )
-        # The pool may have opened before bootstrap failed — close it and drop it from the
-        # cleanup registry so a failed init does not leak the connection/worker thread (#105).
-        if pool is not None:
-            _safe_close(pool)
+                        conn.execute("SELECT pg_advisory_unlock(%s)", (_MIGRATION_LOCK_KEY,))
+                    except Exception:
+                        pass
             with _init_lock:
-                if pool in _OPEN_POOLS:
-                    _OPEN_POOLS.remove(pool)
-    raise RuntimeError(failure)
+                _INITIALIZED_CONN_STRS.add(conn_str)
+                _POOLS_BY_CONN[conn_str] = pool  # cache for reuse on later calls (#144)
+            return PostgresSaver(cast(Any, pool))  # dict-rowed pool (row_factory=dict_row)
+        except Exception as exc:
+            # Build the redacted message here, but raise it OUTSIDE the handler (below) so the
+            # original — credential-bearing — exception is retained as neither __cause__ NOR
+            # __context__ (a logger walking __context__ would otherwise re-expose the password).
+            failure = (
+                f"Postgres checkpointer connection failed (is Postgres running on "
+                f"{_sanitize_conn_str(conn_str)}?): {redact_creds(str(exc), conn_str)}. "
+                "For tests without Postgres, use get_checkpointer(use_memory=True)."
+            )
+            # The pool may have opened before bootstrap failed — close it and drop it from the
+            # cleanup registry so a failed init does not leak the connection/worker thread (#105).
+            if pool is not None:
+                _safe_close(pool)
+                with _init_lock:
+                    if pool in _OPEN_POOLS:
+                        _OPEN_POOLS.remove(pool)
+        raise RuntimeError(failure)
 
 
 def configured_checkpointer(use_memory: bool | None = None) -> Any:

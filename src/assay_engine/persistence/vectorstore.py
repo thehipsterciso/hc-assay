@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import os
 import uuid
-from typing import Any, Protocol, Sequence, runtime_checkable
+from typing import Any, Protocol, Sequence
 
 from assay_engine._local import require_loopback_host
 
@@ -21,7 +21,7 @@ VECTOR_HTTP_PORT = int(os.environ.get("ASSAY_VECTOR_HTTP_PORT", "6333"))
 _POINT_NS = uuid.UUID("a55a9e00-0000-4000-8000-000000000001")
 
 
-@runtime_checkable
+# Structural Protocol only — adapter/seam validation is behavior-based, not isinstance (#148).
 class VectorStore(Protocol):
     def upsert(self, ids: Sequence[str], vectors: Sequence[Sequence[float]]) -> None: ...
     def query(self, vector: Sequence[float], k: int) -> list[tuple[str, float]]: ...

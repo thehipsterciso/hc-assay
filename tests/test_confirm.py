@@ -102,6 +102,33 @@ def test_verdict_mapping_covers_three_outcomes():
     )
 
 
+def test_verdict_pvalue_boundary_is_inclusive_at_alpha():
+    # #142: p_value exactly == alpha is significant (the documented `<= alpha` rule). Pins the
+    # inclusive boundary; flipping to `< alpha` would make this CONTRADICTED/INDETERMINATE.
+    assert (
+        verdict_from_pvalue(
+            "h",
+            statistic=2.0,
+            p_value=0.05,
+            alpha=0.05,
+            powered=True,
+            direction_supports_claim=True,
+        ).label
+        is VerdictLabel.SUPPORTED
+    )
+    assert (
+        verdict_from_pvalue(
+            "h",
+            statistic=2.0,
+            p_value=0.05,
+            alpha=0.05,
+            powered=True,
+            direction_supports_claim=False,
+        ).label
+        is VerdictLabel.CONTRADICTED
+    )
+
+
 @pytest.mark.parametrize(
     "kw",
     [
@@ -159,6 +186,35 @@ def test_whole_corpus_rejects_invalid_predicted_direction():
             alpha=0.05,
             predicted_direction="sideways",
         )
+
+
+def test_whole_corpus_stability_requires_reproducing_the_observed_effect():
+    # #139: resamples that clear the null median by an epsilon (reproducing only the effect SIGN,
+    # not its magnitude) must NOT earn stability=1.0 / SUPPORTED. Stability must measure that each
+    # resample, scored against the null, is itself significant in the predicted tail.
+    null = list(range(0, 21))  # median 10
+    barely = [10.0001] * 100  # just above the null median, far below the observed effect of 100
+    v = confirm_whole_corpus(
+        _locked(HypothesisKind.WHOLE_CORPUS),
+        observed=100.0,
+        null_distribution=null,
+        alpha=0.05,
+        resample_statistics=barely,
+        predicted_direction="greater",
+    )
+    assert v.label is VerdictLabel.INDETERMINATE  # pre-fix: SUPPORTED with stability=1.0
+    assert v.evidence["stability"] == 0.0  # no resample reproduces the observed effect
+    # a genuinely reproducing resample distribution (each significant vs the null) is still stable
+    strong = [100.0] * 100
+    v2 = confirm_whole_corpus(
+        _locked(HypothesisKind.WHOLE_CORPUS),
+        observed=100.0,
+        null_distribution=null,
+        alpha=0.05,
+        resample_statistics=strong,
+        predicted_direction="greater",
+    )
+    assert v2.label is VerdictLabel.SUPPORTED and v2.evidence["stability"] == 1.0
 
 
 def test_whole_corpus_supported_upper_tail():

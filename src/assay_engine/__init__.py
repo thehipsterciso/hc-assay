@@ -11,8 +11,10 @@ This package contains only goal-agnostic machinery:
 - ``contracts``      — the engine ↔ adapter boundary (canonical schema + adapter Protocols).
 - ``methodology``    — hypotheses, the three verdicts, the two firewalls, the
                        measurement↔interpretation fence, confirmatory-test machinery.
-- ``baseline``       — dataset-agnostic baseline builders (embeddings, similarity, graph,
-                       clustering, descriptive stats).
+- ``baseline``       — dataset-agnostic primitives (similarity/distance, descriptive stats) and
+                       a determinism/reproducibility harness — the raw material; choice-bearing
+                       builders (embeddings, clustering, graph/topology) are supplied per study by
+                       the adapter's BaselineBuilder (ADR-0002).
 - ``orchestration``  — the analysis graph, phase machine, and governance gates.
 - ``reasoning``      — the tiered LLM reasoning seam.
 - ``observability``  — self-hosted tracing + experiment tracking.
