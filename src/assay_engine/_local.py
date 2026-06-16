@@ -42,3 +42,31 @@ def require_loopback_url(url: str, *, what: str) -> str:
             f"from {url!r}"
         )
     return url
+
+
+def require_loopback_host(host: str, *, what: str) -> str:
+    """Return ``host`` if it is loopback; else raise. (``0.0.0.0`` binds all interfaces and
+    is correctly rejected — it would expose data off-box.)"""
+    if not is_loopback_host(host):
+        raise NonLocalEndpointError(
+            f"{what} must be a loopback host (ADR-0003 data sovereignty); got {host!r}"
+        )
+    return host
+
+
+def require_local_uri(uri: str, *, what: str) -> str:
+    """Return ``uri`` if it is local (ADR-0003).
+
+    A bare path or ``sqlite:///`` file is local; any networked scheme (http/https/postgresql/
+    mysql/mssql/…) must point at a loopback host. Rejects remote stores that would exfiltrate.
+    """
+    # Check the host regardless of scheme first: a networked host smuggled into a sqlite:// or
+    # scheme-less spelling (e.g. sqlite://evil.com/x, //evil.com/share) must NOT slip past
+    # (audit issue #O4). A host-less sqlite:///file, bare path, or file:///path is local.
+    host = (urlparse(uri).hostname or "").strip()
+    if host and not is_loopback_host(host):
+        raise NonLocalEndpointError(
+            f"{what} must be a local store (ADR-0003 data sovereignty); got host {host!r} "
+            f"from {uri!r}"
+        )
+    return uri

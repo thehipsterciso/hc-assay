@@ -32,6 +32,9 @@ reasoning = [
 observability = [
     "opentelemetry-sdk>=1.25,<2",
     "opentelemetry-exporter-otlp>=1.25,<2",
+    "arize-phoenix>=7.0,<18",
+    "openinference-instrumentation-langchain>=0.1.40,<1",
+    "mlflow>=3.1,<4",
 ]
 
 [tool.hatch.build.targets.wheel]
@@ -53,5 +56,13 @@ strict = true
 # Optional reasoning/observability backends are not installed in the type-check env; their
 # imports are lazy and guarded at runtime, so treat them as untyped third-party modules.
 [[tool.mypy.overrides]]
-module = ["langchain_ollama.*", "claude_agent_sdk.*", "anyio.*", "opentelemetry.*"]
+module = [
+    "langchain_ollama.*",
+    "claude_agent_sdk.*",
+    "anyio.*",
+    "opentelemetry.*",
+    "phoenix.*",
+    "mlflow.*",
+    "openinference.*",
+]
 ignore_missing_imports = true
