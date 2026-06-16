@@ -15,6 +15,7 @@ from assay_engine.methodology.adjudication import (
     ClaimConfirmer,
     SourceScorecard,
     adjudicate,
+    adjudicate_with_baseline,
 )
 from assay_engine.methodology.discovery import (
     HeldOutConfirmer,
@@ -54,6 +55,7 @@ __all__ = [
     "Verdict",
     "VerdictLabel",
     "adjudicate",
+    "adjudicate_with_baseline",
     "SourceScorecard",
     "ClaimConfirmer",
     "discover_and_confirm",

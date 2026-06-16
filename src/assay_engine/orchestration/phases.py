@@ -5,10 +5,12 @@ claim is touched (Firewall A), and discover before confirm (Firewall B). Gates g
 transitions between these phases.
 
 Mode coupling (audit pass 1, issue #9): the legal phase sequence depends on the study's
-modes. A discovery-only study runs INGEST→…→CONFIRM→REPORT and must *not* enter the
-external-claims phases (ADJUDICATE, SCORE); an adjudication study includes them. Use
-:func:`required_phases` / :func:`legal_transition` for mode-aware legality;
-:meth:`Phase.can_advance_to` is the mode-agnostic full-pipeline adjacency check.
+modes, which are independent. A discovery-only study runs INGEST→BASELINE→DISCOVERY→
+PREREGISTER→CONFIRM→REPORT and must *not* enter the external-claims phases (ADJUDICATE,
+SCORE); an adjudicate-only study runs INGEST→BASELINE→ADJUDICATE→SCORE→REPORT and never enters
+the discovery spine; a combined study runs the full sequence. Use :func:`required_phases` /
+:func:`legal_transition` for mode-aware legality; :meth:`Phase.can_advance_to` is the
+mode-agnostic full-pipeline adjacency check.
 """
 
 from __future__ import annotations
@@ -37,8 +39,17 @@ class Phase(Enum):
 
 
 def required_phases(modes: frozenset[StudyMode]) -> tuple[Phase, ...]:
-    """The ordered phases a study with ``modes`` actually visits."""
-    seq = [Phase.INGEST, Phase.BASELINE, Phase.DISCOVERY, Phase.PREREGISTER, Phase.CONFIRM]
+    """The ordered phases a study with ``modes`` actually visits.
+
+    The two modes are independent (a study may declare either or both). INGEST and BASELINE
+    always run; the discovery spine (DISCOVERY→PREREGISTER→CONFIRM) runs only in DISCOVERY mode;
+    the external-claims phases (ADJUDICATE→SCORE) run only in adjudication mode; REPORT always
+    closes. So an adjudicate-only study goes INGEST→BASELINE→ADJUDICATE→SCORE→REPORT and never
+    enters the discovery spine (it derives hypotheses from claims, not from the data).
+    """
+    seq = [Phase.INGEST, Phase.BASELINE]
+    if StudyMode.DISCOVERY in modes:
+        seq += [Phase.DISCOVERY, Phase.PREREGISTER, Phase.CONFIRM]
     if StudyMode.ADJUDICATE_EXTERNAL_CLAIMS in modes:
         seq += [Phase.ADJUDICATE, Phase.SCORE]
     seq.append(Phase.REPORT)
