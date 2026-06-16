@@ -168,3 +168,58 @@ def test_postgres_concurrent_get_checkpointer(monkeypatch):
         pytest.skip(f"postgres present but db not usable: {errors[0]}")
     assert not errors, f"concurrent get_checkpointer raised: {errors}"
     assert len(results) == 8  # every concurrent caller got a usable saver, no race failure
+
+
+@pytest.mark.skipif(not postgres_up(), reason="postgres not reachable on localhost:5432")
+def test_postgres_pool_self_heals_after_connection_drop(monkeypatch):
+    # The checkpointer's headline durability feature: a self-healing ConnectionPool
+    # (check_connection on checkout) recovers when a connection dies mid-run. We drop the
+    # pool's backend connection(s) via pg_terminate_backend (kills ONE connection, NOT the
+    # server) and assert the next checkpoint op still succeeds — a raw connection would fail.
+    from typing import TypedDict
+
+    import psycopg
+    from langgraph.graph import END, START, StateGraph
+
+    from assay_engine.persistence.checkpoint import get_checkpointer
+
+    url = _pg_url()
+    monkeypatch.setenv("ASSAY_POSTGRES_URL", url)
+
+    class S(TypedDict):
+        n: int
+
+    def graph(cp):
+        b = StateGraph(S)
+        b.add_node("inc", lambda s: {"n": s["n"] + 1})
+        b.add_edge(START, "inc")
+        b.add_edge("inc", END)
+        return b.compile(checkpointer=cp)
+
+    try:
+        cp = get_checkpointer(use_memory=False)
+    except RuntimeError as exc:
+        pytest.skip(f"postgres present but db not usable: {exc}")
+
+    g = graph(cp)
+    g.invoke({"n": 0}, {"configurable": {"thread_id": "heal-a"}})  # opens + uses pool conns
+
+    # Forcibly drop every OTHER backend on this database (the pool's connections), via a
+    # separate admin connection that excludes itself — the server keeps running.
+    try:
+        admin = psycopg.connect(url, autocommit=True)
+    except Exception as exc:
+        pytest.skip(f"cannot open admin connection to drop backends: {exc}")
+    try:
+        with admin.cursor() as cur:
+            cur.execute(
+                "SELECT pg_terminate_backend(pid) FROM pg_stat_activity "
+                "WHERE datname = current_database() AND pid <> pg_backend_pid()"
+            )
+    finally:
+        admin.close()
+
+    # The pool's cached connections are now dead. A second op must transparently recover.
+    g.invoke({"n": 0}, {"configurable": {"thread_id": "heal-b"}})
+    state = g.get_state({"configurable": {"thread_id": "heal-b"}})
+    assert state.values["n"] == 1  # self-healed: op succeeded on a fresh connection
