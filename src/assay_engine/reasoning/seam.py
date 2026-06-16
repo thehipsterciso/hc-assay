@@ -277,8 +277,17 @@ def _bulk_complete(
     try:
         reply = client.invoke(messages)
     except Exception as exc:
+        # Prefer the typed HTTP status (ollama.ResponseError / httpx carry one): 404 = the model
+        # isn't pulled → permanent. Fall back to substring matching only if no status is exposed
+        # (robust to upstream message-wording changes — audit M4).
+        status = getattr(exc, "status_code", None) or getattr(
+            getattr(exc, "response", None), "status_code", None
+        )
         msg = str(exc).lower()
-        if "not found" in msg or "no such model" in msg or "try pulling" in msg:
+        permanent = status == 404 or any(
+            s in msg for s in ("not found", "no such model", "try pulling")
+        )
+        if permanent:
             raise PermanentReasoningError(f"bulk model {model!r} not available: {exc}") from exc
         raise ReasoningError(f"bulk tier call failed: {exc}") from exc
     content = getattr(reply, "content", reply)

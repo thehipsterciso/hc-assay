@@ -279,6 +279,28 @@ def test_bulk_complete_bounds_generation_and_passes_seed_and_schema(monkeypatch)
     assert kw["format"] == schema  # schema-constrained JSON decoding (M2), not loose "json"
 
 
+def test_bulk_complete_classifies_404_as_permanent_by_status(monkeypatch):
+    monkeypatch.delenv("ASSAY_DISABLE_REASONING", raising=False)
+    import sys
+    import types
+
+    class Err(Exception):
+        status_code = 404  # typed status, NOT a recognizable substring
+
+    class FakeClient:
+        def __init__(self, **kwargs):
+            pass
+
+        def invoke(self, messages):
+            raise Err("model gremlin not present")
+
+    monkeypatch.setitem(
+        sys.modules, "langchain_ollama", types.SimpleNamespace(ChatOllama=FakeClient)
+    )
+    with pytest.raises(rc.PermanentReasoningError):
+        rc._bulk_complete("p", None, 0.0, "gremlin")
+
+
 def test_run_json_varies_seed_and_never_lowers_temperature(monkeypatch):
     monkeypatch.delenv("ASSAY_DISABLE_REASONING", raising=False)
     monkeypatch.setattr(rc, "MAX_RETRIES", 2)
