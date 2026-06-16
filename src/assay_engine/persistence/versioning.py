@@ -15,13 +15,13 @@ import re
 import shutil
 import tempfile
 from pathlib import Path
-from typing import Protocol, runtime_checkable
+from typing import Protocol
 
 _CHUNK = 1 << 20  # 1 MiB
 _SHA256_HEX = re.compile(r"[0-9a-f]{64}")
 
 
-@runtime_checkable
+# Structural Protocol only — adapter/seam validation is behavior-based, not isinstance (#148).
 class DataVersioner(Protocol):
     def put(self, path: str) -> str:
         """Version the artifact at ``path``; return its content hash / version id."""

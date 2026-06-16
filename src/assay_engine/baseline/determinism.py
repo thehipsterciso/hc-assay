@@ -93,6 +93,7 @@ def build_baseline_artifact(
     extra_inputs: Mapping[str, Any] | None = None,
     seed: int | None = None,
     corpus_hash: str | None = None,
+    trust_corpus_hash: bool = False,
 ) -> BaselineArtifact:
     """Assemble a :class:`BaselineArtifact` with a complete determinism record.
 
@@ -100,12 +101,27 @@ def build_baseline_artifact(
     ``component_versions`` records the builder + any model/library versions (the engine and
     Python versions are added automatically). ``extra_inputs`` are additional inputs to hash
     (e.g. config). ``seed``, if omitted, is derived deterministically from the corpus + inputs
-    so it is reproducible. ``corpus_hash`` lets a caller pass an already-computed
-    :func:`corpus_fingerprint` to avoid recomputing it (#119).
+    so it is reproducible.
+
+    ``corpus_hash`` lets a caller pass an already-computed :func:`corpus_fingerprint` (#119). By
+    default it is **verified** against the corpus and a mismatch raises ``ValueError`` — a
+    stale/typo'd hash would otherwise produce a determinism record whose fingerprint and derived
+    seed describe a *different* corpus than the one passed, silently defeating the reproducibility
+    guarantee this harness exists to provide (#155). Pass ``trust_corpus_hash=True`` to skip the
+    recompute (the #119 optimization) only when the caller computed the hash from this exact
+    corpus and accepts integrity responsibility.
     """
-    # Reuse a precomputed fingerprint if the caller already has one (e.g. the runner computed it
-    # at ingest), avoiding a redundant full canonical-hash of the whole corpus (#119).
-    corpus_hash = corpus_hash if corpus_hash is not None else corpus_fingerprint(corpus)
+    if corpus_hash is None:
+        corpus_hash = corpus_fingerprint(corpus)
+    elif not trust_corpus_hash:
+        # Verify the supplied hash binds the corpus actually passed (default-safe, #155).
+        actual = corpus_fingerprint(corpus)
+        if corpus_hash != actual:
+            raise ValueError(
+                f"corpus_hash {corpus_hash!r} does not match the corpus "
+                f"(corpus_fingerprint={actual!r}) — the determinism record would bind the wrong "
+                "data; pass trust_corpus_hash=True only if you accept integrity responsibility"
+            )
     if extra_inputs and "corpus" in extra_inputs:
         raise ValueError("'corpus' is a reserved input-hash key — rename the extra input (#B7)")
     input_hashes = {"corpus": corpus_hash}

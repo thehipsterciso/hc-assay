@@ -25,7 +25,6 @@ from __future__ import annotations
 
 import datetime as _dt
 import math
-from statistics import median
 from typing import Iterable, Sequence
 
 from assay_engine.methodology.firewalls import DiscoverConfirmSplit, FirewallViolation
@@ -176,22 +175,33 @@ def _empirical_p(null: Sequence[float], observed: float, tail: Direction) -> flo
     return (extreme + 1) / (n + 1)
 
 
-def _resample_stability(resamples: Sequence[float], reference: float, tail: Direction) -> float:
-    """Fraction of resampled statistics that fall on the predicted side of ``reference``.
+def _resample_stability(
+    resamples: Sequence[float], null: Sequence[float], tail: Direction, alpha: float
+) -> float:
+    """Fraction of resamples that **reproduce the observed effect**.
 
-    A measured stand-in for "the effect direction reproduces across resamples": the closer
-    to 1.0, the more consistently the resampled statistic stays in the predicted tail.
+    Each resample is scored as its own observed statistic against the null and must itself be
+    significant in the predicted tail (empirical p ≤ ``alpha``). This measures reproduction of
+    the observed *effect* — not merely landing on the predicted side of the null center, which a
+    resample distribution clearing the null median by an epsilon would satisfy while reproducing
+    nothing of the observed magnitude (audit pass 2, #139). The closer to 1.0, the more
+    consistently the effect's significance reproduces across resamples.
     """
-    if tail == "greater":
-        agree = sum(1 for r in resamples if r > reference)
-    else:
-        agree = sum(1 for r in resamples if r < reference)
-    return agree / len(resamples)
+    significant = sum(1 for r in resamples if _empirical_p(null, r, tail) <= alpha)
+    return significant / len(resamples)
+
+
+_VALID_DIRECTIONS = ("greater", "less")
 
 
 def _resolve_direction(hypothesis: Hypothesis, predicted_direction: Direction | None) -> Direction:
     """Direction is fixed at lock time on the hypothesis (issue #24); the confirm-time
-    argument is optional and, if given, must match the pre-registered one."""
+    argument is optional and, if given, must match the pre-registered one.
+
+    The resolved direction is validated against ``{"greater", "less"}`` and any other value is
+    rejected: an unrecognized direction would otherwise fall through to the 'less' tail in
+    :func:`_empirical_p`, silently flipping supported↔contradicted (audit pass 2, #128).
+    """
     locked_dir = hypothesis.predicted_direction
     if locked_dir is not None:
         if predicted_direction is not None and predicted_direction != locked_dir:
@@ -199,13 +209,20 @@ def _resolve_direction(hypothesis: Hypothesis, predicted_direction: Direction | 
                 "predicted_direction argument contradicts the hypothesis's pre-registered "
                 f"direction ({predicted_direction!r} != {locked_dir!r})"
             )
-        return locked_dir
-    if predicted_direction is None:
+        resolved = locked_dir
+    elif predicted_direction is None:
         raise ValueError(
             "no predicted_direction: set it on the hypothesis at pre-registration "
             "(preferred) or pass it explicitly"
         )
-    return predicted_direction
+    else:
+        resolved = predicted_direction
+    if resolved not in _VALID_DIRECTIONS:
+        raise ValueError(
+            f"predicted_direction must be one of {_VALID_DIRECTIONS}; got {resolved!r} — an "
+            "unrecognized tail would silently flip the supported/contradicted verdict"
+        )
+    return resolved
 
 
 def confirm_whole_corpus(
@@ -262,7 +279,7 @@ def confirm_whole_corpus(
             raise ValueError("resample_statistics, if given, must be non-empty")
         for r in resample_statistics:
             _validate_finite("resample statistic", r)
-        stability = _resample_stability(resample_statistics, median(null_distribution), direction)
+        stability = _resample_stability(resample_statistics, null_distribution, direction, alpha)
     stable = stability is not None and stability >= stability_threshold
 
     rule = (

@@ -36,6 +36,14 @@ class StudyDefinition:
     claims_source: ExternalClaimsSource | None = None
 
     def __post_init__(self) -> None:
+        # Coerce modes to a frozenset so the documented frozen+hashable contract holds regardless
+        # of which constructor a clone uses — the raw constructor (public API) would otherwise
+        # accept a plain set, yielding a "frozen" record that is neither hashable nor immutable
+        # (membership checks pass identically, so the bug is silent until hash()) (#135).
+        if not isinstance(self.modes, frozenset):
+            object.__setattr__(self, "modes", frozenset(self.modes))
+        if not all(isinstance(m, StudyMode) for m in self.modes):
+            raise TypeError("StudyDefinition.modes must contain only StudyMode members")
         if not self.name.strip():
             raise ValueError("StudyDefinition.name must be non-empty (it is the registry key)")
         if not self.modes:

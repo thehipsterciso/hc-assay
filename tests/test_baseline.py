@@ -281,10 +281,23 @@ def test_build_baseline_reuses_precomputed_corpus_hash(monkeypatch):
         return orig(c)
 
     monkeypatch.setattr(d, "corpus_fingerprint", counting)
-    art = d.build_baseline_artifact(corpus, {"k": 1}, corpus_hash="deadbeef" * 8)
-    assert art.corpus_fingerprint == "deadbeef" * 8 and calls["n"] == 0  # no recompute
+    # #155: a supplied corpus_hash is verified by default — a mismatching hash must raise rather
+    # than silently bind the wrong corpus to the determinism record.
+    with pytest.raises(ValueError, match="does not match the corpus"):
+        d.build_baseline_artifact(corpus, {"k": 1}, corpus_hash="deadbeef" * 8)
+    # trust_corpus_hash=True preserves the #119 skip-recompute optimization (caller's responsibility)
+    calls["n"] = 0
+    art = d.build_baseline_artifact(
+        corpus, {"k": 1}, corpus_hash="deadbeef" * 8, trust_corpus_hash=True
+    )
+    assert art.corpus_fingerprint == "deadbeef" * 8 and calls["n"] == 0  # no recompute when trusted
+    # a CORRECT supplied hash is verified (one recompute) and accepted
+    real = orig(corpus)
+    calls["n"] = 0
+    art2 = d.build_baseline_artifact(corpus, {"k": 1}, corpus_hash=real)
+    assert art2.corpus_fingerprint == real and calls["n"] == 1  # verified against the corpus
     d.build_baseline_artifact(corpus, {"k": 1})  # without it → recomputes
-    assert calls["n"] == 1
+    assert calls["n"] == 2
 
 
 def test_freeze_keeps_ndarray_opaque_o1():

@@ -1,0 +1,21 @@
+# Automated dependency + transitive-update monitoring (#147). Dependabot opens PRs for
+# vulnerable/outdated dependencies on a weekly cadence so the supply-chain surface is tracked,
+# not just scanned once. Pairs with the pip-audit gate (reproducible scan of requirements.lock)
+# and the CycloneDX SBOM artifact in ci.yml.
+version: 2
+updates:
+  # Python packages declared in pyproject.toml (and resolved into requirements.lock).
+  - package-ecosystem: pip
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 10
+    groups:
+      # batch low-risk updates so the queue stays reviewable
+      minor-and-patch:
+        update-types: ["minor", "patch"]
+  # The GitHub Actions used by the CI workflows themselves.
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly

@@ -58,6 +58,27 @@ class FrozenDict(Mapping[str, Any]):
         return NotImplemented
 
 
+def duck_mapping_items(value: Any) -> list[tuple[Any, Any]] | None:
+    """Return ``(key, value)`` items if ``value`` is a dict-like NOT registered as a Mapping.
+
+    A lazy/proxy dict-like (exposes ``keys()`` + ``__getitem__`` but is not a
+    :class:`collections.abc.Mapping`) would otherwise be treated as an opaque, hashable-by-
+    identity leaf by both :func:`freeze` and the measurement↔interpretation fence — passing
+    through as a live mutable object and escaping the fence scan (#140). Returns ``None`` for
+    anything that is not such a duck-typed mapping (incl. real Mappings, str/bytes, sequences).
+    """
+    if isinstance(value, (str, bytes, bytearray, Mapping)):
+        return None
+    keys = getattr(value, "keys", None)
+    getitem = getattr(value, "__getitem__", None)
+    if callable(keys) and callable(getitem):
+        try:
+            return [(k, value[k]) for k in keys()]
+        except Exception:  # noqa: BLE001 — a misbehaving dict-like is not a usable mapping
+            return None
+    return None
+
+
 def freeze(value: Any) -> Any:
     """Recursively convert ``value`` into an immutable, hashable form.
 
@@ -72,6 +93,9 @@ def freeze(value: Any) -> Any:
         return value
     if isinstance(value, Mapping):
         return FrozenDict({k: freeze(v) for k, v in value.items()})
+    duck = duck_mapping_items(value)
+    if duck is not None:  # lazy/proxy dict-like — freeze it like a mapping, not a leaf (#140)
+        return FrozenDict({k: freeze(v) for k, v in duck})
     if isinstance(value, (list, tuple)):
         return tuple(freeze(v) for v in value)
     if isinstance(value, (set, frozenset)):
@@ -105,3 +129,25 @@ def freeze(value: Any) -> Any:
 def freeze_mapping(value: Mapping[str, Any]) -> FrozenDict:
     """Normalize a mapping field to a deep-immutable :class:`FrozenDict`."""
     return FrozenDict({k: freeze(v) for k, v in value.items()})
+
+
+def unfreeze(value: Any) -> Any:
+    """Recursively convert a frozen structure back into plain JSON-serializable containers.
+
+    The inverse of :func:`freeze` for serialization: :class:`FrozenDict` → ``dict``,
+    ``frozenset`` → sorted ``list`` (stable order for reproducible output), ``tuple`` →
+    ``list``. Leaves are returned unchanged. ``json.dumps`` does not know :class:`FrozenDict`
+    (it is a Mapping, not a ``dict`` subclass), so an operator serializing a deep-frozen public
+    payload — e.g. ``GateReview.payload`` — must thaw it first (#141).
+    """
+    if isinstance(value, (FrozenDict, Mapping)):
+        return {k: unfreeze(v) for k, v in value.items()}
+    if isinstance(value, frozenset):
+        # sort when elements are mutually orderable; otherwise keep insertion-free stable repr
+        try:
+            return [unfreeze(v) for v in sorted(value)]
+        except TypeError:
+            return [unfreeze(v) for v in value]
+    if isinstance(value, (list, tuple)):
+        return [unfreeze(v) for v in value]
+    return value

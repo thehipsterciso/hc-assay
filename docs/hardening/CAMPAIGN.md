@@ -33,3 +33,4 @@ All passes, findings, verdicts, fixes, confirmations, and retrospectives are doc
 | Pass | Branch | Findings | Confirmed | Fixed | PR | Status |
 |------|--------|----------|-----------|-------|----|--------|
 | 1 | harden/pass-1 | 22 confirmed (#101-#122) | 22/22 (2-agent) | 22/22 fixed+confirmed | #123 | merged |
+| 2 | harden/pass-2 | 33 confirmed (#124-#156) | 33/33 (2-agent) | 33/33 fixed; 21 CONFIRMED + 6 CONCERN→remediated, 0 rejected | (pending) | merging |

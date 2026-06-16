@@ -195,7 +195,18 @@ def adjudicate_with_baseline(
     claim↔hypothesis↔verdict identity + pre-registration checks as :func:`adjudicate`.
     """
     verdicts: list[Verdict] = []
-    for claim in list(claims):  # claims used only after the blind baseline is built
+    materialized = list(claims)  # claims used only after the blind baseline is built
+    # within-run identity uniqueness: a repeated claim_id would be counted once per occurrence in
+    # _score, inflating the scorecard denominator and biasing alignment_rate (#138).
+    seen_claim_ids: set[str] = set()
+    for c in materialized:
+        if c.claim_id in seen_claim_ids:
+            raise FirewallViolation(
+                f"duplicate claim_id {c.claim_id!r} within one adjudication run — claim identity "
+                "must be unique (a repeat would inflate the scorecard denominator)"
+            )
+        seen_claim_ids.add(c.claim_id)
+    for claim in materialized:
         hypothesis = hypothesis_for(claim)
         if hypothesis.origin is not HypothesisOrigin.EXTERNAL_CLAIM:
             raise FirewallViolation(

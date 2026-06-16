@@ -19,7 +19,7 @@ import os
 import signal
 import threading
 from contextlib import contextmanager
-from typing import Any, Iterator, Mapping, Protocol, runtime_checkable
+from typing import Any, Iterator, Mapping, Protocol
 
 from assay_engine._local import require_loopback_host
 
@@ -169,7 +169,7 @@ def run_trace_context(run_id: str | None) -> Iterator[None]:
 _OPENINFERENCE_SPAN_KIND = "openinference.span.kind"
 
 
-@runtime_checkable
+# Structural Protocol only — adapter/seam validation is behavior-based, not isinstance (#148).
 class Tracer(Protocol):
     @contextmanager
     def span(

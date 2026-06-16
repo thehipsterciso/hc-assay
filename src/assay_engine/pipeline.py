@@ -33,9 +33,10 @@ import uuid
 from contextlib import ExitStack
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Iterable, Mapping
+from typing import Any, Callable, Iterable, Mapping, cast
 
-from assay_engine._frozen import freeze_mapping
+from assay_engine._canonical import hash_value
+from assay_engine._frozen import freeze_mapping, unfreeze
 from assay_engine.baseline.determinism import corpus_fingerprint
 from assay_engine.baseline.toolkit import BaselineArtifact, BaselineBuilder
 from assay_engine.contracts.claims import ClaimRecord
@@ -79,7 +80,13 @@ class IngestionError(ValueError):
 
 @dataclass(frozen=True, slots=True)
 class GateReview:
-    """The packet handed to a gate handler at a governance transition."""
+    """The packet handed to a gate handler at a governance transition.
+
+    ``payload`` is a deep-frozen :class:`~assay_engine._frozen.FrozenDict` (immutable +
+    hashable, #113). Because that is a ``Mapping`` and not a ``dict`` subclass, ``json.dumps``
+    cannot serialize it directly — an operator-review handler that logs/serializes the payload
+    must call :meth:`payload_dict` first (#141).
+    """
 
     gate: str
     frm: Phase
@@ -91,8 +98,54 @@ class GateReview:
         # deep-freeze the payload so this frozen record is truly immutable + hashable (#113)
         object.__setattr__(self, "payload", freeze_mapping(self.payload))
 
+    def payload_dict(self) -> dict[str, Any]:
+        """Return the payload as a plain, deeply-thawed, JSON-serializable ``dict`` (#141)."""
+        return cast("dict[str, Any]", unfreeze(self.payload))
+
 
 GateHandler = Callable[[GateReview], GateDecision]
+
+
+def _engine_claim_fingerprint(claim_records: list[ClaimRecord]) -> str:
+    """Engine-computed content hash of the EXACT claim set that will be scored (#137).
+
+    The source's self-reported ``claim_fingerprint()`` is an unverified self-report — it can say
+    anything. The engine therefore computes its own type-faithful hash over the materialized
+    records (in scored order) and records THAT as the authoritative fingerprint, so an auditor
+    re-deriving the fingerprint from the recorded/scored claims gets the value the trail records.
+    """
+    return hash_value(
+        [
+            {
+                "claim_id": c.claim_id,
+                "subject": c.subject,
+                "referents": list(c.referents),
+                "assertion": c.assertion,
+                "provenance": c.provenance,
+            }
+            for c in claim_records
+        ]
+    )
+
+
+def _require_unique_ids(ids: list[str], what: str) -> None:
+    """Raise FirewallViolation if ``ids`` contains a duplicate (#138).
+
+    Identity (claim↔hypothesis↔verdict) must be unique within a run: a repeated id would
+    otherwise be counted once per occurrence, inflating the scorecard denominator and biasing
+    alignment_rate / verdict accounting.
+    """
+    seen: set[str] = set()
+    dupes: list[str] = []
+    for i in ids:
+        if i in seen:
+            dupes.append(i)
+        seen.add(i)
+    if dupes:
+        raise FirewallViolation(
+            f"duplicate {what} within one run: {sorted(set(dupes))[:3]} — identity must be "
+            "unique (a repeat would inflate the scorecard denominator / verdict accounting)"
+        )
 
 
 def auto_approve(review: GateReview) -> GateDecision:
@@ -278,14 +331,17 @@ def run_study(
         except Exception as exc:  # noqa: BLE001
             trail.record("tracking_error", f"experiment tracker start_run failed: {exc}")
 
-    # Bootstrap tracing once and correlate every phase/reasoning span to this run via baggage,
-    # so a run's spans are findable by id and join the experiment-tracker run (#122). Best-effort.
-    bootstrap_tracing()
-    corr_id = run_id or uuid.uuid4().hex
     ok = False
     trace_ctx = ExitStack()
-    trace_ctx.enter_context(run_trace_context(corr_id))
     try:
+        # Bootstrap tracing once and correlate every phase/reasoning span to this run via baggage,
+        # so a run's spans are findable by id and join the experiment-tracker run (#122).
+        # Done INSIDE the try so a tracing-setup failure is still covered by the finally's
+        # tracker.end_run cleanup — an already-started tracker run must never leak in RUNNING
+        # state (the #110 class of bug) if bootstrap/context entry raises (#156). Best-effort.
+        bootstrap_tracing()
+        corr_id = run_id or uuid.uuid4().hex
+        trace_ctx.enter_context(run_trace_context(corr_id))
         # ---- INGEST ----
         with tracer.span("phase:INGEST"):
             enter(Phase.INGEST)
@@ -294,6 +350,16 @@ def run_study(
                 source_fp = defn.parser.source_fingerprint(plan.source)
             except Exception as exc:  # noqa: BLE001 — normalize adapter/IO ingestion failures
                 raise IngestionError(f"parser failed to ingest {plan.source!r}: {exc}") from exc
+            # The parser Protocol return type is unenforced at runtime; a misimplemented adapter
+            # that returns None/list/dict would otherwise slip past the normalizer above and die
+            # at `corpus.units` with an opaque AttributeError, violating the documented
+            # "Raises IngestionError on a bad source" contract (#134).
+            if not isinstance(corpus, Corpus):
+                raise IngestionError(f"parser returned {type(corpus).__name__}, expected Corpus")
+            if not isinstance(source_fp, str):
+                raise IngestionError(
+                    f"parser.source_fingerprint returned {type(source_fp).__name__}, expected str"
+                )
             if not corpus.units:
                 raise IngestionError("ingestion produced an empty corpus")
             cfp = corpus_fingerprint(corpus)
@@ -381,6 +447,9 @@ def run_study(
                 if not discovery_corpus.units:
                     raise FirewallViolation("discovery partition selects no corpus units")
                 hypotheses = list(plan.discover(discovery_corpus))  # only the discovery partition
+                # within-run identity uniqueness: a repeated hypothesis_id would be counted once
+                # per occurrence in the verdict accounting (#138)
+                _require_unique_ids([h.hypothesis_id for h in hypotheses], "hypothesis_id")
                 trail.record(
                     "discovery",
                     f"data surfaced {len(hypotheses)} candidate hypotheses",
@@ -454,6 +523,12 @@ def run_study(
                 raise ValueError(
                     "adjudication mode but the claims source yielded no claims — nothing to adjudicate"
                 )
+            # within-run identity uniqueness: a repeated claim_id would inflate the scorecard (#138)
+            _require_unique_ids([c.claim_id for c in claim_records], "claim_id")
+            # The engine fingerprints the EXACT claims it will score (authoritative), and records
+            # the source's self-report separately for cross-check rather than trusting it (#137).
+            engine_claim_fp = _engine_claim_fingerprint(claim_records)
+            source_claim_fp = defn.claims_source.claim_fingerprint()
             prev_phase = Phase.CONFIRM if StudyMode.DISCOVERY in modes else Phase.BASELINE
             run_gate(
                 GateReview(
@@ -464,7 +539,9 @@ def run_study(
                     payload={
                         "n_claims": len(claim_records),
                         "claim_ids": [c.claim_id for c in claim_records],
-                        "claim_fingerprint": defn.claims_source.claim_fingerprint(),
+                        "claim_fingerprint": engine_claim_fp,  # engine-computed over scored claims
+                        "source_reported_claim_fingerprint": source_claim_fp,  # unverified self-report
+                        "claim_fingerprint_matches_source": engine_claim_fp == source_claim_fp,
                         "baseline_fingerprint": baseline.corpus_fingerprint,
                         "research_questions": list(defn.research_questions),
                     },

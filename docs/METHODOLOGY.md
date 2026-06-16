@@ -128,8 +128,10 @@ upstream baseline or the verdicts.
 - **Determinism:** fixed, documented seeds; inputs hashed; model names + versions recorded.
 - **Provenance:** an append-only audit trail records every action before the next executes.
 - **Pre-registration:** hypotheses (data-surfaced or claim-derived) are locked and
-  RFC-3161 timestamped before confirmation. This is honestly described as an adaptive
-  design with a timestamped lock — not as predictions guessed before any data.
+  cryptographically timestamped before confirmation (on-box HMAC by default — local
+  tamper-evidence; an RFC-3161 TSA is pluggable for third-party non-repudiation). This is
+  honestly described as an adaptive design with a timestamped lock — not as predictions guessed
+  before any data.
 - **Reproducibility package:** data, code, configuration, and logs are published with
   findings so any reviewer can reconstruct the full decision history.
 

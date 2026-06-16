@@ -37,6 +37,18 @@ class Verdict:
     notes: str = ""
 
     def __post_init__(self) -> None:
+        # The label annotation is type-checker-only; a study-supplied confirmer (the public
+        # ClaimConfirmer/HeldOutConfirmer Protocols) that returns a bare string label would
+        # otherwise build a structurally-valid Verdict that later crashes _score with an opaque
+        # KeyError and breaks verdict.label.value provenance lines. Fail fast and attributable
+        # at construction instead (#133).
+        if not isinstance(self.label, VerdictLabel):
+            raise TypeError(
+                f"Verdict.label must be a VerdictLabel, got {type(self.label).__name__!r} "
+                f"({self.label!r}) for hypothesis {self.hypothesis_id!r}"
+            )
+        if not isinstance(self.hypothesis_id, str) or not self.hypothesis_id:
+            raise ValueError("Verdict.hypothesis_id must be a non-empty str")
         object.__setattr__(self, "evidence", freeze_mapping(self.evidence))
 
     @property
