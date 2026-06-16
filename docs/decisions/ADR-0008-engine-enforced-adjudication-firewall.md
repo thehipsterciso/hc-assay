@@ -64,3 +64,9 @@ The engine owns the *ordering and the firewall*, the study owns the *domain*.
 - The §5 scorecard exists and is honest: a frequency on decisive claims, not a quality score.
 - Studies get a correct path instead of a footgun; a study that needs a bespoke flow can still
   compose the primitives directly, but the default is safe.
+- The same principle is applied to **Firewall B** (discover/confirm separation) by the symmetric
+  `methodology.discover_and_confirm` runner: it hands the discover step only the discovery
+  partition of the corpus and the confirm step only the held-out partition (via `subset_corpus`),
+  so neither can accidentally use the other's data — the discovery-mode analogue of this
+  decision, with the same honest signature-level scope. Both runners exist so the engine, not
+  each of 100+ studies, owns the firewall guarantees.

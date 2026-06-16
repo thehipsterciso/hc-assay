@@ -1,0 +1,120 @@
+"""Discovery runner — Firewall B (discover/confirm separation) enforced by construction.
+
+The tests ARE the enforcement: the discover step must be handed only the discovery partition,
+the confirm step only the held-out partition, and misuse (non-discovery / unlocked hypothesis,
+misattributed verdict) must be structurally caught.
+"""
+
+import pytest
+
+from assay_engine.contracts.schema import Corpus, Relation, Unit
+from assay_engine.methodology.discovery import discover_and_confirm, subset_corpus
+from assay_engine.methodology.firewalls import DiscoverConfirmSplit, FirewallViolation
+from assay_engine.methodology.hypothesis import Hypothesis, HypothesisKind, HypothesisOrigin
+from assay_engine.methodology.verdict import Verdict, VerdictLabel
+
+
+def _corpus():
+    return Corpus(
+        units=tuple(Unit(f"u{i}", f"t{i}") for i in range(6)),
+        relations=(Relation("u0", "u1", "r"), Relation("u0", "u3", "cross")),
+    )
+
+
+def _split():
+    return DiscoverConfirmSplit.from_partition({"u0", "u1", "u2"}, {"u3", "u4", "u5"})
+
+
+def _locked_discovery(hid="H1"):
+    return Hypothesis(
+        hypothesis_id=hid, statement="pattern", kind=HypothesisKind.UNIT_LEVEL,
+        origin=HypothesisOrigin.DISCOVERY, test_name="t", decision_rule="r",
+        locked_at="2026-06-16T00:00:00Z", timestamp_proof="rfc3161:demo",
+    )
+
+
+# ---- subset_corpus ----
+
+def test_subset_keeps_only_partition_units_and_internal_relations():
+    sub = subset_corpus(_corpus(), {"u0", "u1", "u2"})
+    assert {u.unit_id for u in sub.units} == {"u0", "u1", "u2"}
+    # the u0->u1 relation is internal (kept); the u0->u3 cross-partition relation is dropped
+    assert [(r.source_id, r.target_id) for r in sub.relations] == [("u0", "u1")]
+
+
+# ---- Firewall B by construction ----
+
+def test_discover_sees_only_discovery_partition_confirm_only_held_out():
+    seen = {}
+
+    def discover(discovery_corpus):
+        seen["discover_ids"] = {u.unit_id for u in discovery_corpus.units}
+        return [_locked_discovery()]
+
+    def confirm(hypothesis, held_out):
+        seen["confirm_ids"] = {u.unit_id for u in held_out.units}
+        return Verdict(hypothesis.hypothesis_id, VerdictLabel.SUPPORTED, "r")
+
+    discover_and_confirm(_corpus(), _split(), discover=discover, confirm=confirm)
+    assert seen["discover_ids"] == {"u0", "u1", "u2"}   # discovery never sees held-out data
+    assert seen["confirm_ids"] == {"u3", "u4", "u5"}    # confirm never sees discovery data
+    assert seen["discover_ids"].isdisjoint(seen["confirm_ids"])
+
+
+def test_rejects_non_discovery_hypothesis():
+    def discover(_c):
+        return [Hypothesis(
+            hypothesis_id="H1", statement="x", kind=HypothesisKind.UNIT_LEVEL,
+            origin=HypothesisOrigin.EXTERNAL_CLAIM, test_name="t", decision_rule="r",
+            source_claim_id="c1", locked_at="t", timestamp_proof="p",
+        )]
+
+    with pytest.raises(FirewallViolation, match="DISCOVERY"):
+        discover_and_confirm(
+            _corpus(), _split(), discover=discover,
+            confirm=lambda h, c: Verdict.supported(h.hypothesis_id, "r"),
+        )
+
+
+def test_rejects_unlocked_hypothesis():
+    def discover(_c):
+        return [Hypothesis(
+            hypothesis_id="H1", statement="x", kind=HypothesisKind.UNIT_LEVEL,
+            origin=HypothesisOrigin.DISCOVERY, test_name="t", decision_rule="r",
+        )]
+
+    with pytest.raises(FirewallViolation):  # require_locked: not pre-registered
+        discover_and_confirm(
+            _corpus(), _split(), discover=discover,
+            confirm=lambda h, c: Verdict.supported(h.hypothesis_id, "r"),
+        )
+
+
+def test_rejects_misattributed_verdict():
+    with pytest.raises(FirewallViolation, match="misattribution"):
+        discover_and_confirm(
+            _corpus(), _split(),
+            discover=lambda c: [_locked_discovery("H1")],
+            confirm=lambda h, c: Verdict.supported("WRONG-H", "r"),
+        )
+
+
+def test_rejects_held_out_partition_absent_from_corpus():
+    # split confirm_ids that don't match any corpus unit -> empty held-out -> vacuous test
+    bad_split = DiscoverConfirmSplit.from_partition({"u0", "u1"}, {"ghost1", "ghost2"})
+    with pytest.raises(FirewallViolation, match="nothing to confirm on"):
+        discover_and_confirm(
+            _corpus(), bad_split,
+            discover=lambda c: [_locked_discovery("H1")],
+            confirm=lambda h, c: Verdict.supported(h.hypothesis_id, "r"),
+        )
+
+
+def test_end_to_end_returns_verdicts():
+    verdicts = discover_and_confirm(
+        _corpus(), _split(),
+        discover=lambda c: [_locked_discovery("H1"), _locked_discovery("H2")],
+        confirm=lambda h, c: Verdict(h.hypothesis_id, VerdictLabel.SUPPORTED, "r"),
+    )
+    assert [v.hypothesis_id for v in verdicts] == ["H1", "H2"]
+    assert all(v.label is VerdictLabel.SUPPORTED for v in verdicts)
