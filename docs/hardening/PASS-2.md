@@ -466,3 +466,108 @@ HOWEVER, the bug is not triggerable in the current code, so this is purely futur
 - bootstrap_tracing(
 - **Verifier 2:** The structural claim is accurate: in src/assay_engine/pipeline.py, tracker.start_run() (line 271, which assigns run_id) runs inside its own try/except, but the pass-1 #122 insertions — bootstrap_tracing() (283), corr_id/ExitStack (284-286), and trace_ctx.enter_context(run_trace_context(corr_id)) (287) — execute OUTSIDE the main try: at line 288. The only place tracker.end_run() runs is that try's finally (557-564). I PoC'd the exact ordering: if either helper raised after start_run succeeded, the run leaks in RUNNING state and the exception propagates with no end_run — precisely the bug-#110 class. Also, trace_ctx is created at 286 (after bootstrap_tracing at 283), so a bootstrap_tracing raise would leave trace_ctx undefined and skip the finally entirely.\n\nHowever, this is a latent structural fragility, not a live defect. I verified in the actual venv that BOTH helpers are exception-sa
 
+
+---
+
+## Resolution
+
+All 33 findings fixed on `harden/pass-2`, each with a regression test that was **revert-checked to
+discriminate** (the test fails when the fix is reverted), then independently confirmed.
+
+| Issue | Sev | Fix | Test |
+|---|---|---|---|
+| #124 | HIGH | drain test captures `ClaudeAgentOptions`; asserts `env=scrubbed_env()` reaches the subprocess | `test_reasoning_drain.py::test_t3_wires_scrubbed_env_into_subprocess_options` |
+| #125 | HIGH | asserts sandbox flags (`permission_mode=dontAsk`, `allowed_tools=[]`, `setting_sources=[]`) | `::test_t3_wires_subprocess_sandbox_settings` |
+| #126 | HIGH | run_study adjudicate test locking a claim hypothesis at now() → PreRegistrationError | `test_pipeline.py` |
+| #127 | HIGH | `anyio.fail_after(HIGH_STAKES_TIMEOUT)` cancels a hung drain; frees the pool slot | `::test_t3_hung_subprocess_is_cancelled_not_leaked` |
+| #128 | HIGH | `_resolve_direction` validates `{greater,less}`; raises on any other tail | `test_confirm.py` |
+| #129 | MED | per-conn_str bootstrap lock (meta-lock never held across I/O) + bounded advisory `lock_timeout` | `test_persistence.py::test_concurrent_init_of_distinct_conn_strs_does_not_serialize`, `::test_migration_lock_is_bounded` |
+| #130 | MED | `pip-audit --strict --require-hashes` against the lockfile | `test_supply_chain.py::test_pip_audit_runs_strict_and_require_hashes` |
+| #131 | MED | newline-agnostic + comment-tolerant allowlist parse | `::test_ci_allowlist_loop_is_robust_in_the_workflow_file` (+ behavioral) |
+| #132 | MED | committed universal hashed `requirements.lock` + CI sync guard | `::test_audit_scans_the_committed_lockfile_not_the_live_env`, `::test_lockfile_is_fully_pinned_and_hashed` |
+| #133 | MED | `Verdict.__post_init__` validates `label` is a `VerdictLabel` | `test_contract.py::test_verdict_rejects_non_enum_label` |
+| #134 | MED | run_study INGEST `isinstance(corpus, Corpus)` → IngestionError | `test_pipeline.py::test_parser_returning_non_corpus_raises_ingestion_error` |
+| #135 | MED | `StudyDefinition`/`DiscoverConfirmSplit` coerce frozenset in `__post_init__` | `test_contract.py::test_study_definition_coerces_modes_to_frozenset`, `::test_discover_confirm_split_coerces_and_stays_immutable` |
+| #136 | MED | data-sovereignty qualified for the off-box high-stakes tier (README/CHARTER/GOVERNANCE/ADR-0003/ARCHITECTURE) | `test_docs_drift.py::test_data_sovereignty_is_qualified_for_high_stakes_tier` |
+| #137 | MED | engine computes claim fingerprint over scored claims; source self-report cross-checked, not trusted | `test_pipeline.py::test_recorded_claim_fingerprint_is_engine_computed_over_scored_claims` |
+| #138 | MED | within-run claim/hypothesis id uniqueness (pipeline + `adjudicate_with_baseline`) | `test_pipeline.py::test_duplicate_claim_ids_are_rejected` |
+| #139 | MED | stability = fraction of resamples each significant vs the null (not vs the null median) | `test_confirm.py::test_whole_corpus_stability_requires_reproducing_the_observed_effect` |
+| #140 | MED | `freeze()` + fence scan duck-typed mappings (`duck_mapping_items`) | `test_contract.py::test_measurement_rejects_interpretation_in_duck_typed_mapping` |
+| #141 | MED | `GateReview.payload_dict()` thaws the FrozenDict for JSON | `test_pipeline.py::test_gate_review_payload_is_immutable_but_json_serializable` |
+| #142 | LOW | `p_value == alpha` boundary test (inclusive) | `test_confirm.py::test_verdict_pvalue_boundary_is_inclusive_at_alpha` |
+| #143 | LOW | threaded once-per-conn test with widened race window (discriminating) | `test_persistence.py::test_concurrent_get_checkpointer_runs_setup_once` |
+| #144 | LOW | per-conn_str pool caching | `test_persistence.py::test_pool_is_cached_and_reused_per_conn_str` |
+| #145 | LOW | allowlist built as a quoted bash array (no word-split/glob) | `test_supply_chain.py::test_ci_allowlist_loop_is_robust_in_the_workflow_file` |
+| #146 | LOW | `arize-phoenix>=17,<18`; no-multi-major-range guard | `test_supply_chain.py::test_no_dependency_range_spans_multiple_majors` |
+| #147 | LOW | CycloneDX SBOM + `.github/dependabot.yml` + license gate (`scripts/license_gate.py`) | `test_supply_chain.py::test_sbom_is_emitted`, `::test_dependabot_monitors_dependencies`, `::test_license_gate_present` |
+| #148 | LOW | dropped unused `@runtime_checkable` (consistent behavior-based validation) | `test_contract.py::test_no_seam_protocol_is_runtime_checkable` |
+| #149 | LOW | `FeatureMatrix` numeric + finite row validation | `test_contract.py::test_feature_matrix_rejects_non_numeric_and_non_finite_rows` |
+| #150 | LOW | CHARTER status refreshed (seams implemented, not stubs) | `test_docs_drift.py::test_charter_status_is_not_stale` |
+| #151 | LOW | baseline-toolkit scope honest (primitives + harness; builders adapter-supplied) | `test_docs_drift.py::test_baseline_toolkit_scope_is_honest` |
+| #152 | LOW | pre-registration timestamp wording (HMAC default, RFC-3161 pluggable) + exact-stale-string guards | `test_docs_drift.py::test_preregistration_timestamp_wording_matches_shipped_default` |
+| #153 | LOW | README not-on-PyPI caveat + from-source install | `test_docs_drift.py::test_readme_install_notes_not_on_pypi` |
+| #154 | LOW | ADR-0006 lists the `baseline` extra | `test_docs_drift.py::test_adr0006_lists_the_baseline_extra` |
+| #155 | LOW | `build_baseline_artifact` verifies `corpus_hash` by default (`trust_corpus_hash` opt-out) | `test_baseline.py` (skip-recompute test rewritten) |
+| #156 | LOW | tracing bootstrap moved inside the try so a setup failure still ends the tracker run | `test_pipeline.py::test_tracing_setup_failure_still_ends_the_tracker_run` |
+
+**Gates at merge:** 446 passed, 5 skipped; ruff + ruff format --check + mypy --strict clean.
+
+## Confirmation (two independent agents per finding)
+
+The 5 HIGH were fixed + 2-agent-confirmed first. The 28 MEDIUM+LOW were confirmed by one
+worktree-isolated agent per subsystem batch (each performing its own revert-discrimination) plus
+the orchestrator's own revert-checks — two independent confirmations per finding.
+
+The confirmation pass returned **21 CONFIRMED, 6 CONCERN, 0 REJECTED**. The 6 concerns were all
+test-quality / completeness gaps (no incorrect fixes), and were remediated before merge:
+
+- **#131, #145** — the allowlist tests guarded a *hardcoded copy* of the loop, not `ci.yml`; a
+  regression of the real workflow would have shipped green. Added config-level guards on `ci.yml`.
+- **#146** — the over-wide range was only mitigated via the lockfile; a PyPI consumer still resolved
+  `>=7.0,<18`. Tightened the actual `pyproject.toml` range and added a no-multi-major guard.
+- **#147** — only the SBOM was implemented; the finding also wanted dependency/license monitoring.
+  Added Dependabot + a license gate.
+- **#143** — the concurrency test was non-discriminating (the fake `setup()` was too fast to race).
+  Widened the window; it now fails if the per-conn lock is removed.
+- **#152** — the docs guard missed a *localized* GOVERNANCE over-claim (file-level HMAC substring
+  satisfied elsewhere). Added exact-stale-string assertions.
+
+## Retrospective — how pass 2 and its agents could have done better
+
+1. **Config logic needs config-level guards, not behavioral copies.** Four of the six concerns
+   (#131, #145, and the spirit of #146/#147) shared one root cause: a test that re-implemented or
+   copied the logic under test instead of asserting against the artifact that actually ships
+   (`ci.yml`, `pyproject.toml`). A behavioral copy proves the *idea* is correct but cannot catch a
+   regression of the real file. **Pass-3 rule:** every fix to a non-Python artifact (YAML, TOML,
+   docs) gets a guard that reads *that file* and asserts both the corrected content's presence and
+   the stale content's absence.
+
+2. **"Fix the finding," not "fix the symptom."** #146 was nominally closed by the lockfile (#132)
+   but the finding's actual request — narrow the published range — went unaddressed, because the
+   lockfile only governs the CI install, not a downstream `pip install` from PyPI. #147 implemented
+   one of three requested controls. **Pass-3 rule:** re-read each finding's *Suggested fix* in full
+   before marking done; if only part is implemented, say so explicitly and justify the scope.
+
+3. **Concurrency tests must be proven to race.** #143's first test passed with and without the
+   lock because the fake `setup()` did no work, so the GIL serialized the threads anyway — the
+   exact non-discrimination the finding warned about, reproduced in its own fix. A concurrency
+   guard is not a guard until you've watched it fail with the synchronization removed *and* a
+   widened window. **Pass-3 rule:** every concurrency test ships with its revert-fail output noted.
+
+4. **Substring doc-guards leak.** #152's file-level `"HMAC" in text` passed even after re-introducing
+   the exact stale sentence, because the word appeared elsewhere. **Pass-3 rule:** doc guards assert
+   the *specific* corrected string and the *specific* stale string's absence, not a loose keyword.
+
+5. **The two-agent confirmation earns its cost.** All six concerns were real and none would have
+   been caught by the green test suite alone — they are precisely the "passes with and without the
+   fix" class the campaign exists to find. The confirmation step (independent agents performing
+   their own reverts) is the highest-leverage part of the protocol and should run before *every*
+   merge, not be skipped when the suite is green.
+
+### New assessment dimensions surfaced for pass 3
+- **Artifact-vs-test fidelity:** sweep every test that targets config/docs and verify it reads the
+  shipped artifact (the #131/#145/#152 class, generalized).
+- **Finding-completeness audit:** for each prior fix, diff the *Suggested fix* against what was
+  implemented and flag partial closures (the #146/#147 class).
+- **Concurrency-guard discrimination:** re-run every threaded test with its lock removed and confirm
+  failure (the #143 class).

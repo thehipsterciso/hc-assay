@@ -1,13 +1,13 @@
 {
-  "captured_at": "2026-06-16T23:47:20.783787+00:00",
+  "captured_at": "2026-06-16T23:50:56.554578+00:00",
   "active_session": "8d54714a-d616-4911-a386-9b4b0f2ce74d",
   "n_files": 1420,
-  "total_bytes": 151617521,
+  "total_bytes": 151694014,
   "files": [
     {
       "path": "transcripts/sessions/8d54714a-d616-4911-a386-9b4b0f2ce74d.jsonl",
-      "bytes": 23000560,
-      "sha256": "bafa41162993addbe69040e2d8d0ca5cb37feac97956265cb01754a17da7e8ed"
+      "bytes": 23077053,
+      "sha256": "dd6472b07c37dbed95006a296d2e0aa702648f19c6a281ba04420fbe22f7d60f"
     },
     {
       "path": "transcripts/sessions/8d54714a-d616-4911-a386-9b4b0f2ce74d/subagents/agent-a05067d59cf434caf.jsonl",
