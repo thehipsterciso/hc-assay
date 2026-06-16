@@ -1,0 +1,136 @@
+"""Adjudication runner — the engine owns the firewall guarantee, not each study (ADR-0008).
+
+METHODOLOGY.md describes the adjudication pipeline: build a baseline *blind* to the external
+claims (Firewall A), convert each claim into a typed, pre-stated hypothesis, test each against
+the blind baseline, and *score the external source* against the validated baseline (§5). Until
+now the engine shipped the parts (a custodial :class:`ClaimBlindGuard`, the confirmatory tests,
+the verdicts) but no composition — so Firewall A held only if a study wired it correctly by
+hand. For a blueprint inherited by many studies, that pushes the single most important
+methodological guarantee onto every cloner, where it is easy to get silently wrong (build the
+baseline with the claims in scope and nothing stops you).
+
+:func:`adjudicate` makes the guarantee structural: it builds the baseline *inside* a sealed
+claim-guard that holds the claims source, so the baseline builder cannot reach the claims
+during construction (any attempt raises ``FirewallViolation``); only after the baseline is
+built does the runner release the claims and adjudicate. It then aggregates the verdicts into a
+:class:`SourceScorecard` — the §5 "score the source" step, expressed as alignment *frequency*
+on decisive claims, explicitly NOT a normative judgement of the source's quality (richer
+dimensions — where it aligns, diverges, leaves gaps — are data-surfaced downstream, per §5).
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from typing import TYPE_CHECKING, Callable, Protocol
+
+from assay_engine.contracts.claims import ClaimRecord, ExternalClaimsSource
+from assay_engine.contracts.schema import Corpus
+from assay_engine.methodology.firewalls import ClaimBlindGuard, FirewallViolation
+from assay_engine.methodology.hypothesis import Hypothesis, HypothesisOrigin
+from assay_engine.methodology.verdict import Verdict, VerdictLabel
+
+if TYPE_CHECKING:
+    # Annotations only — importing baseline at runtime would invert the layering
+    # (baseline.toolkit depends on methodology.firewalls) and create a cycle.
+    from assay_engine.baseline.toolkit import BaselineArtifact, BaselineBuilder
+
+
+class ClaimConfirmer(Protocol):
+    """Study-supplied: confirm one claim-derived hypothesis against the (blind) baseline.
+
+    The study owns this because only it knows the baseline's structure and how a given claim
+    maps onto a measurement of it; the engine supplies the confirmatory primitives
+    (``confirm_whole_corpus`` / ``confirm_unit_level``) the study uses inside it.
+    """
+
+    def __call__(
+        self, hypothesis: Hypothesis, baseline: BaselineArtifact, claim: ClaimRecord
+    ) -> Verdict: ...
+
+
+@dataclass(frozen=True, slots=True)
+class SourceScorecard:
+    """How an external source aligns with the independent baseline (METHODOLOGY.md §5).
+
+    ``alignment_rate`` is supported / (supported + contradicted) — the fraction of *decisive*
+    claims where the blind baseline agrees with the source's assertion. ``indeterminate`` is
+    excluded from the denominator (the method could not decide; counting it would understate
+    or overstate alignment). This is a frequency, not a verdict on whether the source is
+    "good": it says how often an independent reading of the data corroborates the source.
+    """
+
+    source: str
+    n_supported: int
+    n_contradicted: int
+    n_indeterminate: int
+    alignment_rate: float | None
+    verdicts: tuple[Verdict, ...] = field(default_factory=tuple)
+
+    @property
+    def total(self) -> int:
+        return self.n_supported + self.n_contradicted + self.n_indeterminate
+
+    @property
+    def decisive(self) -> int:
+        return self.n_supported + self.n_contradicted
+
+
+def _score(source: str, verdicts: list[Verdict]) -> SourceScorecard:
+    counts = {VerdictLabel.SUPPORTED: 0, VerdictLabel.CONTRADICTED: 0, VerdictLabel.INDETERMINATE: 0}
+    for v in verdicts:
+        counts[v.label] += 1
+    decisive = counts[VerdictLabel.SUPPORTED] + counts[VerdictLabel.CONTRADICTED]
+    rate = counts[VerdictLabel.SUPPORTED] / decisive if decisive else None
+    return SourceScorecard(
+        source=source,
+        n_supported=counts[VerdictLabel.SUPPORTED],
+        n_contradicted=counts[VerdictLabel.CONTRADICTED],
+        n_indeterminate=counts[VerdictLabel.INDETERMINATE],
+        alignment_rate=rate,
+        verdicts=tuple(verdicts),
+    )
+
+
+def adjudicate(
+    corpus: Corpus,
+    claims_source: ExternalClaimsSource,
+    *,
+    baseline_builder: BaselineBuilder,
+    hypothesis_for: Callable[[ClaimRecord], Hypothesis],
+    confirm: ClaimConfirmer,
+    source_name: str = "external",
+) -> tuple[BaselineArtifact, SourceScorecard]:
+    """Run the full adjudication, enforcing Firewall A by construction.
+
+    1. The claims source is kept in this function's local scope and is NOT handed to the
+       builder; the baseline is built inside a sealed :class:`ClaimBlindGuard` that holds
+       nothing. So no object reachable from ``baseline_builder`` contains the claims — it
+       cannot read them by any path (not even the guard's internals).
+    2. Only after the baseline exists are the claims released; each is converted to a typed,
+       pre-stated ``EXTERNAL_CLAIM`` hypothesis and confirmed against the now-frozen baseline.
+    3. The verdicts are aggregated into a :class:`SourceScorecard`.
+
+    Returns ``(baseline, scorecard)``. Raises ``FirewallViolation`` if a claim yields a
+    hypothesis whose origin is not ``EXTERNAL_CLAIM`` (claims must be pre-stated, not
+    data-surfaced — conflating them would breach the discover/confirm separation).
+    """
+    # The claims source stays in THIS function's local scope and is never given to the builder.
+    # The builder receives a guard holding nothing (a blind-mode signal only), so there is no
+    # object reachable from the builder that contains the claims — not even via the guard's
+    # internals. This is stronger than a custodial guard, whose private `_claims_source` a
+    # determined builder could read past the sealed `release()` check (adversarial review).
+    guard: ClaimBlindGuard[ExternalClaimsSource] = ClaimBlindGuard()
+    with guard.sealed():
+        baseline = baseline_builder.build(corpus, claim_guard=guard)
+
+    verdicts: list[Verdict] = []
+    for claim in claims_source.claims():  # claims used only after the blind baseline is built
+        hypothesis = hypothesis_for(claim)
+        if hypothesis.origin is not HypothesisOrigin.EXTERNAL_CLAIM:
+            raise FirewallViolation(
+                f"claim {claim.claim_id!r} produced a {hypothesis.origin.value!r} hypothesis; "
+                "adjudicated claims must be EXTERNAL_CLAIM (pre-stated, not data-surfaced)"
+            )
+        verdicts.append(confirm(hypothesis, baseline, claim))
+
+    return baseline, _score(source_name, verdicts)

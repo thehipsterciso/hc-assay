@@ -10,6 +10,11 @@ These are the stable, code-enforced pieces of the method:
 - ``fence``      — the measurement ↔ interpretation boundary.
 """
 
+from assay_engine.methodology.adjudication import (
+    ClaimConfirmer,
+    SourceScorecard,
+    adjudicate,
+)
 from assay_engine.methodology.fence import Interpretation, Measurement, fence
 from assay_engine.methodology.firewalls import (
     ClaimBlindGuard,
@@ -31,4 +36,7 @@ __all__ = [
     "HypothesisOrigin",
     "Verdict",
     "VerdictLabel",
+    "adjudicate",
+    "SourceScorecard",
+    "ClaimConfirmer",
 ]
