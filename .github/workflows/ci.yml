@@ -122,3 +122,20 @@ jobs:
           name: sbom-cyclonedx
           path: sbom.cyclonedx.json
           if-no-files-found: warn
+      - name: License gate (deny strong-copyleft in the dependency set)
+        run: |
+          set -euo pipefail
+          # Fail if any installed dependency carries a strong-copyleft license that would be
+          # incompatible with the Apache-2.0 distribution (#147). Advisory monitoring for the
+          # rest is handled by Dependabot (.github/dependabot.yml).
+          python -m pip install --upgrade pip-licenses
+          pip install -e ".[all]" >/dev/null
+          pip-licenses --format=json --with-system > licenses.json
+          python scripts/license_gate.py licenses.json
+      - name: Upload license report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: license-report
+          path: licenses.json
+          if-no-files-found: warn

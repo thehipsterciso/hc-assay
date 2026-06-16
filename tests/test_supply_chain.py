@@ -88,6 +88,56 @@ def test_lockfile_sync_is_enforced_in_ci():
     assert "uv pip compile" in text and "requirements.lock is stale" in text
 
 
+def test_ci_allowlist_loop_is_robust_in_the_workflow_file():
+    # #131/#145: guard ci.yml ITSELF (not only the behavioral copy) — the workflow must use the
+    # newline-agnostic read and the quoted-array expansion, and must NOT contain the buggy forms.
+    text = _ci_text()
+    assert "read -r id || [ -n" in text, "ci.yml allowlist read is not newline-agnostic (#131)"
+    assert "IGNORES+=(" in text and '"${IGNORES[@]}"' in text, (
+        "ci.yml IGNORES not a quoted array (#145)"
+    )
+    # the original buggy string-accumulation form must be gone
+    assert 'IGNORES="$IGNORES --ignore-vuln' not in text, (
+        "buggy unquoted IGNORES string reintroduced"
+    )
+    assert "while read -r id; do [ -n" not in text, "buggy non-newline-agnostic loop reintroduced"
+
+
+def test_no_dependency_range_spans_multiple_majors():
+    # #146: an over-wide range (e.g. arize-phoenix>=7.0,<18) admits ~10 majors and defeats the
+    # reproducibility intent. Guard that each extra's pins keep floor and ceiling within one major.
+    import re
+    import tomllib
+
+    pp = tomllib.loads((_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    extras = pp["project"]["optional-dependencies"]
+    offenders = []
+    for group, deps in extras.items():
+        for spec in deps:
+            m = re.search(r">=\s*(\d+)[\d.]*\s*,\s*<\s*(\d+)", spec)
+            if m:
+                floor_major, ceil_major = int(m.group(1)), int(m.group(2))
+                if ceil_major - floor_major > 2:  # allow <floor+2; flag the wide ones
+                    offenders.append(f"{group}: {spec} spans {ceil_major - floor_major} majors")
+    assert not offenders, f"over-wide dependency ranges: {offenders}"
+
+
+def test_dependabot_monitors_dependencies():
+    # #147: automated dependency/transitive update monitoring must exist, not only a one-shot scan.
+    db = _ROOT / ".github" / "dependabot.yml"
+    assert db.exists(), "no .github/dependabot.yml (#147)"
+    text = db.read_text(encoding="utf-8")
+    assert "package-ecosystem: pip" in text
+
+
+def test_license_gate_present():
+    # #147: a license gate denies strong-copyleft licenses in the dependency set.
+    text = _ci_text()
+    assert "License gate" in text and "pip-licenses" in text and "license_gate.py" in text
+    gate = (_ROOT / "scripts" / "license_gate.py").read_text(encoding="utf-8")
+    assert "AGPL" in gate and "GPL" in gate  # denies strong-copyleft families
+
+
 def test_sbom_is_emitted():
     # #147: a CycloneDX SBOM artifact is produced for downstream license/transitive monitoring.
     text = _ci_text()

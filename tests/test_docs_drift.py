@@ -51,6 +51,17 @@ def test_preregistration_timestamp_wording_matches_shipped_default():
         text = _read(rel)
         assert "HMAC" in text, f"{rel}: shipped HMAC default not stated (#152)"
         assert "pluggable" in text, f"{rel}: RFC-3161 must be described as pluggable (#152)"
+    # Guard the SPECIFIC stale over-claims, so re-introducing either one fails CI even though the
+    # word "HMAC" appears elsewhere in the file (file-level substring checks alone don't catch a
+    # localized regression — the pass-2 confirmation flagged this on GOVERNANCE §2 step 3).
+    gov = _read("docs/GOVERNANCE.md")
+    assert "RFC-3161 timestamped** against a trusted timestamp authority" not in gov, (
+        "GOVERNANCE §2 step 3 stale RFC-3161 over-claim reintroduced (#152)"
+    )
+    meth = _read("docs/METHODOLOGY.md")
+    assert "RFC-3161 timestamped before confirmation" not in meth, (
+        "METHODOLOGY §7 stale RFC-3161 over-claim reintroduced (#152)"
+    )
 
 
 def test_readme_install_notes_not_on_pypi():

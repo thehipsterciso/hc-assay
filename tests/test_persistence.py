@@ -543,21 +543,37 @@ def test_atexit_pool_cleanup_registered_once(fake_pg):
 
 def test_concurrent_get_checkpointer_runs_setup_once(fake_pg):
     # #143: under real concurrent threads (not sequential calls), the once-per-conn guard must
-    # still run setup() exactly once for a single conn_str.
+    # still run setup() exactly once for a single conn_str. A trivially-fast fake setup() does not
+    # exercise the race (each thread finishes the bootstrap section before the next is scheduled),
+    # so we WIDEN the cache-empty→setup→cache-write window with a small sleep inside setup — this
+    # makes the test discriminating: it fails ("setup ran 8 times") if the per-conn lock is removed.
+    import sys
     import threading
+    import time
 
     cp, state = fake_pg
-    barrier = threading.Barrier(8)
+    Saver = sys.modules["langgraph.checkpoint.postgres"].PostgresSaver
+    orig_setup = Saver.setup
 
-    def worker():
-        barrier.wait()  # maximize the race on the bootstrap section
-        cp.get_checkpointer()
+    def slow_setup(self):
+        time.sleep(0.05)  # widen the window so concurrent callers genuinely overlap
+        orig_setup(self)
 
-    threads = [threading.Thread(target=worker) for _ in range(8)]
-    for t in threads:
-        t.start()
-    for t in threads:
-        t.join(5)
+    Saver.setup = slow_setup
+    try:
+        barrier = threading.Barrier(8)
+
+        def worker():
+            barrier.wait()  # maximize the race on the bootstrap section
+            cp.get_checkpointer()
+
+        threads = [threading.Thread(target=worker) for _ in range(8)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join(5)
+    finally:
+        Saver.setup = orig_setup
     assert len(state["setup_on"]) == 1, "setup() ran more than once under concurrency (#143)"
     assert len(state["pools"]) == 1  # exactly one pool built despite 8 racing callers
 
