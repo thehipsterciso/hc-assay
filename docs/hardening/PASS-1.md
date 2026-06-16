@@ -363,3 +363,41 @@ My PoC against the venv confirmed the consequence: with a real
 ## Rejected / split (not actioned)
 
 - Module-global reasoning ThreadPoolExecutor is never shut down (no atexit), unlike the checkpointer pool — verifier verdicts: [False, False]
+
+## Confirmation (protocol step 6 — 2 agents per fix)
+
+First fix-confirmation workflow (`wbw6vm4r0`, 44 agents): **12/22** confirmed appropriate+complete;
+10 returned "appropriate but **incomplete**" — overwhelmingly because the first-pass fix lacked a
+regression test that *actually guards* the property (a test that passes with or without the fix),
+plus one real residual (#102) and doc-scope gaps (#111, #119).
+
+Each of the 10 was strengthened (real fix for #102; honest doc-scope for #111/#119; genuine
+regression tests for the rest) and re-confirmed (`wp9sjpx8r`, 20 agents): **9/10** confirmed; the
+last (#114) was flagged because its concurrency test was non-discriminating under the GIL. The
+test was rewritten with a window-widening injected clock and **proven discriminating** (passes
+with the lock, fails without — the confirmers reverted the lock to verify). #114 was then
+confirmed by a final independent 2-agent pass.
+
+**Result: 22/22 fixes confirmed appropriate AND complete by two independent agents each.**
+
+## Retrospective (how the assessors + maintainer missed targets)
+
+What this pass taught us, fed into pass 2's dimensions:
+
+1. **Fixes shipped without guarding tests.** The single biggest miss: 8 of 10 first-round
+   "incomplete" verdicts were *no regression test* or a test that passed regardless of the fix.
+   A fix is not done until a test **fails without it**. → Pass 2 adds a "does the test actually
+   guard the fix" lens, and every fix is revert-checked before claiming complete.
+2. **Shallow worst-case analysis (#102).** The first retry-storm fix capped the re-roll count
+   but not the nested-budget *multiplication* or the inner back-off against the deadline. →
+   Trace worst-case call counts / cumulative time, not just "add a cap".
+3. **Concurrency tests must be proven to interleave (#114).** Under CPython's GIL a naive
+   thread test never exercises a narrow read→append race. → Concurrency guards require forced
+   interleaving (slow injected clock / setswitchinterval) and a revert check.
+4. **Dependency behavior matters as much as our code (#101).** The metered-key strip was a no-op
+   because the *SDK* merges env over os.environ. → Verify third-party runtime behavior, not just
+   our call site.
+5. **Assessor blind spots.** The 7 assessors found real defects but did not flag test-quality,
+   load/contention, dependency-advisory, or API/Protocol-evolution issues. → Pass 2 dimensions:
+   test-quality/fix-guarding, concurrency/load, dependency/SBOM & advisories, API/back-compat &
+   Protocol-evolution, docs-vs-code drift.

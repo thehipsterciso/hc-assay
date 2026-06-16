@@ -32,4 +32,4 @@ All passes, findings, verdicts, fixes, confirmations, and retrospectives are doc
 
 | Pass | Branch | Findings | Confirmed | Fixed | PR | Status |
 |------|--------|----------|-----------|-------|----|--------|
-| 1 | harden/pass-1 | 22 confirmed (#101-#122) | 22 (2-agent) | 3 HIGH done; 19 MED/LOW pending | — | in progress |
+| 1 | harden/pass-1 | 22 confirmed (#101-#122) | 22/22 (2-agent) | 22/22 fixed+confirmed | #123 | merged |

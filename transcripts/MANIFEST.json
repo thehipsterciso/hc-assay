@@ -1,13 +1,13 @@
 {
-  "captured_at": "2026-06-16T21:22:42.067739+00:00",
+  "captured_at": "2026-06-16T21:27:01.032437+00:00",
   "active_session": "8d54714a-d616-4911-a386-9b4b0f2ce74d",
-  "n_files": 1205,
-  "total_bytes": 135058622,
+  "n_files": 1209,
+  "total_bytes": 135237158,
   "files": [
     {
       "path": "transcripts/sessions/8d54714a-d616-4911-a386-9b4b0f2ce74d.jsonl",
-      "bytes": 20334250,
-      "sha256": "fa8abf0d6c2dfaf22ee0b0f75aca2533af6ab414249cb95038e91104f4532326"
+      "bytes": 20389069,
+      "sha256": "1dc8b6b07f648dd1c4976c9eee33b56fcf9702a25bbad47c50ba2afa8f3e1bd8"
     },
     {
       "path": "transcripts/sessions/8d54714a-d616-4911-a386-9b4b0f2ce74d/subagents/agent-a05067d59cf434caf.jsonl",
@@ -270,6 +270,16 @@
       "sha256": "f307ea82a6408b9cc721842869af5936480d418e4b8a852b3b1c7a3440527cec"
     },
     {
+      "path": "transcripts/sessions/8d54714a-d616-4911-a386-9b4b0f2ce74d/subagents/agent-a4dafebf571b6bf17.jsonl",
+      "bytes": 56286,
+      "sha256": "63a1c7a8dcdac6e5434abc42e212eb01399bb3fd5c4282ecc8bea987f531d9da"
+    },
+    {
+      "path": "transcripts/sessions/8d54714a-d616-4911-a386-9b4b0f2ce74d/subagents/agent-a4dafebf571b6bf17.meta.json",
+      "bytes": 121,
+      "sha256": "74e9984e16c2739a4c43440ce469eff3312c83e0e9d6ad817b97e87bb9b4ee1a"
+    },
+    {
       "path": "transcripts/sessions/8d54714a-d616-4911-a386-9b4b0f2ce74d/subagents/agent-a59a0f3493669228b.jsonl",
       "bytes": 30348,
       "sha256": "2af62bdb0deb2a650c587fbb2f5175bcff9f653a4aaf1814c8e74d6602d94e8d"
@@ -368,6 +378,16 @@
       "path": "transcripts/sessions/8d54714a-d616-4911-a386-9b4b0f2ce74d/subagents/agent-a7735f0325661ff80.meta.json",
       "bytes": 138,
       "sha256": "7c69d84bb0e6267f5d3ddbc32c05cb4db4c9901b6d2969891e439d61b06c68ea"
+    },
+    {
+      "path": "transcripts/sessions/8d54714a-d616-4911-a386-9b4b0f2ce74d/subagents/agent-a77ae6dd8a6d5b48c.jsonl",
+      "bytes": 67189,
+      "sha256": "7cfbb04d464e5146156cf779102e9461c810febf6e3e76c23b97fe05ea548fdf"
+    },
+    {
+      "path": "transcripts/sessions/8d54714a-d616-4911-a386-9b4b0f2ce74d/subagents/agent-a77ae6dd8a6d5b48c.meta.json",
+      "bytes": 121,
+      "sha256": "e25c8d6fe4d1ba87d605e6bb06cb6f5c72bc7b7da2c113a0d324f92f74084c0c"
     },
     {
       "path": "transcripts/sessions/8d54714a-d616-4911-a386-9b4b0f2ce74d/subagents/agent-a7905a84d8d3fda41.jsonl",
