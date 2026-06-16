@@ -68,6 +68,38 @@ def test_corpus_fingerprint_distinguishes_nonstr_key_attrs():
     assert corpus_fingerprint(a) != corpus_fingerprint(b)
 
 
+def test_hash_value_canonicalizes_known_faithful_types():
+    import datetime
+
+    # date is faithfully canonicalized and distinct from its string form
+    assert hash_value(datetime.date(2020, 1, 1)) == hash_value(datetime.date(2020, 1, 1))
+    assert hash_value(datetime.date(2020, 1, 1)) != hash_value(datetime.date(2020, 1, 2))
+
+
+def test_hash_value_rejects_unreproducible_leaf():
+    # issue #B5: an object with a default (address-based) repr would hash differently each
+    # process — refuse loudly rather than poison the fingerprint
+    class Weird:
+        __slots__ = ()
+
+    with pytest.raises(TypeError):
+        hash_value({"k": Weird()})
+
+
+def test_hash_value_rejects_non_finite_float():
+    # issue #B4: NaN/inf must surface, not be encoded as JSON NaN/Infinity tokens
+    with pytest.raises(ValueError):
+        hash_value(float("nan"))
+    with pytest.raises(ValueError):
+        hash_value([1.0, float("inf")])
+
+
+def test_build_artifact_reserves_corpus_input_key():
+    # issue #B7: an extra input named "corpus" must not clobber the corpus fingerprint
+    with pytest.raises(ValueError):
+        build_baseline_artifact(_corpus(), {}, extra_inputs={"corpus": "x"})
+
+
 def test_build_artifact_records_full_determinism_and_is_reproducible():
     c = _corpus()
     a1 = build_baseline_artifact(c, {"sim": [[1.0]]}, component_versions={"builder": "demo@1"})
@@ -157,3 +189,13 @@ def test_cosine_stays_in_unit_range_under_float_error():
         for x in row:
             assert -1.0 <= x <= 1.0
     assert m[0][0] == 1.0  # non-zero self-similarity is exactly 1.0
+
+
+def test_cosine_rejects_non_finite_inputs():
+    # issue #B6: a non-finite component must raise, not be clamped to a false 1.0
+    with pytest.raises(ValueError):
+        cosine_similarity([float("inf"), 1.0], [1.0, 1.0])
+    with pytest.raises(ValueError):
+        cosine_similarity_matrix([[float("nan"), 0.0]])
+    with pytest.raises(ValueError):
+        euclidean_distance([float("inf")], [0.0])

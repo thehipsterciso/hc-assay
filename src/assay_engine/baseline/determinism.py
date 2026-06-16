@@ -15,9 +15,12 @@ builder ran so the result is reproducible regardless of which builder it was.
 
 from __future__ import annotations
 
+import datetime as _dt
+import decimal
 import hashlib
 import json
 import sys
+import uuid
 from dataclasses import dataclass
 from typing import Any, Mapping
 
@@ -52,9 +55,21 @@ def _plain(value: Any) -> Any:
         return [_plain(v) for v in value]
     if isinstance(value, (set, frozenset)):
         return {"__set__": sorted((_plain(v) for v in value), key=repr)}
-    # Unknown leaf (date, Decimal, custom object): tag by type + repr so type changes and
-    # value changes both alter the hash, and it is never silently stringified away.
-    return {"__obj__": f"{type(value).__module__}.{type(value).__qualname__}", "__repr__": repr(value)}
+    # A small allowlist of leaf types with a value-faithful canonical form.
+    if isinstance(value, (_dt.date, _dt.datetime, _dt.time)):
+        return {"__temporal__": value.isoformat()}
+    if isinstance(value, decimal.Decimal):
+        return {"__decimal__": str(value)}
+    if isinstance(value, uuid.UUID):
+        return {"__uuid__": str(value)}
+    # Anything else is refused LOUDLY rather than repr-tagged: a default (address-based) repr
+    # would make the fingerprint differ every process, silently breaking reproducibility
+    # (audit #B5). The caller must canonicalize exotic values before hashing.
+    raise TypeError(
+        f"baseline hashing cannot canonicalize a leaf of type "
+        f"{type(value).__module__}.{type(value).__qualname__!r} reproducibly — convert it to a "
+        "JSON-native value, bytes, date/datetime/Decimal/UUID before hashing"
+    )
 
 
 def hash_bytes(data: bytes) -> str:
@@ -72,7 +87,7 @@ def hash_value(value: Any) -> str:
     ``default=`` coercion — anything it still cannot encode is a real bug to surface, not to
     silently stringify (audit #B2).
     """
-    return hash_text(json.dumps(_plain(value), sort_keys=True))
+    return hash_text(json.dumps(_plain(value), sort_keys=True, allow_nan=False))
 
 
 def corpus_fingerprint(corpus: Corpus) -> str:
@@ -86,7 +101,7 @@ def corpus_fingerprint(corpus: Corpus) -> str:
         for r in sorted(corpus.relations, key=lambda r: (r.source_id, r.target_id, r.kind))
     ]
     payload = {"units": units, "relations": relations, "metadata": _plain(corpus.metadata)}
-    return hash_text(json.dumps(payload, sort_keys=True))
+    return hash_text(json.dumps(payload, sort_keys=True, allow_nan=False))
 
 
 def stable_seed(*parts: str, bits: int = 32) -> int:
@@ -136,6 +151,8 @@ def build_baseline_artifact(
     so it is reproducible.
     """
     corpus_hash = corpus_fingerprint(corpus)
+    if extra_inputs and "corpus" in extra_inputs:
+        raise ValueError("'corpus' is a reserved input-hash key — rename the extra input (#B7)")
     input_hashes = {"corpus": corpus_hash}
     for name, value in (extra_inputs or {}).items():
         input_hashes[name] = hash_value(value)

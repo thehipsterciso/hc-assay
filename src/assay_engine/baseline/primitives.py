@@ -25,6 +25,15 @@ def _check_same_length(a: Vector, b: Vector) -> None:
         raise ValueError(f"vectors must have equal length; got {len(a)} and {len(b)}")
 
 
+def _check_finite(*vectors: Vector) -> None:
+    """Reject non-finite components. Without this a NaN/inf could flow into cosine and be
+    silently clamped to a false 1.0 (audit #B6); consistent with descriptive_stats."""
+    for vec in vectors:
+        for x in vec:
+            if not math.isfinite(x):
+                raise ValueError(f"vector components must be finite; got {x}")
+
+
 def dot(a: Vector, b: Vector) -> float:
     _check_same_length(a, b)
     return math.fsum(x * y for x, y in zip(a, b))
@@ -44,6 +53,7 @@ def cosine_similarity(a: Vector, b: Vector) -> float:
     anything is defined as 0.0 (rather than NaN). The result is clamped to [-1, 1] so float
     rounding cannot push it outside the documented range (audit #B3)."""
     _check_same_length(a, b)
+    _check_finite(a, b)
     na, nb = l2_norm(a), l2_norm(b)
     if na == 0.0 or nb == 0.0:
         return 0.0
@@ -52,12 +62,14 @@ def cosine_similarity(a: Vector, b: Vector) -> float:
 
 def euclidean_distance(a: Vector, b: Vector) -> float:
     _check_same_length(a, b)
+    _check_finite(a, b)
     return math.sqrt(math.fsum((x - y) ** 2 for x, y in zip(a, b)))
 
 
 def cosine_similarity_matrix(rows: Sequence[Vector]) -> list[list[float]]:
     """Full symmetric cosine-similarity matrix (diagonal 1.0 for non-zero vectors)."""
     n = len(rows)
+    _check_finite(*rows)
     norms = [l2_norm(r) for r in rows]
     out = [[0.0] * n for _ in range(n)]
     for i in range(n):
