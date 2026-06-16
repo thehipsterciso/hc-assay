@@ -31,6 +31,8 @@ TRACING_PORT = int(os.environ.get("ASSAY_TRACING_PORT", "6006"))
 PROJECT_NAME = os.environ.get("ASSAY_TRACING_PROJECT", "assay")
 
 _provider: Any = None
+# Guards the _provider check-then-set so concurrent bootstrap_tracing() calls don't race.
+_provider_lock = threading.Lock()
 
 
 def _disabled() -> bool:
@@ -56,28 +58,30 @@ def bootstrap_tracing() -> Any:
     global _provider
     if _disabled():
         return None
-    if _provider is not None:
-        return _provider
-    try:
-        require_loopback_host(TRACING_HOST, what="tracing collector host")
-        # Bound the OTLP export so a downed collector can never hang teardown (#O3).
-        os.environ.setdefault("OTEL_EXPORTER_OTLP_TRACES_TIMEOUT", "2")
-        from phoenix.otel import register
+    # Lock the check-then-set so two threads can't both register the global provider.
+    with _provider_lock:
+        if _provider is not None:
+            return _provider
+        try:
+            require_loopback_host(TRACING_HOST, what="tracing collector host")
+            # Bound the OTLP export so a downed collector can never hang teardown (#O3).
+            os.environ.setdefault("OTEL_EXPORTER_OTLP_TRACES_TIMEOUT", "2")
+            from phoenix.otel import register
 
-        provider = register(
-            project_name=PROJECT_NAME,
-            endpoint=tracing_endpoint(),
-            set_global_tracer_provider=True,
-            batch=True,  # async BatchSpanProcessor — never block the run on export (#O2)
-        )
-        _provider = provider
-        _warn_if_not_global(provider)
-        _instrument_langchain()
-        _install_flush_on_exit(provider)
-        return _provider
-    except Exception:
-        # Missing extra / collector down / registration race — run untraced.
-        return None
+            provider = register(
+                project_name=PROJECT_NAME,
+                endpoint=tracing_endpoint(),
+                set_global_tracer_provider=True,
+                batch=True,  # async BatchSpanProcessor — never block the run on export (#O2)
+            )
+            _provider = provider
+            _warn_if_not_global(provider)
+            _instrument_langchain()
+            _install_flush_on_exit(provider)
+            return _provider
+        except Exception:
+            # Missing extra / collector down / registration race — run untraced.
+            return None
 
 
 def _warn_if_not_global(provider: Any) -> None:
