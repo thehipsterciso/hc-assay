@@ -19,6 +19,7 @@ from assay_engine.persistence.checkpoint import (
     redact_creds,
 )
 from assay_engine.persistence.vectorstore import (
+    QdrantVectorStore,
     VectorStore,
     get_qdrant_client,
     vector_store_url,
@@ -31,6 +32,7 @@ __all__ = [
     "get_postgres_connection_string",
     "redact_creds",
     "VectorStore",
+    "QdrantVectorStore",
     "get_qdrant_client",
     "vector_store_url",
     "DataVersioner",

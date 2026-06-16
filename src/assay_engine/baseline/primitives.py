@@ -66,8 +66,9 @@ def euclidean_distance(a: Vector, b: Vector) -> float:
     return math.sqrt(math.fsum((x - y) ** 2 for x, y in zip(a, b)))
 
 
-def cosine_similarity_matrix(rows: Sequence[Vector]) -> list[list[float]]:
-    """Full symmetric cosine-similarity matrix (diagonal 1.0 for non-zero vectors)."""
+def _cosine_matrix_pure(rows: Sequence[Vector]) -> list[list[float]]:
+    """Pure-Python reference implementation — O(n²·d). Correct but slow; the public function
+    dispatches to a numpy path at scale when available."""
     n = len(rows)
     _check_finite(*rows)
     norms = [l2_norm(r) for r in rows]
@@ -83,6 +84,46 @@ def cosine_similarity_matrix(rows: Sequence[Vector]) -> list[list[float]]:
             out[i][j] = sim
             out[j][i] = sim
     return out
+
+
+def _cosine_matrix_numpy(rows: Sequence[Vector]) -> list[list[float]]:
+    import numpy as np
+
+    x = np.asarray(rows, dtype=float)
+    if x.ndim != 2:
+        raise ValueError("rows must be a 2-D collection of equal-length vectors")
+    if not np.isfinite(x).all():
+        raise ValueError("vector components must be finite")
+    norms = np.linalg.norm(x, axis=1)
+    zero = norms == 0.0
+    safe = np.where(zero, 1.0, norms)
+    xn = x / safe[:, None]
+    m = xn @ xn.T
+    np.clip(m, -1.0, 1.0, out=m)
+    if zero.any():  # zero vectors have no direction → similarity 0 to everything
+        m[zero, :] = 0.0
+        m[:, zero] = 0.0
+    np.fill_diagonal(m, np.where(zero, 0.0, 1.0))
+    return [[float(v) for v in row] for row in m]
+
+
+def cosine_similarity_matrix(rows: Sequence[Vector]) -> list[list[float]]:
+    """Full symmetric cosine-similarity matrix (diagonal 1.0 for non-zero vectors, 0.0 for zero).
+
+    Pure-Python is O(n²·d) and does not scale (a corpus of thousands of embeddings would take
+    minutes-to-hours); when numpy is available (the optional ``baseline`` extra) this dispatches
+    to a vectorized path that is orders of magnitude faster. The two paths agree to within
+    floating-point tolerance (both clamp to [-1, 1]); a study needing byte-identical
+    reproducibility should pin its environment (the determinism harness records component
+    versions for exactly this reason).
+    """
+    if not rows:
+        return []
+    try:
+        import numpy  # noqa: F401
+    except ImportError:
+        return _cosine_matrix_pure(rows)
+    return _cosine_matrix_numpy(rows)
 
 
 def _quantile(sorted_values: list[float], q: float) -> float:

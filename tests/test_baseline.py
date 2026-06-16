@@ -191,6 +191,30 @@ def test_cosine_stays_in_unit_range_under_float_error():
     assert m[0][0] == 1.0  # non-zero self-similarity is exactly 1.0
 
 
+def test_cosine_matrix_numpy_and_pure_agree():
+    # the vectorized and pure paths must agree within float tolerance (both clamp to [-1,1])
+    import importlib.util
+
+    from assay_engine.baseline.primitives import _cosine_matrix_pure
+
+    rows = [[1.0, 2.0, 3.0], [4.0, 5.0, 6.0], [0.0, 0.0, 0.0], [-1.0, 0.5, 2.0]]
+    pure = _cosine_matrix_pure(rows)
+    public = cosine_similarity_matrix(rows)  # numpy path when numpy installed
+    for rp, ru in zip(pure, public):
+        for a, b in zip(rp, ru):
+            assert a == pytest.approx(b, abs=1e-9)
+    if importlib.util.find_spec("numpy") is not None:
+        from assay_engine.baseline.primitives import _cosine_matrix_numpy
+
+        npm = _cosine_matrix_numpy(rows)
+        assert npm[2] == [0.0, 0.0, 0.0, 0.0]  # zero-vector row
+        assert npm[0][0] == 1.0  # exact unit diagonal for non-zero row
+
+
+def test_cosine_matrix_empty():
+    assert cosine_similarity_matrix([]) == []
+
+
 def test_cosine_rejects_non_finite_inputs():
     # issue #B6: a non-finite component must raise, not be clamped to a false 1.0
     with pytest.raises(ValueError):

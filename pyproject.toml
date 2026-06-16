@@ -45,6 +45,9 @@ persistence = [
 orchestration = [
     "langgraph>=1.2,<2",
 ]
+baseline = [
+    "numpy>=1.26,<3",  # vectorized similarity at corpus scale (pure-Python fallback otherwise)
+]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/assay_engine"]
@@ -77,5 +80,6 @@ module = [
     "qdrant_client.*",
     "psycopg.*",
     "psycopg_pool.*",
+    "numpy.*",
 ]
 ignore_missing_imports = true

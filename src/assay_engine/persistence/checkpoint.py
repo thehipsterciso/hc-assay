@@ -40,7 +40,7 @@ import atexit
 import os
 import re
 import threading
-from typing import Any
+from typing import Any, cast
 from urllib.parse import urlsplit
 
 from assay_engine._local import require_local_uri
@@ -196,7 +196,10 @@ def get_checkpointer(use_memory: bool = False) -> Any:
                 with pool.connection() as conn:
                     conn.execute("SELECT pg_advisory_lock(%s)", (_MIGRATION_LOCK_KEY,))
                     try:
-                        PostgresSaver(conn).setup()  # DDL on the locked connection
+                        # row_factory=dict_row makes this connection dict-rowed at runtime
+                        # (what PostgresSaver requires); the cast asserts that runtime truth
+                        # the type system can't infer from the pool kwargs.
+                        PostgresSaver(cast(Any, conn)).setup()  # DDL on the locked connection
                     finally:
                         # Best-effort unlock; the lock auto-releases when the connection
                         # returns to the pool, and raising here would mask a setup() error.
@@ -205,7 +208,7 @@ def get_checkpointer(use_memory: bool = False) -> Any:
                         except Exception:
                             pass
                 _INITIALIZED_CONN_STRS.add(conn_str)
-        return PostgresSaver(pool)
+        return PostgresSaver(cast(Any, pool))  # dict-rowed pool (row_factory=dict_row)
     except Exception as exc:
         # Build the redacted message here, but raise it OUTSIDE the handler (below) so the
         # original — credential-bearing — exception is retained as neither __cause__ NOR
