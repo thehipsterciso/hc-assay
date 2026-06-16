@@ -36,6 +36,22 @@ jobs:
   # e2e) run for real.
   integration:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: assay
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+      qdrant:
+        image: qdrant/qdrant:v1.12.4
+        ports: ["6333:6333"]
+    env:
+      # loopback host keeps the data-sovereignty guard satisfied; creds are redacted on error
+      ASSAY_TEST_POSTGRES_URL: postgresql://postgres:postgres@localhost:5432/assay
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -47,5 +63,9 @@ jobs:
           pip install -e ".[dev,reasoning,observability,persistence,orchestration,baseline]"
       - name: Type-check against real backend types (mypy)
         run: mypy
+      # Real backends now run: langgraph graph + interrupt/resume, mlflow lifecycle, OTel,
+      # numpy primitives, the T3 drain/classification (synthetic SDK, no metered call), AND —
+      # via the service containers — the live Postgres checkpointer + Qdrant vector store.
+      # Ollama and the metered frontier tier are not in CI and skip honestly.
       - name: Integration + unit tests with coverage
         run: pytest -q --cov=assay_engine --cov-report=term-missing

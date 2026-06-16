@@ -198,6 +198,30 @@ def test_whole_corpus_requires_some_direction():
         )
 
 
+def test_whole_corpus_rejects_bad_stability_threshold():
+    with pytest.raises(ValueError):
+        confirm_whole_corpus(
+            _locked(HypothesisKind.WHOLE_CORPUS), observed=1.0, null_distribution=[0.0],
+            alpha=0.05, predicted_direction="greater", stability_threshold=1.5,
+        )
+
+
+def test_whole_corpus_rejects_empty_resamples():
+    with pytest.raises(ValueError):
+        confirm_whole_corpus(
+            _locked(HypothesisKind.WHOLE_CORPUS), observed=1.0, null_distribution=[0.0],
+            alpha=0.05, predicted_direction="greater", resample_statistics=[],
+        )
+
+
+def test_whole_corpus_rejects_nonfinite_resample():
+    with pytest.raises(ValueError):
+        confirm_whole_corpus(
+            _locked(HypothesisKind.WHOLE_CORPUS), observed=1.0, null_distribution=[0.0],
+            alpha=0.05, predicted_direction="greater", resample_statistics=[float("nan")],
+        )
+
+
 def test_whole_corpus_requires_null_distribution():
     with pytest.raises(ValueError):
         confirm_whole_corpus(

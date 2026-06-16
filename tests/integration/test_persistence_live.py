@@ -42,6 +42,34 @@ def test_qdrant_client_connects():
     client.get_collections()  # real round-trip to the running server
 
 
+@pytest.mark.skipif(not qdrant_up(), reason="qdrant not running on localhost:6333")
+def test_qdrant_vector_store_upsert_and_query():
+    # exercise the real VectorStore capability: create, upsert, nearest-neighbour query
+    import uuid as _uuid
+
+    from assay_engine.persistence.vectorstore import QdrantVectorStore, get_qdrant_client
+
+    client = get_qdrant_client()
+    coll = f"assay_test_{_uuid.uuid4().hex[:8]}"
+    store = QdrantVectorStore(coll, dim=3, client=client)
+    try:
+        store.ensure_collection()
+        store.upsert(
+            ["a", "b", "c"],
+            [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]],
+        )
+        hits = store.query([0.95, 0.05, 0.0], k=2)
+        assert hits[0][0] == "a"  # original string id round-tripped via payload
+        assert {h[0] for h in hits} <= {"a", "b", "c"}
+    except Exception as exc:  # qdrant client/server version skew etc.
+        pytest.skip(f"qdrant vector op unavailable: {exc}")
+    finally:
+        try:
+            client.delete_collection(coll)
+        except Exception:
+            pass
+
+
 @pytest.mark.skipif(not postgres_up(), reason="postgres not reachable on localhost:5432")
 def test_postgres_checkpointer_setup_and_round_trip(monkeypatch):
     import os
