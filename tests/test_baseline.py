@@ -251,3 +251,49 @@ def test_cosine_matrix_rejects_norm_overflow():
 
     with pytest.raises(ValueError, match="overflow"):
         _cosine_matrix_numpy([[1e200, 1e200], [1e200, -1e200]])
+
+
+def test_cosine_matrix_array_matches_list_and_is_ndarray():
+    # #106: the ndarray variant avoids nested-list boxing but agrees with the list form
+    np = pytest.importorskip("numpy")
+    from assay_engine.baseline.primitives import (
+        cosine_similarity_matrix,
+        cosine_similarity_matrix_array,
+    )
+
+    rows = [[1.0, 0.0], [0.0, 1.0], [1.0, 1.0]]
+    arr = cosine_similarity_matrix_array(rows)
+    assert isinstance(arr, np.ndarray) and arr.shape == (3, 3)
+    assert arr.tolist() == cosine_similarity_matrix(rows)
+    assert cosine_similarity_matrix_array([]).shape == (0, 0)
+
+
+def test_build_baseline_reuses_precomputed_corpus_hash(monkeypatch):
+    # #119: a caller that already has the fingerprint can pass it to skip the redundant recompute
+    import assay_engine.baseline.determinism as d
+
+    corpus = Corpus(units=(Unit("u0", "t0"), Unit("u1", "t1")))
+    calls = {"n": 0}
+    orig = d.corpus_fingerprint
+
+    def counting(c):
+        calls["n"] += 1
+        return orig(c)
+
+    monkeypatch.setattr(d, "corpus_fingerprint", counting)
+    art = d.build_baseline_artifact(corpus, {"k": 1}, corpus_hash="deadbeef" * 8)
+    assert art.corpus_fingerprint == "deadbeef" * 8 and calls["n"] == 0  # no recompute
+    d.build_baseline_artifact(corpus, {"k": 1})  # without it → recomputes
+    assert calls["n"] == 1
+
+
+def test_freeze_keeps_ndarray_opaque_o1():
+    # #107: a numpy array in baseline contents is frozen to a small (kind, shape, bytes)
+    # descriptor — NOT a recursively tuple-ized cell-by-cell copy.
+    np = pytest.importorskip("numpy")
+    from assay_engine._frozen import freeze
+
+    frozen = freeze(np.zeros((100, 100)))
+    # descriptor form: a 3-tuple (kind, shape, frozen-bytes), not a 100-deep nested structure
+    assert isinstance(frozen, tuple) and len(frozen) == 3
+    assert frozen[1] == (100, 100)

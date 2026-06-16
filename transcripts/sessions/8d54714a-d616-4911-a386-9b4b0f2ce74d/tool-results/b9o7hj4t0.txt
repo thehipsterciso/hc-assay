@@ -1,0 +1,624 @@
+═══════════════════════════════ docs/charter/PROJECT_CHARTER.md ═══════════════════════════════
+# hc-grc Research Platform — Project Charter
+
+**Version**: 0.1 (Planning)  
+**Date**: 2026-06-09  
+**Status**: Architecture Design Phase  
+
+---
+
+## 1. Purpose and Positioning
+
+The hc-grc program is a modular, scientifically rigorous research platform for the empirical characterization of cybersecurity and data privacy control space. It is designed to grow beyond any single research question into a durable analytical infrastructure — the equivalent of a software product, not a one-off analysis.
+
+The primary corpus is the Secure Controls Framework (SCF), used as both a research subject and an alignment substrate. The SCF's 1,400+ controls, 200+ STRM-mapped Laws/Regulations/Frameworks (LRFs), 39 risk categories, 6-level maturity model, and risk/threat crosswalks constitute a uniquely rich, openly licensed, machine-readable dataset for control space analysis.
+
+**The core tension the platform exploits**: The SCF claims Expert-Derived Content (EDC) produces superior crosswalk mappings versus NLP/ML approaches. No empirical validation of those 280,000+ mappings has ever been published. Every analytical module in this platform addresses some dimension of that gap — directly or indirectly.
+
+**Strategic output**: Published research, practitioner-facing tools, and commercially deployable analytical products that serve the three audiences defined in the project's user personas.
+
+---
+
+## 1.5 Strategic Program Context
+
+**This project is Tier 1 of a three-tier research program.** Every design decision — data schemas, ARA artifact formats, graph data models, null result handling — is made with Tier 2 and Tier 3 as downstream consumers.
+
+### The Three Tiers
+
+**Tier 1 — Framework Science (this project, plus future framework projects)**
+
+The SCF is simultaneously the research subject and the measurement instrument. Its ~280,000 STRM mappings are structured, testable claims: "SCF control X has relationship type R to framework Y control Z." The platform does not accept those claims — it tests them. Per-framework knowledge graphs are the primary output. Null results — mappings that fail empirical testing — are first-class findings, not failures.
+
+Future Tier 1 projects: `hc-grc-nist-800-53`, `hc-grc-nist-800-82`, `hc-grc-cis-v8`. Each follows identical methodology (P1–P5 modules, same LangGraph architecture, same gate structure). Each is an independent project to preserve pre-registration integrity — no framework project's confirmatory data contaminates another's hypothesis formation.
+
+**Tier 2 — Comparative Analysis (future: `hc-grc-comparative`)**
+
+Ingests all Tier 1 knowledge graphs. Answers cross-framework questions: where does the GRC landscape genuinely converge? Which controls are empirically load-bearing across multiple independent frameworks? What is the blast radius — if control X fails, what cascades through the cross-framework topology? What are the underlying control archetypes the industry has reproduced under dozens of different names?
+
+This tier requires two or more Tier 1 projects completed before it starts.
+
+**Tier 3 — Organizational Impact Modeling (deferred: `hc-grc-impact`)**
+
+The commercially significant tier. Takes Tier 2's empirical findings and models them against real organizations to quantify: which control failures drive financial losses, and by how much? Not correlation — causal inference (causal forests, do-calculus) so the answer is actionable. SHAP values provide the explainability layer. Monte Carlo simulation produces probability distributions over financial outcomes with confidence intervals.
+
+Tier 3 is deferred. It requires Tier 2 outputs and external data (breach databases, financial loss records) with privacy and consent constraints outside the current scope. It is documented here because Tier 1 design decisions must not foreclose Tier 3 feasibility.
+
+### Design Requirements Flowing from This Context
+
+1. **ARA artifact schema must be framework-agnostic.** The knowledge graph export must work identically for NIST 800-53, CIS v8, and SCF. No SCF-specific assumptions in the schema.
+2. **Null results are structured identically to positive findings.** Tier 2 and Tier 3 consume the full result distribution; suppressed or unstructured null results break the pipeline.
+3. **Confidence scores on all findings.** Tier 3 uses these as ML model features. If findings don't carry confidence scores, the Tier 3 feature space is impoverished.
+4. **P2 topology graphs must be designed for multi-graph composition.** The blast radius model in Tier 2 runs graph diffusion across the combined cross-framework topology. P2's data model must support it.
+
+See ADR-0010 for the full strategic program decision record.
+
+---
+
+## 2. Scope
+
+All five analytical modules (P1–P5) are in scope. They are not sequential — they are parallel research tracks that share infrastructure, data models, and findings. Module outputs feed each other.
+
+| Module | Name | Primary Question |
+|--------|------|-----------------|
+| P1 | STRM Calibration | Do the SCF's expert STRM mappings hold up under NLP-based semantic analysis? |
+| P2 | Control Space Topology | Do the 33 editorial domains correspond to natural semantic clusters? |
+| P3 | Regulatory Convergence | Which control domains have multi-jurisdictional consensus, and which are outliers? |
+| P4 | Risk Blindspot Engine | Which of the 39 risk categories are systematically underserved by standard framework portfolios? |
+| P5 | AI Governance Cluster Analysis | Which controls across all 33 domains are semantically entangled with AI governance — not just AAT? |
+
+P5 is explicitly **not** an AAT domain filter. It is a cross-domain clustering problem: let the ML identify which controls across the entire SCF are semantically relevant to AI governance when the data, not the editorial taxonomy, makes that determination.
+
+---
+
+## 3. Architecture Design
+
+The platform is modular at every layer. Adding a new framework, a new embedding model, a new analytical method, or a new research question requires adding a module — not refactoring existing ones.
+
+```
+hc-grc/
+├── data/
+│   ├── raw/                    # unmodified source files, versioned
+│   │   ├── scf/                # SCF Excel/OSCAL per version (2024.x, 2025.x, 2026.x)
+│   │   ├── nist/               # NIST OSCAL JSON (800-53, CSF, 800-171, AI RMF)
+│   │   ├── cis/                # CIS Controls v8
+│   │   └── lrf/                # supplemental LRFs (PDFs → extracted text)
+│   ├── processed/              # normalized, schema-aligned, validated
+│   └── embeddings/             # cached embedding matrices (model-versioned)
+│
+├── src/                        # library code — importable by all modules
+│   ├── schema/                 # canonical Pydantic data models
+│   ├── ingestion/              # per-source parsers
+│   ├── embeddings/             # embedding engine (multi-model)
+│   ├── graph/                  # knowledge graph construction + algorithms
+│   ├── strm/                   # STRM-specific analysis methods
+│   ├── coverage/               # coverage scoring and gap analysis
+│   ├── stats/                  # statistical testing utilities
+│   ├── clustering/             # clustering and dimensionality reduction
+│   └── reporting/              # output formatters (JSON, HTML, MD, plots)
+│
+├── research/                   # formal research design — one file per module
+│   ├── P1_strm_calibration.md
+│   ├── P2_topology.md
+│   ├── P3_regulatory_convergence.md
+│   ├── P4_risk_blindspot.md
+│   └── P5_ai_governance_clusters.md
+│
+├── experiments/                # experiment tracking (MLflow or equivalent)
+│   ├── P1/
+│   ├── P2/
+│   ├── P3/
+│   ├── P4/
+│   └── P5/
+│
+├── notebooks/                  # EDA, results, visualizations
+│
+├── tests/
+├── Makefile
+└── requirements.txt
+```
+
+### 3.1 Canonical Data Schema
+
+All source frameworks are normalized into these Pydantic models before any analysis runs. This is the contract every module depends on.
+
+**Control**
+- `id`: str (e.g., "GOV-03")
+- `domain_code`: str
+- `domain_name`: str
+- `name`: str
+- `objective`: str
+- `description`: str
+- `mcr_dsr`: Enum(MCR, DSR)
+- `risk_weight`: float
+- `maturity_criteria`: dict[L0..L5, str]
+- `risk_categories`: list[str]  # e.g., ["R-AC-1", "R-GV-2"]
+- `threats`: list[str]
+- `assessment_objectives`: str
+
+**STRMMapping**
+- `scf_control_id`: str
+- `lrf_id`: str
+- `lrf_requirement_id`: str
+- `lrf_requirement_text`: str
+- `relationship_type`: Enum(SUBSET, INTERSECTS, EQUAL, SUPERSET, NONE)
+- `strength_score`: int  # 1–10
+- `lrf_jurisdiction`: str
+- `lrf_category`: Enum(LAW, REGULATION, FRAMEWORK)
+
+**Framework**
+- `id`: str
+- `name`: str
+- `version`: str
+- `publisher`: str
+- `jurisdiction`: str
+- `category`: Enum(LAW, REGULATION, FRAMEWORK)
+- `geographic_region`: Enum(GENERAL, USA, EMEA, APAC, AMERICAS)
+
+**EmbeddingRecord**
+- `entity_id`: str
+- `entity_type`: Enum(CONTROL, REQUIREMENT)
+- `text_field`: str  # which text was embedded
+- `model_name`: str
+- `model_version`: str
+- `vector`: list[float]
+
+**RiskCategory**
+- `id`: str  # e.g., "R-AC-1"
+- `group`: str  # e.g., "Access Control"
+- `name`: str
+- `description`: str
+- `mapped_controls`: list[str]
+
+---
+
+## 4. Data Sources
+
+| Source | Format | Access | License | Notes |
+|--------|--------|--------|---------|-------|
+| SCF (current) | Excel (.xlsx) | GitHub, no auth | CC BY-ND 4.0 | Primary corpus. Pull versioned. |
+| SCF (historical) | Excel (.xlsx) | GitHub | CC BY-ND 4.0 | Version comparison requires archiving prior releases |
+| NIST SP 800-53 R5 | OSCAL JSON | GitHub (usnistgov) | Public domain | ~1,000+ controls |
+| NIST CSF 2.0 | OSCAL JSON | GitHub (usnistgov) | Public domain | Function/Category/Subcategory |
+| NIST SP 800-171 R3 | OSCAL JSON | GitHub (usnistgov) | Public domain | 110 requirements, 14 families |
+| NIST AI RMF | OSCAL JSON | GitHub (usnistgov) | Public domain | AI governance, P5 substrate |
+| CIS Controls v8 | Excel | CIS open terms | CIS open | 18 controls, 153 safeguards, IG tiers |
+| EU AI Act | Text extraction | EUR-Lex (public) | EU public | Required for P5 |
+| STRM PDFs (supplemental) | PDF → text | SCF content CDN | CC | Supplemental to Excel mappings |
+
+**Note on paywalled frameworks**: ISO 27001, PCI DSS full text, HITRUST require license sign-off before ingestion. This is the human gate preserved per the FRAMEWORK_RELATIONSHIPS constitution. Do not ingest without explicit approval.
+
+---
+
+## 5. Module Research Designs
+
+### P1 — STRM Calibration: Auditing the Auditors
+
+**Research question**: Do the SCF's expert-derived STRM mappings (relationship type and strength score) correspond to empirically measurable semantic relationships between control text and LRF requirement text?
+
+**Why it matters**: The SCF's commercial and IP positioning rests on the claim that EDC produces superior mappings. This is the first empirical test of that claim at scale.
+
+#### Hypotheses
+
+| ID | Hypothesis | Null | Test |
+|----|-----------|------|------|
+| H1.1 | STRM strength scores (1–10) are positively correlated with embedding cosine similarity | ρ = 0 | Spearman rank correlation + permutation test |
+| H1.2 | STRM relationship type is predictable from embedding similarity distributions | Accuracy = random baseline | Multi-class classification (logistic regression, SVM, fine-tuned BERT) |
+| H1.3 | "Equal To" (=) mappings cluster at higher cosine similarity than "Intersects" (∩) | No distributional difference across types | Kruskal-Wallis H-test |
+| H1.4 | STRM strength score calibration varies systematically by SCF domain | Calibration is uniform across domains | ANOVA / Kruskal-Wallis by domain group |
+| H1.5 | NIST-cluster frameworks (800-53, CSF, 800-171) show higher NLP-STRM agreement than cross-cluster pairs | No difference | Mann-Whitney U test |
+| H1.6 | High-strength STRM mappings (score ≥ 8) exhibit significantly higher NLP similarity than low-strength mappings (score ≤ 3) | No difference | Mann-Whitney U test |
+
+#### Algorithm Inventory (exhaustive — all to be evaluated)
+
+**Text Representation**
+- Sparse: TF-IDF (unigram, bigram, trigram), BM25/Okapi BM25, Boolean n-gram
+- Dense word: Word2Vec CBOW, Word2Vec Skip-gram, GloVe (6B, 42B), fastText (character n-grams)
+- Dense sentence: sentence-BERT (all-mpnet-base-v2, all-MiniLM-L6-v2, paraphrase-multilingual-mpnet-base-v2), Universal Sentence Encoder (v4), InferSent (v2)
+- Contextual: BERT (bert-base-uncased, bert-large-uncased), RoBERTa-base, RoBERTa-large, DeBERTa-v3-base, DeBERTa-v3-large
+- Domain-specific: SecBERT, CySecBERT, SecurityBERT (cybersecurity domain pre-training)
+- Instruction-tuned: E5-large-instruct, GTE-large-en-v1.5, BGE-large-en-v1.5, Nomic-embed-text-v1.5
+
+**Similarity / Distance Measures**
+- Cosine similarity
+- Euclidean (L2) distance
+- Manhattan (L1) distance
+- Dot product
+- Jaccard similarity (token overlap, bigram overlap)
+- Word Mover's Distance (WMD) via Gensim
+- SoftWMD (relaxed WMD)
+- BERTScore (precision, recall, F1)
+- BLEURT
+- MoverScore
+- Entailment probability via NLI model (DeBERTa-large-mnli, cross-encoder/nli-deberta-v3-large)
+- Symmetric entailment score (bi-directional NLI)
+
+**Classification (predict STRM relationship type)**
+- Logistic regression (L1, L2 regularization)
+- Linear SVM
+- SVM with RBF kernel
+- Random Forest (100, 500 trees)
+- Gradient Boosting (XGBoost, LightGBM, CatBoost)
+- Multi-layer perceptron
+- Fine-tuned BERT classifier (cross-encoder architecture)
+- Zero-shot classification (DeBERTa NLI backbone)
+- Few-shot with in-context examples
+
+**Regression (predict STRM strength score)**
+- Linear regression (OLS)
+- Ridge regression (alpha grid search)
+- Lasso regression
+- Elastic Net
+- SVR (linear, RBF kernel)
+- Gradient Boosting regression (XGBoost, LightGBM)
+- Ordinal regression (since 1–10 is ordinal, not continuous)
+- Bayesian ridge regression
+- Neural regression (MLP on embeddings)
+
+**Statistical Tests**
+- Spearman rank correlation
+- Pearson correlation
+- Kendall's tau
+- Point-biserial correlation
+- Cohen's kappa (relationship type classification agreement)
+- Weighted Cohen's kappa (ordinal penalty)
+- Fleiss' kappa (multi-rater extension)
+- Bland-Altman analysis (NLP score vs. expert score agreement)
+- Kruskal-Wallis H-test (multi-group comparison)
+- Mann-Whitney U test (two-group comparison)
+- Chi-square test (categorical association)
+- Fisher's exact test
+- Kolmogorov-Smirnov test (distribution comparison)
+- Permutation tests for all correlation claims
+- Bootstrap confidence intervals (10,000 resamples)
+- Bonferroni correction for multiple comparisons
+- False Discovery Rate (Benjamini-Hochberg) for large-scale testing
+
+**Evaluation Metrics for Classification**
+- Accuracy (macro, micro, weighted)
+- Precision, Recall, F1 per class
+- Cohen's kappa for inter-rater agreement simulation
+- ROC-AUC (one-vs-rest)
+- Confusion matrix analysis
+- Calibration curves (reliability diagrams)
+
+---
+
+### P2 — Control Space Topology
+
+**Research question**: Do the SCF's 33 editorial domains correspond to natural semantic communities in the control graph, or are they organizational artifacts that obscure the actual structure of control space?
+
+#### Hypotheses
+
+| ID | Hypothesis | Null | Test |
+|----|-----------|------|------|
+| H2.1 | Community detection on the STRM-weighted control graph produces communities that differ significantly from the 33 editorial domains | Editorial partition = optimal community partition | Compare modularity Q of editorial partition vs. discovered partition (NMI, ARI) |
+| H2.2 | Some SCF domains are structurally isolated (low cross-domain connectivity) while others are structurally central (high cross-domain connectivity) | Degree centrality is uniform across domain nodes | Degree centrality distribution test; identify hubs and isolates |
+| H2.3 | The 39 risk categories form natural clusters in the control graph that cut across editorial domain lines | Risk categories cluster within, not across, domains | Community detection seeded by risk category labels; modularity comparison |
+| H2.4 | STRM relationship type (⊂, ∩, =, ⊃) predicts edge weight in the control graph independently of strength score | Relationship type adds no information beyond strength score | Partial correlation; regression with both predictors |
+| H2.5 | Graph density varies systematically across the 33 domains | Density is uniform | Chi-square on degree distribution by domain |
+
+**Algorithm Inventory**
+- Graph construction: NetworkX, PyG, iGraph
+- Community detection: Louvain, Leiden, Girvan-Newman, Label Propagation, Infomap, Spectral Clustering, METIS, Markov Clustering (MCL)
+- Centrality measures: Degree, Betweenness, Closeness, Eigenvector, PageRank, HITS
+- Graph embeddings: Node2Vec, DeepWalk, GraphSAGE, GCN, GAT
+- Comparison metrics: Normalized Mutual Information (NMI), Adjusted Rand Index (ARI), Variation of Information, Modularity Q
+- Visualization: UMAP, t-SNE, ForceAtlas2 (Gephi-compatible), Kamada-Kawai
+
+---
+
+### P3 — Regulatory Convergence Atlas
+
+**Research question**: Which SCF control domains have multi-jurisdictional regulatory consensus, and which are dominated by single-jurisdiction mandates?
+
+#### Hypotheses
+
+| ID | Hypothesis | Null | Test |
+|----|-----------|------|------|
+| H3.1 | LRFs cluster into groups that share control domain emphasis patterns, independent of geographic region | Clustering by control domain profile matches geographic clustering | Compare cluster assignments: domain-profile-based vs. geography-based (ARI) |
+| H3.2 | A small subset of SCF domains (< 20%) accounts for > 60% of all STRM mappings | STRM mappings are uniformly distributed across domains | Pareto analysis; chi-square goodness-of-fit test |
+| H3.3 | STRM relationship type distribution (⊂ vs. ∩ vs. = vs. ⊃) varies significantly by LRF category (law vs. regulation vs. framework) | Distribution is uniform across categories | Chi-square test on contingency table |
+| H3.4 | Regulatory convergence (number of independent LRFs mapping to a domain) predicts SCF control density in that domain | No correlation | Spearman correlation: mapping count vs. control count by domain |
+
+**Algorithm Inventory**
+- TF-IDF-style domain coverage vectors (LRF × domain matrix, weighted by STRM type and strength)
+- Hierarchical agglomerative clustering (Ward, complete, average, single linkage)
+- K-means (k selected by silhouette coefficient and elbow method)
+- DBSCAN / HDBSCAN
+- Non-negative Matrix Factorization (NMF) for latent regulatory theme discovery
+- LDA topic modeling on LRF requirement text
+- Cosine similarity matrix → heatmap
+- t-SNE / UMAP for LRF positioning in domain-coverage space
+- Gephi / NetworkX for LRF-domain bipartite graph visualization
+
+---
+
+### P4 — Risk Blindspot Engine
+
+**Research question**: Given a specific portfolio of compliance frameworks, which of the 39 SCF risk categories remain systematically underserved — and what is the materiality exposure implied by those gaps?
+
+#### Hypotheses
+
+| ID | Hypothesis | Null | Test |
+|----|-----------|------|------|
+| H4.1 | Framework portfolio coverage of the 39 risk categories is non-uniform — some risks are well-covered by nearly all portfolios, others are chronically underserved | Coverage is uniform across 39 risk categories | Chi-square test on coverage distribution |
+| H4.2 | Common practitioner-facing framework combinations (e.g., NIST CSF + SOC 2; HIPAA + NIST 800-171) leave at least one risk group (R-SC or R-GV) with < 40% coverage | Coverage ≥ 40% across all groups for standard portfolios | Coverage scoring per portfolio; threshold analysis |
+| H4.3 | MCR controls provide better risk coverage than DSR controls within the same domain | No difference | Mann-Whitney U on risk coverage scores: MCR vs. DSR by domain |
+| H4.4 | Risk coverage gaps predicted by framework portfolio composition can be identified by a classifier with > 75% accuracy | Accuracy = baseline (majority class) | Multi-label classification: portfolio features → gap labels |
+
+**Algorithm Inventory**
+- Coverage matrix construction: binary (control present/absent) and weighted (STRM strength × relationship type)
+- Set cover analysis: greedy approximation of minimum LRF set for maximum risk coverage
+- Integer Linear Programming for exact minimum set cover (small instances)
+- Multi-label classification (portfolio → gap prediction): Binary Relevance, Label Powerset, Classifier Chains
+- Materiality scoring: tie risk exposure scores to SCF financial materiality thresholds (≥5% pre-tax income proxy)
+- Pareto frontier analysis: coverage gain per additional framework
+- Shapley values for framework contribution attribution
+
+---
+
+### P5 — AI Governance Cluster Analysis
+
+**Research question**: Which controls across all 33 SCF domains are semantically entangled with AI governance — as determined by NLP clustering, not editorial domain assignment?
+
+This module explicitly rejects the AAT domain filter as its starting point. The hypothesis is that AI governance implicates controls across many domains (IAC, DCH, TPM, GOV, RSK, MON, etc.) and that the AAT editorial boundary understates the true cross-domain footprint of AI governance requirements.
+
+#### Hypotheses
+
+| ID | Hypothesis | Null | Test |
+|----|-----------|------|------|
+| H5.1 | A significant portion (> 25%) of AI governance-relevant SCF controls fall outside the AAT domain when identified via NLP clustering rather than editorial assignment | AI governance controls are confined to AAT | Cross-domain percentage of AI governance cluster; chi-square vs. expected AAT concentration |
+| H5.2 | AI governance LRFs (EU AI Act, NIST AI RMF) map to SCF controls in a cross-domain pattern that the AAT domain alone cannot satisfy | AI governance LRF mappings are satisfied by AAT controls alone | Coverage analysis: AI LRFs vs. AAT-only controls vs. full AI governance cluster |
+| H5.3 | AI governance controls form identifiable sub-clusters by risk type (data integrity, model governance, transparency, accountability) that cut across the 33 editorial domains | AI governance controls form one undifferentiated cluster | Sub-cluster analysis; label by AI risk taxonomy |
+| H5.4 | The cross-domain AI governance cluster can be identified with > 80% precision from embedding space alone (without using domain labels as features) | Domain-label-free classification does not achieve > 80% precision | Binary classification: AI governance relevance predicted from embeddings |
+
+**Algorithm Inventory**
+- Embedding all 1,400+ controls (same models as P1)
+- Embedding AI governance LRF requirement texts (EU AI Act, NIST AI RMF, SCF DPMP, ISO/IEC 42001 if available)
+- Semantic similarity scoring: control ↔ AI governance requirement space
+- Thresholding + binary classification to label "AI governance relevant" controls across all 33 domains
+- K-means, HDBSCAN, BERTopic clustering on the labeled set
+- Sub-cluster labeling via NLI-based topic assignment
+- Cross-domain visualization: UMAP with domain color, AI governance overlay
+- Comparison: SCF AAT domain controls vs. NLP-identified AI governance cluster (NMI, ARI, set overlap)
+- AI governance coverage gap: which AI LRF requirements are unaddressed by AAT alone but satisfied by the full cluster?
+
+---
+
+## 6. Technology Stack
+
+| Layer | Technology | Rationale |
+|-------|-----------|-----------|
+| Language | Python 3.11+ | Type hints, Pydantic v2, modern async |
+| Data models | Pydantic v2 | Schema validation, serialization, contract enforcement |
+| Data manipulation | pandas, polars | pandas for compatibility, polars for performance at scale |
+| NLP / Embeddings | sentence-transformers, HuggingFace transformers, spaCy | Comprehensive NLP toolchain |
+| ML | scikit-learn, XGBoost, LightGBM | Classification, regression, clustering |
+| Graph | NetworkX, PyG (PyTorch Geometric), iGraph | Graph construction + GNN capability |
+| Statistical testing | scipy.stats, pingouin, statsmodels | Hypothesis testing, effect sizes |
+| Experiment tracking | MLflow | Reproducible experiments, model registry |
+| Visualization | matplotlib, seaborn, plotly, pyvis | Static + interactive outputs |
+| Dimensionality reduction | UMAP-learn, scikit-learn (PCA, t-SNE) | Visualization and exploration |
+| Topic modeling | BERTopic, Gensim (LDA) | Latent theme discovery |
+| Notebooks | Jupyter | EDA and results documentation |
+| Code quality | black (100 char), ruff, mypy | Consistency with project standards |
+| Testing | pytest | Unit + integration tests for all src/ modules |
+| Build | Makefile | Standardized commands |
+| Dependency management | pip + requirements.txt | Per project standards |
+
+---
+
+## 7. Cross-Cutting Requirements
+
+### Reproducibility
+- All random seeds fixed and documented per experiment
+- Data versioning: source files archived with SHA256 hash + download date
+- Embedding cache: stored with model name + version in filename
+- MLflow: every experiment logged with parameters, metrics, artifacts
+
+### Scientific Rigor
+- Every module's hypotheses pre-registered before analysis begins (documented in research/ directory)
+- Multiple comparisons corrected (Bonferroni and/or Benjamini-Hochberg)
+- Effect sizes reported alongside p-values
+- Null results documented and published — a "no significant difference" finding is a finding
+- Confidence intervals on all point estimates (bootstrap where parametric assumptions don't hold)
+
+### Modularity Contract
+- Every `src/` module is independently importable with no circular dependencies
+- Every module accepts typed inputs from the canonical schema and returns typed outputs
+- Analysis modules may depend on `src/` library modules but not on each other's outputs directly — outputs are written to `data/03-processed/` or `experiments/` and consumed by downstream modules via explicit file reads
+
+### Extensibility Gates
+- Adding a new framework: add a parser in `src/ingestion/`, add a `Framework` record, add a data acquisition note in this charter, ingest to `data/01-raw/`
+- Adding a new embedding model: add to the embedding engine registry in `src/embeddings/`; all downstream modules consume from the embedding cache, so no changes elsewhere
+- Adding a new P-module: add a research design file in `research/`, add an experiment directory, add `src/` components as needed
+
+---
+
+## 8. Licensing and IP Notes
+
+All analysis is performed on openly licensed source material. The SCF's Creative Commons BY-ND 4.0 license permits analysis and derivative works with attribution. NIST materials are US government public domain. CIS Controls are available under CIS open terms for non-commercial analysis.
+
+**Critical IP boundary**: The STRM calibration findings in P1 are themselves original analytical work — the comparison between NLP-derived similarity scores and SCF expert scores is not a derivative of the SCF. The methodology and findings are independently copyrightable research outputs.
+
+The SCF's explicit argument that EDC > NLP for IP reasons does not preclude analyzing those mappings empirically. Observation ≠ reproduction.
+
+---
+
+## 8.5 Program Governance — Tier Completion and Escalation
+
+*Established via issues #91 and #94. Supersedes the original auto-escalation language in Section 1.5.*
+
+### Execution Model
+
+The platform is an autonomous research organism (ADR-0012). Thomas builds and governs the infrastructure; the platform conducts the research. Thomas approves Charter amendments and tier completion; the platform handles all execution within approved scope.
+
+### Tier 1 Completion Criteria
+
+Tier 1 is complete when **both** of the following are true:
+
+1. **SCF data space fully characterized** — platform self-assessed. The platform evaluates diminishing returns across active research threads. When no active module is generating findings of sufficient novelty or business significance, the platform generates a completion assessment with supporting evidence.
+
+2. **At least one Tier 1 finding published** — preprint (arXiv) counts. The publication serves two purposes simultaneously: community influence (primary strategic objective) and context base for Tier 2 exploration. The publication informs Tier 2 possibilities; it does not pre-specify Tier 2 hypotheses.
+
+Tier 1 completion is **platform-proposed, Thomas-approved**: the platform generates a Tier 1 completion report, Thomas reviews and approves. Tier 1 is not done until the completion report is approved.
+
+### Tier Escalation Model
+
+**T1 → T2 is a completion gate, not a quality gate.**
+
+Tier 2 executes when Tier 1 is complete — unconditionally. The quality of Tier 1 findings does not gate Tier 2. Cross-framework comparison is worth conducting regardless of whether Tier 1 findings are strong or null. Null results in Tier 1 are findings; they do not block Tier 2.
+
+If the Tier 1 platform generates cross-framework intelligence (questions comparing SCF to other frameworks), that is a **Charter violation** — the scope boundary is broken, not the findings. This triggers Escalation routing per ADR-0012: park the finding, notify Thomas, correct scope. Tier 2 does not begin early because interesting cross-framework questions emerge.
+
+**T2 → T3 is a prerequisites gate.**
+
+Tier 3 has genuine blocking prerequisites that do not currently exist:
+- External breach/loss data licensing
+- Privacy and consent framework design
+- Ethics review
+
+Tier 3 cannot proceed until all three prerequisites are independently satisfied. The platform monitors T3 prerequisites passively but cannot self-authorize T3 entry under any conditions. Thomas initiates T3 feasibility work explicitly.
+
+### Tier 2 and Tier 3 Completion
+
+Follow the same two-condition model as Tier 1, adapted to their scope:
+- Fully characterized data space for that tier's domain
+- At least one published finding from that tier
+
+### Single-Operator Independence Model
+
+This is a single-operator program. Thomas Jones is the researcher, operator, and Charter approver. There is no independent co-reviewer.
+
+Independence from researcher bias is achieved through structural transparency, not co-reviewer availability. This was an explicit design decision (see issue #89) — evaluated alternatives included OSF pre-registration and an independent Gate 2 co-reviewer; both were declined as incompatible with the autonomous iterative model.
+
+The independence mechanisms are:
+
+- **Code gates** — Gate 2 is deterministic code that cannot be bypassed. The platform cannot enter confirmatory analysis without an approval event being cryptographically logged.
+- **Append-only provenance** — the W3C PROV-DM audit trail records every platform action before the next step executes. No step can be retroactively removed.
+- **Timestamped pre-registration** — every hypothesis the platform pursues is logged to the Preregistration Ledger with an RFC 3161 timestamp before confirmatory testing begins.
+- **Complete reproducibility package** — all data, code, configurations, and logs are published with findings so any reviewer can reconstruct the full decision history.
+
+This is documented as a deliberate methodological position, not an oversight. The manuscript will state it explicitly.
+
+---
+
+## 9. Open Questions (To Be Resolved Before Build Begins)
+
+1. **Historical version analysis**: SCF releases quarterly. How many historical versions should the initial corpus include? Version-comparison analysis (how the control graph evolves over time) is a potential P6 module.
+2. **Paywalled frameworks**: ISO 27001, PCI DSS full text, HITRUST — at what point do we pursue licensing? These would significantly expand the LRF corpus in P3 and P4.
+3. **Deliverable format**: Is the primary output (a) published research, (b) a practitioner-facing tool, (c) a commercial analytical product, or (d) all three in sequence? This affects how the reporting layer is built.
+4. **Compute environment**: Embedding 1,400+ controls × 200+ LRF requirement sets at scale will require GPU time. Local (M-series Mac) may suffice for prototyping; cloud (Lambda Labs, Vast.ai) for production runs.
+5. **STRM PDFs vs. Excel**: The SCF sells STRM Excel bundles ($25) — the free download includes STRM in the main Excel. Clarify whether the main download has all STRM data or only a subset, before designing the ingestion pipeline.
+
+═══════════════════════════════ docs/protocol/00_research_questions.md ═══════════════════════════════
+# Research Questions
+
+**Lock status:** Platform-level questions LOCKED at framework pre-registration.
+**Deferred:** Module-specific confirmatory hypotheses (H[module].[n] format) and effect size parameters. These are deferred until after exploratory characterization of the SCF/STRM corpus.
+
+The distinction between exploratory and confirmatory is enforced structurally, not just procedurally. Exploratory analysis runs on train + validation splits and generates hypotheses. Confirmatory analysis runs on the held-out test split against pre-registered hypotheses only. These two phases share no data. Hypotheses derived from the data that will test them are not hypotheses — they are post-hoc fits.
+
+---
+
+## Platform Context
+
+The Secure Controls Framework (SCF) contains 1,400+ security controls across 33 domains, linked by approximately 280,000 expert-derived Set Theory Relationship Mappings (STRM). Each STRM mapping asserts a logical relationship between controls across frameworks (⊂ ∩ = ⊃ ∅) and assigns a strength score (1–10). These mappings were created by domain experts through judgment-based processes.
+
+**The central empirical gap:** STRM mappings have never been subjected to systematic empirical analysis. Their semantic validity, structural properties, and coverage characteristics are asserted, not measured. This platform is the first large-scale empirical investigation of that gap.
+
+---
+
+## Exploratory Research Questions
+
+Exploratory RQs guide characterization of the corpus before hypotheses are formed. Results from exploratory analysis are descriptive — they generate hypotheses, they do not test them. No p-values are reported for exploratory findings. Effect estimates from exploratory analysis are directional only and must not be used to calibrate confirmatory tests.
+
+**ERQ1 — STRM Semantic Structure (P1)**
+What is the distribution of NLP-derived semantic similarity across the five STRM relationship types, and how does that distribution relate to expert-assigned strength scores? Are the five relationship categories semantically distinguishable at the embedding level, or do they overlap in ways that suggest the expert taxonomy encodes something other than semantic similarity?
+
+**ERQ2 — Control Space Topology (P2)**
+What is the empirical topological structure of the SCF control space when modeled as a directed graph over STRM mappings? Which controls occupy structurally dominant positions, and do the 33 SCF domain boundaries correspond to or cut across empirical community structure?
+
+**ERQ3 — Cross-Framework Convergence (P3)**
+When frameworks are compared via STRM mappings, what proportion of apparent convergence reflects genuine semantic alignment versus terminological similarity — controls that use similar language but address different risk vectors? Does the NIST cluster (NIST 800-53, CSF, 800-171) exhibit convergence patterns distinguishable from inter-author framework pairs?
+
+**ERQ4 — Risk Coverage Distribution (P4)**
+How are the 39 SCF risk categories covered across the control space? Are there systematic gaps — categories with sparse control coverage — or is coverage uniform? Do gaps co-locate with specific domains or framework families?
+
+**ERQ5 — AI Governance Clustering (P5)**
+How do AI governance controls cluster within and across the 33 SCF domains? Is AI governance represented as a coherent cross-cutting concern, as a domain-siloed set of controls, or as something in between? What structural relationship exists between AI governance controls and adjacent domains (privacy, data governance, security)?
+
+---
+
+## Confirmatory Research Questions
+
+**[DEFERRED — to be populated after exploratory characterization]**
+
+Confirmatory RQs are pre-specified. Each maps to one or more hypotheses in the Statistical Analysis Plan, and each hypothesis names a specific statistical test, the data it will run on, and a pre-specified effect size threshold. No confirmatory RQ is added after exploratory analysis begins.
+
+Framework-level confirmatory questions will address whether the patterns observed in exploratory analysis are statistically distinguishable from what would be expected under appropriate null models. Specific CRQ statements will be written once exploratory characterization has established what is actually in the data.
+
+---
+
+## Scope Boundary
+
+The following are explicitly out of scope for this platform:
+
+- Normative evaluation of SCF quality — this platform characterizes structure, it does not assess whether the SCF is a good framework
+- Prescriptive guidance on which controls organizations should adopt — findings are descriptive, not advisory
+- Comparison of SCF against non-SCF frameworks not represented in the STRM corpus
+- Generalization of findings beyond the SCF/STRM corpus to security controls in general without explicit qualification
+
+---
+
+## Change Log
+
+| Date | Change | Reason | Affects pre-registered analysis? |
+|------|--------|--------|----------------------------------|
+| 2026-06-09 | Initial platform-level ERQ lock | Framework pre-registration | N/A — initial registration |
+
+═══════════════════════════════ docs/protocol/02_contribution.md ═══════════════════════════════
+# Contribution Statement
+
+This document states precisely what new knowledge this project adds to the field. It is written before analysis begins and is the standard against which the project's success is measured — not whether the hypotheses are confirmed, but whether the questions are answered rigorously.
+
+A null result that is adequately powered and correctly interpreted is a contribution. A positive result from an underpowered or biased study is not.
+
+---
+
+## The Gap
+
+What is not currently known that this project will address? The gap must be grounded in the literature review — it is not sufficient to assert that something is unknown. The literature review must demonstrate it.
+
+[To be populated after literature synthesis is complete — see `literature/synthesis.md`]
+
+---
+
+## The Contribution
+
+Complete this sentence for each contribution:
+
+*"After this project, the field will know [X], which was previously unknown/unclear/disputed because [Y]."*
+
+**Contribution 1**: [To be populated]
+
+**Contribution 2**: [To be populated]
+
+---
+
+## What This Project Does NOT Claim
+
+Overreach is the most common failure mode in research communication. State explicitly what this project cannot conclude, even if results are strong.
+
+- [To be populated]
+
+---
+
+## Intended Audience
+
+Who is this research for? Different audiences require different framings of the same finding. Identifying them in advance shapes how results are reported without distorting the findings themselves.
+
+| Audience | What they need from this research | Reporting format |
+|----------|----------------------------------|-----------------|
+|          |                                  |                 |
+

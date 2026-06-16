@@ -71,3 +71,25 @@ jobs:
       # Ollama and the metered frontier tier are not in CI and skip honestly.
       - name: Integration + unit tests with coverage
         run: pytest -q --cov=assay_engine --cov-report=term-missing
+
+  # Supply-chain: fail on known-vulnerable dependencies (a security/privacy engine must not ship
+  # with advisories). An allowlist file (.pip-audit-ignore, one advisory id per line) covers
+  # accepted/unfixable ones. (#108)
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install (all extras) + pip-audit
+        run: |
+          python -m pip install --upgrade pip pip-audit
+          pip install -e ".[dev,all]"
+      - name: pip-audit (known-vulnerability scan)
+        run: |
+          IGNORES=""
+          if [ -f .pip-audit-ignore ]; then
+            while read -r id; do [ -n "$id" ] && IGNORES="$IGNORES --ignore-vuln $id"; done < .pip-audit-ignore
+          fi
+          pip-audit --progress-spinner off $IGNORES

@@ -1,0 +1,416 @@
+/Users/thomasjones/hc-grc/src/__init__.py:from .graph import build_graph, run_phase0_synthetic
+/Users/thomasjones/hc-grc/src/__init__.py:    "run_phase0_synthetic",
+/Users/thomasjones/hc-grc/src/checkpointer.py:Per ADR-0015 (#79): run_id propagates to PostgresSaver as thread_id.
+/Users/thomasjones/hc-grc/src/checkpointer.py:LOCAL-FIRST CONSTRAINT: PostgreSQL instance runs on-device.
+/Users/thomasjones/hc-grc/src/checkpointer.py:# threads calling get_checkpointer() concurrently could both pass the check and
+/Users/thomasjones/hc-grc/src/checkpointer.py:# double-register the atexit handler / double-run setup(). This lock makes those
+/Users/thomasjones/hc-grc/src/checkpointer.py:# handler closes them all — registering one per call would accumulate handlers
+/Users/thomasjones/hc-grc/src/checkpointer.py:# across repeated get_checkpointer() calls (#249).
+/Users/thomasjones/hc-grc/src/checkpointer.py:# has already run in this process. setup() is idempotent but not free — re-running
+/Users/thomasjones/hc-grc/src/checkpointer.py:# it on every get_checkpointer() call takes a global advisory lock and replays the
+/Users/thomasjones/hc-grc/src/checkpointer.py:# migration version query at each run start. Bootstrap once per process per schema;
+/Users/thomasjones/hc-grc/src/checkpointer.py:    calls a C finish() that can raise."""
+/Users/thomasjones/hc-grc/src/checkpointer.py:        # the approval gates. Use a self-healing ConnectionPool instead: it runs a
+/Users/thomasjones/hc-grc/src/checkpointer.py:        # atexit handler closes all pools — no per-call accumulation (#249).
+/Users/thomasjones/hc-grc/src/checkpointer.py:        # lock (pass-1 #33). The lock and the migration DDL MUST run on the SAME
+/Users/thomasjones/hc-grc/src/checkpointer.py:        # DDL, leaving the lock ineffective (pass-3 #2). So run setup() through a
+/Users/thomasjones/hc-grc/src/checkpointer.py:        # but a redundant advisory lock + migration SELECT on every run start is
+/Users/thomasjones/hc-grc/src/checkpointer.py:        # don't both run setup() (pass-5); the held lock also serializes the DDL,
+/Users/thomasjones/hc-grc/src/checkpointer.py:        # which is fine — it runs at most once per conn_str per process.
+/Users/thomasjones/hc-grc/src/checkpointer.py:            f"PostgresSaver connection failed. Is Postgres running on {conn_str}? "
+/Users/thomasjones/hc-grc/src/graph.py:  exploratory_phase   ← loop back to re-run EDA with revised hypotheses
+/Users/thomasjones/hc-grc/src/graph.py:Per ADR-0015: run_id propagates through thread_config to PostgresSaver
+/Users/thomasjones/hc-grc/src/graph.py:    run_trace_context,
+/Users/thomasjones/hc-grc/src/graph.py:# Upper bound on graph super-steps per run. Bounds the Gate-2-rejected loop back
+/Users/thomasjones/hc-grc/src/graph.py:# to exploratory analysis so a non-converging run fails loudly (#179).
+/Users/thomasjones/hc-grc/src/graph.py:# crashes the run nor is retried into a re-executed SAP violation); the checkpointer
+/Users/thomasjones/hc-grc/src/graph.py:                      PostgresSaver for production). If None, graph runs
+/Users/thomasjones/hc-grc/src/graph.py:    # Phase 0 wrapper: synthetic IDs matching SCF scale for gate dry-runs.
+/Users/thomasjones/hc-grc/src/graph.py:            "exploratory_entry": "exploratory_phase",    # rejected → re-run EDA
+/Users/thomasjones/hc-grc/src/graph.py:# ── Convenience runners ───────────────────────────────────────────────────────
+/Users/thomasjones/hc-grc/src/graph.py:def run_phase0_synthetic(run_id: str | None = None, checkpointer=None) -> dict[str, Any]:
+/Users/thomasjones/hc-grc/src/graph.py:    Execute one complete Phase 0 synthetic run.
+/Users/thomasjones/hc-grc/src/graph.py:    This function is used in the governance dry-run.
+/Users/thomasjones/hc-grc/src/graph.py:    # the operator. Default to the configured backend so the runner actually parks
+/Users/thomasjones/hc-grc/src/graph.py:    state = initial_state(run_id=run_id)
+/Users/thomasjones/hc-grc/src/graph.py:    # run that never converges terminates with GraphRecursionError instead of
+/Users/thomasjones/hc-grc/src/graph.py:        "configurable": {"thread_id": state["run_id"]},
+/Users/thomasjones/hc-grc/src/graph.py:    with run_trace_context(state["run_id"]):
+/Users/thomasjones/hc-grc/src/graph.py:def resume_run(run_id: str, decision: str, rationale: str, checkpointer,
+/Users/thomasjones/hc-grc/src/graph.py:    Resume a run parked at a gate interrupt with the operator's decision.
+/Users/thomasjones/hc-grc/src/graph.py:    The runners invoke the graph once and return when a gate's interrupt() parks
+/Users/thomasjones/hc-grc/src/graph.py:    guard in _run_gate can reject a stale/misrouted decision targeted at a gate
+/Users/thomasjones/hc-grc/src/graph.py:    Requires the SAME checkpointer the run was started with (thread_id == run_id).
+/Users/thomasjones/hc-grc/src/graph.py:        "configurable": {"thread_id": run_id},
+/Users/thomasjones/hc-grc/src/graph.py:    with run_trace_context(run_id):
+/Users/thomasjones/hc-grc/src/graph.py:def run_phase1_dry_run(run_id: str | None = None, checkpointer=None) -> dict[str, Any]:
+/Users/thomasjones/hc-grc/src/graph.py:    Execute a Phase 1 dry run through Gate 2.
+/Users/thomasjones/hc-grc/src/graph.py:    state = initial_state(run_id=run_id)
+/Users/thomasjones/hc-grc/src/graph.py:    # run that never converges terminates with GraphRecursionError instead of
+/Users/thomasjones/hc-grc/src/graph.py:        "configurable": {"thread_id": state["run_id"]},
+/Users/thomasjones/hc-grc/src/graph.py:    with run_trace_context(state["run_id"]):
+/Users/thomasjones/hc-grc/src/reasoning_client.py:*where* the call runs, how it authenticates, how it retries, times out, and how
+/Users/thomasjones/hc-grc/src/reasoning_client.py:               subprocess env so a stray key can never spill to the metered API
+/Users/thomasjones/hc-grc/src/reasoning_client.py:  - Every call has a per-tier timeout (#145, #158) so a hung backend can never
+/Users/thomasjones/hc-grc/src/reasoning_client.py:  - Every call is wrapped in an OpenTelemetry span carrying run_id/agent_id/tier
+/Users/thomasjones/hc-grc/src/reasoning_client.py:SCF-derived text needed for a single call.
+/Users/thomasjones/hc-grc/src/reasoning_client.py:    complete(tier, prompt, system=..., run_id=..., agent_id=...) -> str
+/Users/thomasjones/hc-grc/src/reasoning_client.py:    """Raised when a reasoning call cannot be completed (backend down, timeout, T1 misuse)."""
+/Users/thomasjones/hc-grc/src/reasoning_client.py:# Tier-2 (Ollama) decoding controls. num_ctx avoids silent truncation at the 2048
+/Users/thomasjones/hc-grc/src/reasoning_client.py:# output so a runaway/JSON-mode generation hits a bound before the hard timeout (#198).
+/Users/thomasjones/hc-grc/src/reasoning_client.py:# Truncation cap for prompt/response text recorded on spans (local Phoenix only).
+/Users/thomasjones/hc-grc/src/reasoning_client.py:# Shared executor for enforcing sync-call timeouts. Not shut down: a hung backend
+/Users/thomasjones/hc-grc/src/reasoning_client.py:# call leaks one daemon worker rather than blocking the node (a ThreadPoolExecutor
+/Users/thomasjones/hc-grc/src/reasoning_client.py:# In-flight worker accounting (#272). A timed-out call abandons (does NOT cancel)
+/Users/thomasjones/hc-grc/src/reasoning_client.py:# llm.invoke/asyncio.run — so a truly-hung backend leaks that slot until (if ever)
+/Users/thomasjones/hc-grc/src/reasoning_client.py:# the call returns. Without a bound, accumulated leaks saturate the 8-slot pool and
+/Users/thomasjones/hc-grc/src/reasoning_client.py:                "workers in-flight) — hung backend call(s) have leaked every worker slot"
+/Users/thomasjones/hc-grc/src/reasoning_client.py:    # was shut down — "cannot schedule new futures after shutdown") the done-callback
+/Users/thomasjones/hc-grc/src/reasoning_client.py:    future.add_done_callback(_release)
+/Users/thomasjones/hc-grc/src/reasoning_client.py:    """Run a sync callable with a hard timeout; raise ReasoningError on overrun.
+/Users/thomasjones/hc-grc/src/reasoning_client.py:    def _run():
+/Users/thomasjones/hc-grc/src/reasoning_client.py:    future = _submit_bounded(_run)
+/Users/thomasjones/hc-grc/src/reasoning_client.py:def _run_sync(coro: Any) -> Any:
+/Users/thomasjones/hc-grc/src/reasoning_client.py:    """Run a coroutine to completion from sync code, even inside a running loop."""
+/Users/thomasjones/hc-grc/src/reasoning_client.py:        asyncio.get_running_loop()
+/Users/thomasjones/hc-grc/src/reasoning_client.py:        return asyncio.run(coro)
+/Users/thomasjones/hc-grc/src/reasoning_client.py:    return _submit_bounded(lambda: asyncio.run(coro)).result(timeout=T3_TIMEOUT + 30)
+/Users/thomasjones/hc-grc/src/reasoning_client.py:        "num_ctx": T2_NUM_CTX,         # avoid silent truncation at the 2048 default (#196)
+/Users/thomasjones/hc-grc/src/reasoning_client.py:        # JSON value, and a num_predict cap would truncate it into INVALID JSON
+/Users/thomasjones/hc-grc/src/reasoning_client.py:        # (#231). The hard timeout remains the runaway backstop.
+/Users/thomasjones/hc-grc/src/reasoning_client.py:    def _call():
+/Users/thomasjones/hc-grc/src/reasoning_client.py:            _call, T2_TIMEOUT + 10, f"Tier 2 (Ollama @ {T2_BASE_URL})"
+/Users/thomasjones/hc-grc/src/reasoning_client.py:            # JSON caller or recording an empty high-stakes answer (#233).
+/Users/thomasjones/hc-grc/src/reasoning_client.py:        raise ReasoningError(f"Tier 2 (Ollama @ {T2_BASE_URL}) call failed: {exc}") from exc
+/Users/thomasjones/hc-grc/src/reasoning_client.py:    Environment for the Agent SDK subprocess with ANTHROPIC_API_KEY removed.
+/Users/thomasjones/hc-grc/src/reasoning_client.py:    ADR-0016: execution runs entirely on the fixed Claude Max subscription via the
+/Users/thomasjones/hc-grc/src/reasoning_client.py:                                   # subprocess — keep the sandbox closed (#12)
+/Users/thomasjones/hc-grc/src/reasoning_client.py:                    meta["model"] = msg.model  # the actual model the run used (#204)
+/Users/thomasjones/hc-grc/src/reasoning_client.py:                # Capture the model's stop reason on SUCCESSFUL runs too (not just
+/Users/thomasjones/hc-grc/src/reasoning_client.py:                # raising. Capture it so a failed run is not returned as success
+/Users/thomasjones/hc-grc/src/reasoning_client.py:        raise ReasoningError(f"Tier 3 run reported an error (status={status}): {detail}")
+/Users/thomasjones/hc-grc/src/reasoning_client.py:        text, meta = _run_sync(_t3_async(prompt, system, max_turns, model))
+/Users/thomasjones/hc-grc/src/reasoning_client.py:        raise ReasoningError(f"Tier 3 (Agent SDK) call failed: {exc}") from exc
+/Users/thomasjones/hc-grc/src/reasoning_client.py:    # input_tokens; on a cached-prefix run they can dominate real input. Fold them
+/Users/thomasjones/hc-grc/src/reasoning_client.py:    run_id: str | None = None,
+/Users/thomasjones/hc-grc/src/reasoning_client.py:    Run a single reasoning call at the given stakes tier and return the text.
+/Users/thomasjones/hc-grc/src/reasoning_client.py:    OpenTelemetry span (run_id/agent_id/tier) so the call is visible in Phoenix.
+/Users/thomasjones/hc-grc/src/reasoning_client.py:    that must keep the graph moving (dry-runs) should catch and degrade.
+/Users/thomasjones/hc-grc/src/reasoning_client.py:            "Tier.T1 is deterministic ML — it has no LLM. A reasoning_client call "
+/Users/thomasjones/hc-grc/src/reasoning_client.py:    # Fall back to the run_id stamped in OTel baggage by run_trace_context, so a
+/Users/thomasjones/hc-grc/src/reasoning_client.py:    # seam span carries the run_id even when the caller didn't pass it (#239).
+/Users/thomasjones/hc-grc/src/reasoning_client.py:    if run_id is None:
+/Users/thomasjones/hc-grc/src/reasoning_client.py:            run_id = baggage.get_baggage("hcgrc.run_id") or None
+/Users/thomasjones/hc-grc/src/reasoning_client.py:            run_id = None
+/Users/thomasjones/hc-grc/src/reasoning_client.py:    # Known model id only — never fabricate one (#204). For a T3 run on the
+/Users/thomasjones/hc-grc/src/reasoning_client.py:        # one — intentional parent/child nesting (the seam-level call + the
+/Users/thomasjones/hc-grc/src/reasoning_client.py:        # provider call), not redundant double-tracing (#214). T3 has no LangChain
+/Users/thomasjones/hc-grc/src/reasoning_client.py:        # span, so this is the only record of the frontier call.
+/Users/thomasjones/hc-grc/src/reasoning_client.py:        if run_id:
+/Users/thomasjones/hc-grc/src/reasoning_client.py:            span.set_attribute("hcgrc.run_id", run_id)
+/Users/thomasjones/hc-grc/src/reasoning_client.py:            span.set_attribute("session.id", run_id)
+/Users/thomasjones/hc-grc/src/reasoning_client.py:            # incomplete and the call is not reproducible from the span (#240).
+/Users/thomasjones/hc-grc/src/reasoning_client.py:    run_id: str | None = None,
+/Users/thomasjones/hc-grc/src/reasoning_client.py:        if run_id:
+/Users/thomasjones/hc-grc/src/reasoning_client.py:            span.set_attribute("hcgrc.run_id", run_id)
+/Users/thomasjones/hc-grc/src/reasoning_client.py:            span.set_attribute("session.id", run_id)  # mirror complete() (pass-6)
+/Users/thomasjones/hc-grc/src/reasoning_client.py:                    max_turns=max_turns, model=model, run_id=run_id, agent_id=agent_id,
+/Users/thomasjones/hc-grc/src/reasoning_client.py:    that must degrade gracefully rather than fail the run.
+/Users/thomasjones/hc-grc/src/reasoning_client.py:    on every call, #174, and could hang with no timeout, #173/#30). T1 is always
+/Users/thomasjones/hc-grc/src/nodes/gate_coordinator.py:        run_id=state["run_id"],
+/Users/thomasjones/hc-grc/src/state.py:where possible to preserve audit history within a run.
+/Users/thomasjones/hc-grc/src/state.py:    run_id: str
+/Users/thomasjones/hc-grc/src/state.py:    Canonical platform state. run_id propagates to all four stores:
+/Users/thomasjones/hc-grc/src/state.py:      - MLflow  (tags.run_id)
+/Users/thomasjones/hc-grc/src/state.py:      - Phoenix (trace attribute run_id)
+/Users/thomasjones/hc-grc/src/state.py:      - PROV-DM (activity IRI contains run_id)
+/Users/thomasjones/hc-grc/src/state.py:    run_id: str  # UUID4, set at graph entry, propagated everywhere
+/Users/thomasjones/hc-grc/src/state.py:    thread_id: str  # LangGraph thread ID (== run_id for single-run threads)
+/Users/thomasjones/hc-grc/src/state.py:    # Written by EmbeddingAgent after embedding run completes. Required at Gate 2
+/Users/thomasjones/hc-grc/src/state.py:    # Deduped on merge so a Gate-2 reject → re-run-exploratory loop cannot
+/Users/thomasjones/hc-grc/src/state.py:    # ── Orchestrator run-start grounding ──────────────────────────────────────
+/Users/thomasjones/hc-grc/src/state.py:    # orchestrator reasons about the run *inside the graph* rather than the work
+/Users/thomasjones/hc-grc/src/state.py:    run_grounding: str | None
+/Users/thomasjones/hc-grc/src/state.py:def initial_state(run_id: str | None = None) -> HCGRCState:
+/Users/thomasjones/hc-grc/src/state.py:    """Return a clean initial state for a new run."""
+/Users/thomasjones/hc-grc/src/state.py:    rid = run_id or str(uuid.uuid4())
+/Users/thomasjones/hc-grc/src/state.py:        run_id=rid,
+/Users/thomasjones/hc-grc/src/state.py:        run_grounding=None,
+/Users/thomasjones/hc-grc/src/nodes/phase1.py:  P1-P5 are currently called sequentially within exploratory_phase_node.
+/Users/thomasjones/hc-grc/src/nodes/phase1.py:  Each P1-P5 call is wrapped in try/except NotImplementedError. Agents that
+/Users/thomasjones/hc-grc/src/nodes/phase1.py:  This allows the graph to execute in tests and governance dry-runs without
+/Users/thomasjones/hc-grc/src/nodes/phase1.py:# Created once at module load; nodes call instance methods.
+/Users/thomasjones/hc-grc/src/nodes/phase1.py:def _stub_status(agent_id: str, run_id: str) -> dict[str, Any]:
+/Users/thomasjones/hc-grc/src/nodes/phase1.py:            "Will run when Phase 1 is live on Mac mini."
+/Users/thomasjones/hc-grc/src/nodes/phase1.py:        "run_id": run_id,
+/Users/thomasjones/hc-grc/src/nodes/phase1.py:def _failed_status(agent_id: str, run_id: str, exc: BaseException) -> dict[str, Any]:
+/Users/thomasjones/hc-grc/src/nodes/phase1.py:    """Status record written when an agent raises a real runtime error (not a stub).
+/Users/thomasjones/hc-grc/src/nodes/phase1.py:        "run_id": run_id,
+/Users/thomasjones/hc-grc/src/nodes/phase1.py:def _failure_event(agent_id: str, run_id: str, exc: BaseException) -> dict[str, Any]:
+/Users/thomasjones/hc-grc/src/nodes/phase1.py:        "event_type": "agent_runtime_error",
+/Users/thomasjones/hc-grc/src/nodes/phase1.py:        "run_id": run_id,
+/Users/thomasjones/hc-grc/src/nodes/phase1.py:def _prov(activity: str, run_id: str, **kwargs: Any) -> dict[str, Any]:
+/Users/thomasjones/hc-grc/src/nodes/phase1.py:        "run_id": run_id,
+/Users/thomasjones/hc-grc/src/nodes/phase1.py:    run_id = state["run_id"]
+/Users/thomasjones/hc-grc/src/nodes/phase1.py:            stage_update = agent.run(state)
+/Users/thomasjones/hc-grc/src/nodes/phase1.py:                "run_id": run_id,
+/Users/thomasjones/hc-grc/src/nodes/phase1.py:                pipeline_statuses.append(_failed_status(agent_id, run_id, exc))
+/Users/thomasjones/hc-grc/src/nodes/phase1.py:                failures.append(_failure_event(agent_id, run_id, exc))
+/Users/thomasjones/hc-grc/src/nodes/phase1.py:                    f"data_pipeline_{agent_id.replace('-', '_')}_failed", run_id, error=repr(exc),
+/Users/thomasjones/hc-grc/src/nodes/phase1.py:            pipeline_statuses.append(_stub_status(agent_id, run_id))
+/Users/thomasjones/hc-grc/src/nodes/phase1.py:                run_id,
+/Users/thomasjones/hc-grc/src/nodes/phase1.py:            # A real runtime error in one stage is recorded as 'failed' and halts
+/Users/thomasjones/hc-grc/src/nodes/phase1.py:            pipeline_statuses.append(_failed_status(agent_id, run_id, exc))
+/Users/thomasjones/hc-grc/src/nodes/phase1.py:            failures.append(_failure_event(agent_id, run_id, exc))
+/Users/thomasjones/hc-grc/src/nodes/phase1.py:                f"data_pipeline_{agent_id.replace('-', '_')}_failed", run_id, error=repr(exc),
+/Users/thomasjones/hc-grc/src/nodes/phase1.py:        "prov_activities": prov + [_prov("data_pipeline_node", run_id,
+/Users/thomasjones/hc-grc/src/nodes/phase1.py:    P1-P5 are PROTECTED agents — they are called via __call__() which dispatches
+/Users/thomasjones/hc-grc/src/nodes/phase1.py:    to run_exploratory() based on state["phase"]. Each returns a partial state
+/Users/thomasjones/hc-grc/src/nodes/phase1.py:    run_id = state["run_id"]
+/Users/thomasjones/hc-grc/src/nodes/phase1.py:            # __call__ dispatches to run_exploratory() based on state["phase"]
+/Users/thomasjones/hc-grc/src/nodes/phase1.py:                "run_id": run_id,
+/Users/thomasjones/hc-grc/src/nodes/phase1.py:            prov.append(_prov(f"exploratory_{agent_id.replace('-', '_')}", run_id,
+/Users/thomasjones/hc-grc/src/nodes/phase1.py:                agent_statuses.append(_failed_status(agent_id, run_id, exc))
+/Users/thomasjones/hc-grc/src/nodes/phase1.py:                failures.append(_failure_event(agent_id, run_id, exc))
+/Users/thomasjones/hc-grc/src/nodes/phase1.py:                    f"exploratory_{agent_id.replace('-', '_')}_failed", run_id, error=repr(exc),
+/Users/thomasjones/hc-grc/src/nodes/phase1.py:            agent_statuses.append(_stub_status(agent_id, run_id))
+/Users/thomasjones/hc-grc/src/nodes/phase1.py:                run_id,
+/Users/thomasjones/hc-grc/src/nodes/phase1.py:            # P1-P5 are independent — one agent's runtime error is recorded as
+/Users/thomasjones/hc-grc/src/nodes/phase1.py:            agent_statuses.append(_failed_status(agent_id, run_id, exc))
+/Users/thomasjones/hc-grc/src/nodes/phase1.py:            failures.append(_failure_event(agent_id, run_id, exc))
+/Users/thomasjones/hc-grc/src/nodes/phase1.py:                f"exploratory_{agent_id.replace('-', '_')}_failed", run_id, error=repr(exc),
+/Users/thomasjones/hc-grc/src/nodes/phase1.py:    # In Phase 1 dry-run (all stubs), stays False — Gate 2 checklist will surface this.
+/Users/thomasjones/hc-grc/src/nodes/phase1.py:        "prov_activities": prov + [_prov("exploratory_phase_node", run_id,
+/Users/thomasjones/hc-grc/src/nodes/phase1.py:    HypothesisFormalizerAgent is PROTECTED. Its run_exploratory() builds hypotheses
+/Users/thomasjones/hc-grc/src/nodes/phase1.py:    run_id = state["run_id"]
+/Users/thomasjones/hc-grc/src/nodes/phase1.py:            "prov_activities": [_prov("hypothesis_formalization", run_id,
+/Users/thomasjones/hc-grc/src/nodes/phase1.py:                "eda_agent_statuses": [_failed_status(agent_id, run_id, exc)],
+/Users/thomasjones/hc-grc/src/nodes/phase1.py:                "failure_events": [_failure_event(agent_id, run_id, exc)],
+/Users/thomasjones/hc-grc/src/nodes/phase1.py:                "prov_activities": [_prov("hypothesis_formalization_failed", run_id,
+/Users/thomasjones/hc-grc/src/nodes/phase1.py:            "eda_agent_statuses": [_stub_status(agent_id, run_id)],
+/Users/thomasjones/hc-grc/src/nodes/phase1.py:            "prov_activities": [_prov("hypothesis_formalization_stub", run_id,
+/Users/thomasjones/hc-grc/src/nodes/phase1.py:        # Isolate a real runtime error: record it instead of crashing the graph,
+/Users/thomasjones/hc-grc/src/nodes/phase1.py:            "eda_agent_statuses": [_failed_status(agent_id, run_id, exc)],
+/Users/thomasjones/hc-grc/src/nodes/phase1.py:            "failure_events": [_failure_event(agent_id, run_id, exc)],
+/Users/thomasjones/hc-grc/src/nodes/phase1.py:            "prov_activities": [_prov("hypothesis_formalization_failed", run_id,
+/Users/thomasjones/hc-grc/src/nodes/phase1.py:    Gate 2 approval is required before this node runs (enforced by
+/Users/thomasjones/hc-grc/src/nodes/phase1.py:    (statistical-analyst + P1-P5 confirmatory runs) is Phase 2 mechanism work.
+/Users/thomasjones/hc-grc/src/nodes/phase1.py:                state["run_id"],
+/Users/thomasjones/hc-grc/src/nodes/data_split.py:Same manifest → identical seed → identical split on every independent run.
+/Users/thomasjones/hc-grc/src/nodes/data_split.py:Semantically equivalent to GroupKFold when control_ids contains exactly one entry
+/Users/thomasjones/hc-grc/src/nodes/data_split.py:per unique control. CALLER CONTRACT: control_ids must be deduplicated before calling —
+/Users/thomasjones/hc-grc/src/nodes/data_split.py:in separate splits. The DataSplitAgent is responsible for deduplication before this call.
+/Users/thomasjones/hc-grc/src/nodes/data_split.py:No SCF control text appears in both train and test partitions (given the caller contract).
+/Users/thomasjones/hc-grc/src/nodes/data_split.py:                "run_id": state.get("run_id"),
+/Users/thomasjones/hc-grc/src/agents/__init__.py:  NotImplementedError until Phase 1 runs on the Mac mini with real SCF data.
+/Users/thomasjones/hc-grc/src/agents/__init__.py:  Interfaces, behavioral constraints, and error guards defined; run() raises
+/Users/thomasjones/hc-grc/src/nodes/gates.py:                          checklist: list[str], run_id: str) -> dict[str, Any]:
+/Users/thomasjones/hc-grc/src/nodes/gates.py:        "run_id": run_id,
+/Users/thomasjones/hc-grc/src/nodes/gates.py:def _rejection_event(gate_id: str, rationale: str, run_id: str) -> dict[str, Any]:
+/Users/thomasjones/hc-grc/src/nodes/gates.py:        "run_id": run_id,
+/Users/thomasjones/hc-grc/src/nodes/gates.py:# re-unlock). 'rejected' routes back for re-review and 'deferred' parks the run for
+/Users/thomasjones/hc-grc/src/nodes/gates.py:    Guards against a re-invocation re-firing the interrupt and re-running
+/Users/thomasjones/hc-grc/src/nodes/gates.py:        update["failure_events"] = [_rejection_event(gate_id, rationale, state["run_id"])]
+/Users/thomasjones/hc-grc/src/nodes/gates.py:def _run_gate(state: HCGRCState, gate_id: str, proposal: dict[str, Any]) -> dict[str, Any]:
+/Users/thomasjones/hc-grc/src/nodes/gates.py:    Validation runs INSIDE a re-prompt loop (pass-3 #3): interrupt() consumes and
+/Users/thomasjones/hc-grc/src/nodes/gates.py:      1. LangGraph skeleton running
+/Users/thomasjones/hc-grc/src/nodes/gates.py:      5. Governance dry-run complete (full escalation loop exercised)
+/Users/thomasjones/hc-grc/src/nodes/gates.py:        "compute_data_split() produces identical splits on two independent runs (SHA-256 seed)",
+/Users/thomasjones/hc-grc/src/nodes/gates.py:        "Governance dry-run complete — escalation loop exercised end-to-end",
+/Users/thomasjones/hc-grc/src/nodes/gates.py:        # STRM label distribution from EDA — which has not run yet at Gate 1.
+/Users/thomasjones/hc-grc/src/nodes/gates.py:        run_id=state["run_id"],
+/Users/thomasjones/hc-grc/src/nodes/gates.py:    return _run_gate(state, "gate_1", proposal)
+/Users/thomasjones/hc-grc/src/nodes/gates.py:        hard_failures.append("data_split_verified is False — run compute_data_split() first")
+/Users/thomasjones/hc-grc/src/nodes/gates.py:        # prerequisite failure must PARK the run (route_after_gate_2 deferred→END),
+/Users/thomasjones/hc-grc/src/nodes/gates.py:        # spin forever because re-running exploratory cannot satisfy an unmet
+/Users/thomasjones/hc-grc/src/nodes/gates.py:        # 'deferred' is non-terminal, so this path re-runs whenever gate_2 is
+/Users/thomasjones/hc-grc/src/nodes/gates.py:                    "run_id": state["run_id"],
+/Users/thomasjones/hc-grc/src/nodes/gates.py:        "Data split idempotency verified (SHA-256 seed, two independent runs identical)",
+/Users/thomasjones/hc-grc/src/nodes/gates.py:        "Exploratory analysis complete — no confirmatory tests have run",
+/Users/thomasjones/hc-grc/src/nodes/gates.py:        run_id=state["run_id"],
+/Users/thomasjones/hc-grc/src/nodes/gates.py:    return _run_gate(state, "gate_2", proposal)
+/Users/thomasjones/hc-grc/src/nodes/gates.py:    confirmatory test runs. Approving this gate:
+/Users/thomasjones/hc-grc/src/nodes/gates.py:    in stub_pending status is acceptable for a governance dry-run).
+/Users/thomasjones/hc-grc/src/nodes/gates.py:            "This is the last human checkpoint before any confirmatory tests run."
+/Users/thomasjones/hc-grc/src/nodes/gates.py:        run_id=state["run_id"],
+/Users/thomasjones/hc-grc/src/nodes/gates.py:    return _run_gate(state, "gate_3", proposal)
+/Users/thomasjones/hc-grc/src/nodes/gates.py:    Fires after all confirmatory analyses complete (P1-P5 confirmatory runs +
+/Users/thomasjones/hc-grc/src/nodes/gates.py:        run_id=state["run_id"],
+/Users/thomasjones/hc-grc/src/nodes/gates.py:    return _run_gate(state, "gate_4", proposal)
+/Users/thomasjones/hc-grc/src/nodes/gates.py:        run_id=state["run_id"],
+/Users/thomasjones/hc-grc/src/nodes/gates.py:    return _run_gate(state, "gate_5", proposal)
+/Users/thomasjones/hc-grc/src/nodes/orchestrator.py:T-00 Orchestrator — run-start grounding + Phase 0 routing.
+/Users/thomasjones/hc-grc/src/nodes/orchestrator.py:  - Run-start grounding: the orchestrator reasons about the run *through the
+/Users/thomasjones/hc-grc/src/nodes/orchestrator.py:    "LangGraph agency that empirically tests the Secure Controls Framework's "
+/Users/thomasjones/hc-grc/src/nodes/orchestrator.py:    "At run start you ground the run: state the immediate objective, the next "
+/Users/thomasjones/hc-grc/src/nodes/orchestrator.py:    "run. Respond in at most 120 words."
+/Users/thomasjones/hc-grc/src/nodes/orchestrator.py:        "(pre-data checkpoint). Gate 1 preconditions: LangGraph skeleton runs, "
+/Users/thomasjones/hc-grc/src/nodes/orchestrator.py:        "governance dry-run complete. Approval unlocks Phase 1 data ingestion."
+/Users/thomasjones/hc-grc/src/nodes/orchestrator.py:    T-00 orchestrator node — run-start grounding through the framework.
+/Users/thomasjones/hc-grc/src/nodes/orchestrator.py:    The orchestrator reasons about the run via the reasoning_client (Tier 2):
+/Users/thomasjones/hc-grc/src/nodes/orchestrator.py:    preconditions) that is written to state["run_grounding"] and recorded in
+/Users/thomasjones/hc-grc/src/nodes/orchestrator.py:    dry-run with no Ollama), run_grounding stays None and the run proceeds. The
+/Users/thomasjones/hc-grc/src/nodes/orchestrator.py:    run_id = state.get("run_id")
+/Users/thomasjones/hc-grc/src/nodes/orchestrator.py:        f"Run {run_id} is starting in {phase}.\n"
+/Users/thomasjones/hc-grc/src/nodes/orchestrator.py:        "Ground this run."
+/Users/thomasjones/hc-grc/src/nodes/orchestrator.py:            run_id=run_id, agent_id="orchestrator",
+/Users/thomasjones/hc-grc/src/nodes/orchestrator.py:        note = f"T-00 run-start grounding produced via reasoning_client ({_ORCHESTRATOR_TIER.value})"
+/Users/thomasjones/hc-grc/src/nodes/orchestrator.py:        "run_grounding": grounding,
+/Users/thomasjones/hc-grc/src/nodes/orchestrator.py:                "run_id": run_id,
+/Users/thomasjones/hc-grc/src/agents/base.py:same __call__ signature. The contract is:
+/Users/thomasjones/hc-grc/src/agents/base.py:by the graph runtime. Agents must never mutate state in place.
+/Users/thomasjones/hc-grc/src/agents/base.py:    Must be called before any agent accesses test_ids or test split data.
+/Users/thomasjones/hc-grc/src/agents/base.py:            f"{gate_2.get('decision') if gate_2 else 'not_run'}. "
+/Users/thomasjones/hc-grc/src/agents/base.py:    Subclasses implement run_exploratory() and run_confirmatory() separately.
+/Users/thomasjones/hc-grc/src/agents/base.py:    The __call__ method dispatches based on state["phase"].
+/Users/thomasjones/hc-grc/src/agents/base.py:    # Set True once the agent's run_* methods are real. While False, a
+/Users/thomasjones/hc-grc/src/agents/base.py:    def __call__(self, state: HCGRCState) -> dict[str, Any]:
+/Users/thomasjones/hc-grc/src/agents/base.py:        LangGraph-compatible call: returns a partial state update dict.
+/Users/thomasjones/hc-grc/src/agents/base.py:        Dispatches to run_exploratory() or run_confirmatory() based on phase.
+/Users/thomasjones/hc-grc/src/agents/base.py:        phase_2 (see state.Phase). Exploratory analysis runs in phase_0/phase_1;
+/Users/thomasjones/hc-grc/src/agents/base.py:        confirmatory analysis runs in phase_2, where the Gate 2 SAP firewall
+/Users/thomasjones/hc-grc/src/agents/base.py:        so run_confirmatory and the SAP firewall were unreachable.)
+/Users/thomasjones/hc-grc/src/agents/base.py:            return self.run_exploratory(state)
+/Users/thomasjones/hc-grc/src/agents/base.py:            return self.run_confirmatory(state)
+/Users/thomasjones/hc-grc/src/agents/base.py:    def run_exploratory(self, state: HCGRCState) -> dict[str, Any]:
+/Users/thomasjones/hc-grc/src/agents/base.py:    def run_confirmatory(self, state: HCGRCState) -> dict[str, Any]:
+/Users/thomasjones/hc-grc/src/agents/base.py:        Gate 2 approval is verified by __call__ before this is invoked.
+/Users/thomasjones/hc-grc/src/agents/base.py:    exploratory or confirmatory analysis — they have no run_exploratory() /
+/Users/thomasjones/hc-grc/src/agents/base.py:    run_confirmatory() distinction. They run once at project initialization and
+/Users/thomasjones/hc-grc/src/agents/base.py:    re-run when the SCF corpus is updated.
+/Users/thomasjones/hc-grc/src/agents/base.py:    The run() return dict is a partial HCGRCState update, merged by the graph runtime.
+/Users/thomasjones/hc-grc/src/agents/base.py:    def run(self, state: HCGRCState) -> dict[str, Any]:
+/Users/thomasjones/hc-grc/src/agents/p4_risk_blindspot/agent.py:    def run_exploratory(self, state: HCGRCState) -> dict[str, Any]:
+/Users/thomasjones/hc-grc/src/agents/p4_risk_blindspot/agent.py:    def run_confirmatory(self, state: HCGRCState) -> dict[str, Any]:
+/Users/thomasjones/hc-grc/src/agents/p4_risk_blindspot/agent.py:        Gate 2 approval verified by BaseResearchAgent.__call__.
+/Users/thomasjones/hc-grc/src/agents/p1_strm_nlp/agent.py:NLP METHOD TIERS (all must run in exploratory phase — no cherry-picking):
+/Users/thomasjones/hc-grc/src/agents/p1_strm_nlp/agent.py:        - run_id: for MLflow experiment tagging and PROV-DM
+/Users/thomasjones/hc-grc/src/agents/p1_strm_nlp/agent.py:    def run_exploratory(self, state: HCGRCState) -> dict[str, Any]:
+/Users/thomasjones/hc-grc/src/agents/p1_strm_nlp/agent.py:            "data/splits/train.parquet + val.parquet, (2) run all 5 NLP tiers, "
+/Users/thomasjones/hc-grc/src/agents/p1_strm_nlp/agent.py:    def run_confirmatory(self, state: HCGRCState) -> dict[str, Any]:
+/Users/thomasjones/hc-grc/src/agents/p1_strm_nlp/agent.py:        Gate 2 approval verified by BaseResearchAgent.__call__ before this runs.
+/Users/thomasjones/hc-grc/src/agents/data_curation/agent.py:Phase 1 stub: run() raises NotImplementedError.
+/Users/thomasjones/hc-grc/src/agents/data_curation/agent.py:    """Summary produced by a curation run. Surfaces in lab notebook and Gate 2 review."""
+/Users/thomasjones/hc-grc/src/agents/data_curation/agent.py:    def run(self, state: HCGRCState) -> dict[str, Any]:
+/Users/thomasjones/hc-grc/src/agents/data_curation/agent.py:          6. Apply same rules identically to all three splits
+/Users/thomasjones/hc-grc/src/agents/data_curation/agent.py:            "DataCurationAgent.run() — Phase 1 implementation pending. "
+/Users/thomasjones/hc-grc/src/agents/data_curation/agent.py:        Raises ValueError — calling node must propagate to Gate 2 blocker.
+/Users/thomasjones/hc-grc/src/agents/data_curation/agent.py:        self, config_hash_at_run: str, config_hash_expected: str
+/Users/thomasjones/hc-grc/src/agents/data_curation/agent.py:        Curation rules must be identical across all runs for reproducibility.
+/Users/thomasjones/hc-grc/src/agents/data_curation/agent.py:        if config_hash_at_run != config_hash_expected:
+/Users/thomasjones/hc-grc/src/agents/data_curation/agent.py:                "rules across all splits and all runs. "
+/Users/thomasjones/hc-grc/src/agents/data_curation/agent.py:                f"Expected: {config_hash_expected}, got: {config_hash_at_run}"
+/Users/thomasjones/hc-grc/src/agents/data_curation/agent.py:    def _build_prov_record(self, report: CurationReport, run_id: str) -> dict[str, Any]:
+/Users/thomasjones/hc-grc/src/agents/data_curation/agent.py:            "run_id": run_id,
+/Users/thomasjones/hc-grc/src/agents/hypothesis_formalizer/agent.py:    def run_exploratory(self, state: HCGRCState) -> dict[str, Any]:
+/Users/thomasjones/hc-grc/src/agents/hypothesis_formalizer/agent.py:    def run_confirmatory(self, state: HCGRCState) -> dict[str, Any]:
+/Users/thomasjones/hc-grc/src/agents/hypothesis_formalizer/agent.py:        Hypothesis Formalizer does not run in confirmatory phase.
+/Users/thomasjones/hc-grc/src/agents/repo_documentation/agent.py:        "Architecture, interfaces, dependencies, test coverage, how to run, how to extend. "
+/Users/thomasjones/hc-grc/src/agents/repo_documentation/agent.py:    Output of a documentation generation run.
+/Users/thomasjones/hc-grc/src/agents/repo_documentation/agent.py:    run_id: str = ""
+/Users/thomasjones/hc-grc/src/agents/repo_documentation/agent.py:    Dispatches by DocumentationMode, not by research phase. Can run in
+/Users/thomasjones/hc-grc/src/agents/repo_documentation/agent.py:    def run_exploratory(self, state: HCGRCState) -> dict[str, Any]:
+/Users/thomasjones/hc-grc/src/agents/repo_documentation/agent.py:        Safe to run in exploratory phase for all documentation modes EXCEPT
+/Users/thomasjones/hc-grc/src/agents/repo_documentation/agent.py:    def run_confirmatory(self, state: HCGRCState) -> dict[str, Any]:
+/Users/thomasjones/hc-grc/src/agents/repo_documentation/agent.py:                f"{gate_4.get('decision') if gate_4 else 'not_run'}."
+/Users/thomasjones/hc-grc/src/agents/embedding_agent/agent.py:Phase 1 stub: run() raises NotImplementedError.
+/Users/thomasjones/hc-grc/src/agents/embedding_agent/agent.py:    Provenance record for an embedding run. Written to state and to disk.
+/Users/thomasjones/hc-grc/src/agents/embedding_agent/agent.py:    def run(self, state: HCGRCState) -> dict[str, Any]:
+/Users/thomasjones/hc-grc/src/agents/embedding_agent/agent.py:             NOTE: primary model is NULL until Gate 2 designation. Phase 1 runs
+/Users/thomasjones/hc-grc/src/agents/embedding_agent/agent.py:            "EmbeddingAgent.run() — Phase 1 implementation pending. "
+/Users/thomasjones/hc-grc/src/agents/embedding_agent/agent.py:            "Requires: curated corpus from DataCurationAgent, Qdrant Docker running, "
+/Users/thomasjones/hc-grc/src/agents/embedding_agent/agent.py:        self, manifest: EmbeddingManifest, run_id: str
+/Users/thomasjones/hc-grc/src/agents/embedding_agent/agent.py:        """Build provenance record for the embedding run."""
+/Users/thomasjones/hc-grc/src/agents/embedding_agent/agent.py:            "run_id": run_id,
+/Users/thomasjones/hc-grc/src/agents/statistical_analyst/agent.py:    n_obs, decision (supported/not-supported), run_id, timestamp_utc, sap_ref
+/Users/thomasjones/hc-grc/src/agents/statistical_analyst/agent.py:    run_id: str
+/Users/thomasjones/hc-grc/src/agents/statistical_analyst/agent.py:    Does not run in exploratory phase — raises SAPViolationError if called before Gate 2.
+/Users/thomasjones/hc-grc/src/agents/statistical_analyst/agent.py:    def run_exploratory(self, state: HCGRCState) -> dict[str, Any]:
+/Users/thomasjones/hc-grc/src/agents/statistical_analyst/agent.py:        Statistical Analyst does not run in exploratory phase.
+/Users/thomasjones/hc-grc/src/agents/statistical_analyst/agent.py:            "Statistical Analyst may not run before Gate 2 approval. "
+/Users/thomasjones/hc-grc/src/agents/statistical_analyst/agent.py:            "Wait for Gate 2 before calling this agent."
+/Users/thomasjones/hc-grc/src/agents/statistical_analyst/agent.py:    def run_confirmatory(self, state: HCGRCState) -> dict[str, Any]:
+/Users/thomasjones/hc-grc/src/agents/statistical_analyst/agent.py:        Gate 2 approval verified by BaseResearchAgent.__call__.
+/Users/thomasjones/hc-grc/src/agents/statistical_analyst/agent.py:        This check runs before any test data is loaded.
+/Users/thomasjones/hc-grc/src/agents/p3_regulatory_convergence/agent.py:    def run_exploratory(self, state: HCGRCState) -> dict[str, Any]:
+/Users/thomasjones/hc-grc/src/agents/p3_regulatory_convergence/agent.py:    def run_confirmatory(self, state: HCGRCState) -> dict[str, Any]:
+/Users/thomasjones/hc-grc/src/agents/p3_regulatory_convergence/agent.py:        Gate 2 approval verified by BaseResearchAgent.__call__.
+/Users/thomasjones/hc-grc/src/agents/p3_regulatory_convergence/agent.py:        In Phase 1 implementation: calls local LLM via Instructor with a
+/Users/thomasjones/hc-grc/src/agents/data_steward/agent.py:Phase 1 stub: run() and get_split_paths() raise NotImplementedError.
+/Users/thomasjones/hc-grc/src/agents/data_steward/agent.py:      - Never re-run the split after Gate 2 without a full protocol amendment
+/Users/thomasjones/hc-grc/src/agents/data_steward/agent.py:    def run(self, state: HCGRCState) -> dict[str, Any]:
+/Users/thomasjones/hc-grc/src/agents/data_steward/agent.py:            "DataStewardAgent.run() — Phase 1 implementation pending. "
+/Users/thomasjones/hc-grc/src/agents/data_steward/agent.py:                    f"Current gate_2 decision: {gate_2.get('decision', 'not_run')}. "
+/Users/thomasjones/hc-grc/src/agents/data_steward/agent.py:                    f"Current gate_3 decision: {gate_3.get('decision', 'not_run')}. "
+/Users/thomasjones/hc-grc/src/agents/data_steward/agent.py:        self, split_record: SplitRecord, run_id: str
+/Users/thomasjones/hc-grc/src/agents/data_steward/agent.py:            "run_id": run_id,
+/Users/thomasjones/hc-grc/src/agents/data_acquisition/agent.py:and runs the ARA Compiler to produce structured research artifacts in ara/artifacts/.
+/Users/thomasjones/hc-grc/src/agents/data_acquisition/agent.py:Phase 1 stub: run() raises NotImplementedError until real SCF data pipeline is
+/Users/thomasjones/hc-grc/src/agents/data_acquisition/agent.py:    """Record of a completed data acquisition run."""
+/Users/thomasjones/hc-grc/src/agents/data_acquisition/agent.py:    def run(self, state: HCGRCState) -> dict[str, Any]:
+/Users/thomasjones/hc-grc/src/agents/data_acquisition/agent.py:        Acquire SCF corpus, verify integrity, run ARA Compiler ingestion.
+/Users/thomasjones/hc-grc/src/agents/data_acquisition/agent.py:            "DataAcquisitionAgent.run() — Phase 1 implementation pending. "
+/Users/thomasjones/hc-grc/src/agents/data_acquisition/agent.py:                "Halt required; human review before any downstream agent runs. "
+/Users/thomasjones/hc-grc/src/agents/data_acquisition/agent.py:        self, result: AcquisitionResult, run_id: str
+/Users/thomasjones/hc-grc/src/agents/data_acquisition/agent.py:            "run_id": run_id,
+/Users/thomasjones/hc-grc/src/agents/p2_control_topology/agent.py:  Must run at least Leiden AND Louvain — results reported for both.
+/Users/thomasjones/hc-grc/src/agents/p2_control_topology/agent.py:    def run_exploratory(self, state: HCGRCState) -> dict[str, Any]:
+/Users/thomasjones/hc-grc/src/agents/p2_control_topology/agent.py:            "(4) run Leiden + Louvain community detection, "
+/Users/thomasjones/hc-grc/src/agents/p2_control_topology/agent.py:    def run_confirmatory(self, state: HCGRCState) -> dict[str, Any]:
+/Users/thomasjones/hc-grc/src/agents/p2_control_topology/agent.py:        Gate 2 approval verified by BaseResearchAgent.__call__.
+/Users/thomasjones/hc-grc/src/agents/p5_ai_governance/agent.py:whether the official 33-domain taxonomy is empirically grounded. Does the SCF
+/Users/thomasjones/hc-grc/src/agents/p5_ai_governance/agent.py:  before any confirmatory clustering runs. Parameter decisions are logged to
+/Users/thomasjones/hc-grc/src/agents/p5_ai_governance/agent.py:    def run_exploratory(self, state: HCGRCState) -> dict[str, Any]:
+/Users/thomasjones/hc-grc/src/agents/p5_ai_governance/agent.py:            "from Qdrant, (2) run UMAP dimensionality reduction, (3) run HDBSCAN "
+/Users/thomasjones/hc-grc/src/agents/p5_ai_governance/agent.py:            "per domain (33 runs) + cross-domain, (4) compute ARI/NMI against "
+/Users/thomasjones/hc-grc/src/agents/p5_ai_governance/agent.py:    def run_confirmatory(self, state: HCGRCState) -> dict[str, Any]:
+/Users/thomasjones/hc-grc/src/agents/p5_ai_governance/agent.py:        Gate 2 approval verified by BaseResearchAgent.__call__.
+/Users/thomasjones/hc-grc/src/infrastructure/__init__.py:services the platform depends on (ADR-0002, ADR-0009, ADR-0014). Everything runs
+/Users/thomasjones/hc-grc/src/infrastructure/config.py:# enforced identically everywhere instead of one guard per module (pass-5).
+/Users/thomasjones/hc-grc/src/infrastructure/config.py:    run. Call load_platform_config.cache_clear() in tests that mutate the file.
+/Users/thomasjones/hc-grc/src/infrastructure/observability/__init__.py:    run_trace_context,
+/Users/thomasjones/hc-grc/src/infrastructure/observability/__init__.py:    "run_trace_context",
+/Users/thomasjones/hc-grc/src/infrastructure/observability/phoenix_setup.py:disqualified as SaaS-only). The Phoenix server runs on the compute node and
+/Users/thomasjones/hc-grc/src/infrastructure/observability/phoenix_setup.py:agent LLM calls export OpenTelemetry traces to it.
+/Users/thomasjones/hc-grc/src/infrastructure/observability/phoenix_setup.py:  1. The SERVER is a long-lived process — run it via the `phoenix serve` CLI
+/Users/thomasjones/hc-grc/src/infrastructure/observability/phoenix_setup.py:  2. INSTRUMENTATION is wired per-process via bootstrap_observability(), called
+/Users/thomasjones/hc-grc/src/infrastructure/observability/phoenix_setup.py:     once by each run entrypoint. It registers a global OTel tracer provider
+/Users/thomasjones/hc-grc/src/infrastructure/observability/phoenix_setup.py:     run) pointed at the running server, and turns on the LangChain instrumentor.
+/Users/thomasjones/hc-grc/src/infrastructure/observability/phoenix_setup.py:run_id propagation (ADR-0015 #79): wrap a run in run_trace_context(run_id) so
+/Users/thomasjones/hc-grc/src/infrastructure/observability/phoenix_setup.py:every span produced during the run carries the run_id as session.id + metadata,
+/Users/thomasjones/hc-grc/src/infrastructure/observability/phoenix_setup.py:# identically everywhere; 0.0.0.0 is rejected (it binds all interfaces).
+/Users/thomasjones/hc-grc/src/infrastructure/observability/phoenix_setup.py:from ..config import LOOPBACK_HOSTS as _LOOPBACK_HOSTS  # noqa: F401  (kept for callers/tests)
+/Users/thomasjones/hc-grc/src/infrastructure/observability/phoenix_setup.py:# (repeat bootstrap calls return the same provider instead of double-registering
+/Users/thomasjones/hc-grc/src/infrastructure/observability/phoenix_setup.py:    is called from the __main__ entrypoint and tests, not only from the already-
+/Users/thomasjones/hc-grc/src/infrastructure/observability/phoenix_setup.py:    Idempotent: the first call registers; subsequent calls return the cached
+/Users/thomasjones/hc-grc/src/infrastructure/observability/phoenix_setup.py:            "reach Phoenix. Ensure bootstrap_observability() runs before any other "
+/Users/thomasjones/hc-grc/src/infrastructure/observability/phoenix_setup.py:    # the tail of a run on a clean exit / SIGINT (#215). atexit does NOT run on
+/Users/thomasjones/hc-grc/src/infrastructure/observability/phoenix_setup.py:    # flushes then exits — otherwise the tail of a killed run is silently lost
+/Users/thomasjones/hc-grc/src/infrastructure/observability/phoenix_setup.py:    Idempotently wire tracing for the current process. Called once by each run
+/Users/thomasjones/hc-grc/src/infrastructure/observability/phoenix_setup.py:    entrypoint (graph runners). Degrades to a no-op — never raising — when tracing
+/Users/thomasjones/hc-grc/src/infrastructure/observability/phoenix_setup.py:    # configured in a run path (cross-store run_id correlation, #282). Best-effort.
+/Users/thomasjones/hc-grc/src/infrastructure/observability/phoenix_setup.py:        # best-effort observability and must never block the research run.
+/Users/thomasjones/hc-grc/src/infrastructure/observability/phoenix_setup.py:def run_trace_context(run_id: str | None):
+/Users/thomasjones/hc-grc/src/infrastructure/observability/phoenix_setup.py:    Context manager that stamps run_id onto every span produced within it, for
+/Users/thomasjones/hc-grc/src/infrastructure/observability/phoenix_setup.py:    baggage `hcgrc.run_id`, which the reasoning_client seam reads as a fallback so
+/Users/thomasjones/hc-grc/src/infrastructure/observability/phoenix_setup.py:    its manual T2/T3 spans carry the run_id even when the caller didn't pass it
+/Users/thomasjones/hc-grc/src/infrastructure/observability/phoenix_setup.py:    explicitly (#239). No-op if run_id is None or the helpers are unavailable.
+/Users/thomasjones/hc-grc/src/infrastructure/observability/phoenix_setup.py:    if not run_id:
+/Users/thomasjones/hc-grc/src/infrastructure/observability/phoenix_setup.py:            stack.enter_context(using_attributes(session_id=run_id, metadata={"run_id": run_id}))
+/Users/thomasjones/hc-grc/src/infrastructure/observability/phoenix_setup.py:        token = context.attach(baggage.set_baggage("hcgrc.run_id", run_id))
+/Users/thomasjones/hc-grc/src/infrastructure/vector_store/qdrant_setup.py:ADR-0002 data sovereignty: Qdrant runs as a local Docker container (see
+/Users/thomasjones/hc-grc/src/infrastructure/vector_store/qdrant_setup.py:docker-compose.yml) on the Colima runtime. This module only provides connection
+/Users/thomasjones/hc-grc/src/infrastructure/vector_store/qdrant_setup.py:    Requires the `qdrant-client` package and a running Qdrant container.
+/Users/thomasjones/hc-grc/src/infrastructure/vector_store/qdrant_setup.py:    Probe the running Qdrant instance.
+/Users/thomasjones/hc-grc/src/infrastructure/tracking/mlflow_setup.py:DATA SOVEREIGNTY (ADR-0002): MLflow runs against a LOCAL SQLITE backend — a
+/Users/thomasjones/hc-grc/src/infrastructure/tracking/mlflow_setup.py:(MLflow 3 put the legacy filesystem store, e.g. "mlruns/", into maintenance
+/Users/thomasjones/hc-grc/src/infrastructure/tracking/mlflow_setup.py:The SQLite backend needs NO running daemon: experiment data is written
+/Users/thomasjones/hc-grc/src/infrastructure/tracking/mlflow_setup.py:directly to the .db file. A server is only needed to *view* runs, via
+/Users/thomasjones/hc-grc/src/infrastructure/tracking/mlflow_setup.py:run_id propagation (ADR-0015 #79): callers should tag every run with the
+/Users/thomasjones/hc-grc/src/infrastructure/tracking/mlflow_setup.py:platform run_id so it cross-references PostgresSaver/Phoenix/PROV-DM:
+/Users/thomasjones/hc-grc/src/infrastructure/tracking/mlflow_setup.py:    mlflow.set_tag("run_id", state["run_id"])
+/Users/thomasjones/hc-grc/src/infrastructure/tracking/mlflow_setup.py:    ("mlruns") is resolved to an absolute location under the repo root, so the
+/Users/thomasjones/hc-grc/src/infrastructure/tracking/mlflow_setup.py:    Idempotent — safe to call at the start of every run. Returns the resolved
+/Users/thomasjones/hc-grc/src/infrastructure/tracking/mlflow_setup.py:    # this guards the resolved value at the actual set_tracking_uri() call site.
+/Users/thomasjones/hc-grc/src/infrastructure/tracking/mlflow_setup.py:    """Return the shell command to view runs in the MLflow UI."""
+/Users/thomasjones/hc-grc/src/infrastructure/tracking/mlflow_setup.py:    print(f"View runs with: {launch_ui_command()}")

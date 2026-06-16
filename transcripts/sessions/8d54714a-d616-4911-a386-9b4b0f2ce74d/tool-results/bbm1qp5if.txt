@@ -1,0 +1,766 @@
+commit 6f96d0ffd1fcad095911007039bca67a0dd41436
+Author: Thomas Jones <thomasjones@hc-macmini.local>
+Date:   Mon Jun 15 09:33:22 2026 -0400
+
+    fix(hardening-p4): batch 15 — clear the remaining tail (12 issues, all reviewed)
+    
+    Closes the final pass-4 items; each fix adversarially reviewed by an
+    independent agent (wf_4bb5c83b-944) — all 12 confirmed resolved, no regressions.
+    
+    reasoning_client:
+    - #272 bound the timeout ThreadPoolExecutor: track in-flight workers, fail fast
+      with a distinct "saturated" ReasoningError when slots are leaked to hung
+      backends instead of silently turning all traffic into timeouts; T2 outer
+      timeout gets margin over the inner HTTP timeout so the inner one frees the worker
+    - #274 permission_mode="dontAsk" on the T3 SDK subprocess (never wait on a prompt)
+    - #280 fold cache_read/creation tokens into T3 span token totals
+    - #275 bump temperature per complete_json retry so regeneration is meaningful
+      under deterministic T2 decoding; #270 retry-exhaustion give-up test
+    
+    langgraph:
+    - #276 run checkpointer setup() once per process per conn_str (advisory lock
+      still guards the first-time cross-process race)
+    - #267 idempotent Gate-2 prereq-failure (no duplicate audit events on re-entry
+      of the non-terminal deferred path)
+    
+    phoenix/observability:
+    - #277 bound the shutdown flush at the OTLP exporter level (force_flush ignores
+      its timeout_millis); #278 warn on global-provider collision (else T3 spans
+      vanish); #281 SIGTERM flush handler (atexit misses SIGTERM); #283 loopback
+      guard extended to the server bind (plist + launch command)
+    
+    tests/CI:
+    - #260 run a Postgres service container in CI so the durability/recovery tests
+      exercise the real pooled PostgresSaver path and FAIL (not skip) when Postgres
+      is unreachable; pin langgraph-checkpoint>=4,<5 + psycopg[binary,pool] in
+      requirements-ci.txt so the resolver cannot drift
+    
+    108 tests passing, ruff clean. Pass 4 now 30/30.
+    
+    Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
+
+diff --git a/.github/workflows/test.yml b/.github/workflows/test.yml
+index 9aacee3..c36fbb0 100644
+--- a/.github/workflows/test.yml
++++ b/.github/workflows/test.yml
+@@ -11,6 +11,32 @@ jobs:
+     name: Phase 0 test suite
+     runs-on: ubuntu-latest
+ 
++    # Provision Postgres so the checkpointer durability/cross-boundary recovery
++    # tests run unconditionally in CI instead of silently skipping — that invariant
++    # is exactly where regressions slip in (#260). The tests fail (not skip) in CI
++    # if this service is unreachable; see test_postgres_checkpointer.py.
++    # A SQLite-saver proxy (langgraph-checkpoint-sqlite, the issue's original
++    # proposal) was viable but rejected: exercising the REAL pooled PostgresSaver
++    # path here — self-healing pool, advisory-locked migration — covers the actual
++    # production durability contract, not a different store's semantics.
++    services:
++      postgres:
++        image: postgres:16
++        env:
++          POSTGRES_USER: postgres
++          POSTGRES_PASSWORD: postgres
++          POSTGRES_DB: hcgrc
++        ports:
++          - 5432:5432
++        options: >-
++          --health-cmd pg_isready
++          --health-interval 10s
++          --health-timeout 5s
++          --health-retries 5
++
++    env:
++      HCGRC_POSTGRES_URL: postgresql://postgres:postgres@localhost:5432/hcgrc
++
+     steps:
+       - uses: actions/checkout@v4
+ 
+diff --git a/docs/architecture/HARDENING_LOG.md b/docs/architecture/HARDENING_LOG.md
+index feb9cd5..1c2f3b3 100644
+--- a/docs/architecture/HARDENING_LOG.md
++++ b/docs/architecture/HARDENING_LOG.md
+@@ -22,7 +22,7 @@ Passes are never edited after they are written. New passes are appended.
+ | 1 | 2026-06-13 | 39 (7H/19M/13L) | 39 | ✅ complete |
+ | 2 | 2026-06-13 | 33 (1C/4H/16M/12L) | 33 | ✅ complete |
+ | 3 | 2026-06-13 | 37 (5H/20M/12L) | 37 | ✅ complete |
+-| 4 | 2026-06-13 | 30 (3H/13M/14L) | 18 (all H + key M) | 12 low-severity tracked open (#260,#267,#270,#272,#274–278,#280,#281,#283) |
++| 4 | 2026-06-13 | 30 (3H/13M/14L) | 30 | ✅ complete (batch 15 cleared the tail; all fixes adversarially reviewed) |
+ 
+ ---
+ 
+@@ -154,11 +154,34 @@ the converging trend (39→33→37→30; highs 7→5→5→3). Tracked as #254
+   checkpointing validation, #282 MLflow wired into bootstrap, #266 RateLimitEvent,
+   #269 complete_json span, #273 backpressure value, #279 T2 usage, #257/#259 tests.
+ 
+-**Pass 4 result: all 3 highs + key mediums fixed (18/30), 102 tests passing.**
+-The remaining **12 are low-severity** polish/tracked items (executor-worker leakage
+-on timeout, atexit flush on SIGTERM, setup() re-run caching, launchd loopback bind,
+-cache-token accounting, a PG-only recovery test, etc.) — GitHub #260, #267, #270,
+-#272, #274–#278, #280, #281, #283.
++- **Batch 15 — clear the remaining tail** (this batch): the 12 low/medium polish
++  items, each fix adversarially reviewed by an independent agent (run
++  `wf_4bb5c83b-944`, 12 reviewers) — all 12 confirmed resolved, no regressions.
++  - reasoning_client: #272 timeout-pool saturation guard (fail fast, not a silent
++    cliff) + T2 backstop margin; #274 `permission_mode="dontAsk"` on the T3 SDK
++    subprocess; #280 fold cache_read/creation tokens into T3 span totals; #275
++    per-retry temperature bump so `complete_json` regeneration is meaningful under
++    deterministic T2 decoding; #270 retry-exhaustion give-up test.
++  - langgraph: #276 run checkpointer `setup()` once per process per conn_str
++    (advisory lock still guards the first-time cross-process race); #267 idempotent
++    Gate-2 prereq-failure (no duplicate audit events on re-entry of the deferred
++    path).
++  - phoenix/obs: #277 bound the shutdown flush at the OTLP exporter level
++    (`OTEL_EXPORTER_OTLP_TRACES_TIMEOUT=2`; force_flush ignores its own
++    timeout_millis); #278 warn on global-provider collision (else T3 spans silently
++    vanish); #281 SIGTERM flush handler (atexit misses SIGTERM); #283 loopback guard
++    extended to the SERVER bind (plist + launch command) via a shared
++    `_require_loopback` helper.
++  - tests/CI: #260 — the issue proposed a SqliteSaver proxy; instead a Postgres
++    service container now runs in CI so the durability/recovery tests exercise the
++    REAL pooled PostgresSaver path, and they FAIL (not skip) in CI when Postgres is
++    unreachable (`GITHUB_ACTIONS` guard). requirements-ci.txt pins
++    `langgraph-checkpoint>=4,<5` + `psycopg[binary,pool]` so the resolver cannot
++    drift. (A SQLite proxy via `langgraph-checkpoint-sqlite>=3.1` was feasible but
++    rejected in favor of testing the production path — the earlier "no compatible
++    version" rationale was incorrect.)
++
++**Pass 4 result: 30/30 fixed, 108 tests passing.** Pass 5 re-audits again.
+ 
+ ---
+ 
+@@ -169,8 +192,8 @@ cache-token accounting, a PG-only recovery test, etc.) — GitHub #260, #267, #2
+ | 1 | 39 | 7 | 39 |
+ | 2 | 33 | 1C + 4H | 33 |
+ | 3 | 37 | 5 | 37 |
+-| 4 | 30 | 3 | 18 (all high+ ✅) |
++| 4 | 30 | 3 | 30 ✅ |
+ 
+ **Critical & high findings: eliminated and verified in every pass.** 145 issues
+-filed (#144–#283), 133 closed. Remaining open: 12 low-severity. Next: clear the
+-low tail, then pass 5 (terminates when a pass yields zero confirmed).
++filed (#144–#283), all 145 closed. Trend 39→33→37→30; highs 7→5→5→3. Next: pass 5
++(terminates when a pass yields zero confirmed).
+diff --git a/requirements-ci.txt b/requirements-ci.txt
+index f285589..53651f1 100644
+--- a/requirements-ci.txt
++++ b/requirements-ci.txt
+@@ -8,6 +8,12 @@
+ # with HCGRC_DISABLE_REASONING=1 and imports them lazily, so they are never needed.
+ langgraph>=1.2,<2
+ langgraph-checkpoint-postgres>=3.1,<4
++# Pin the checkpoint core to the same major the postgres saver needs so the CI
++# resolver cannot drift it down to a 2.x that breaks the saver (#260).
++langgraph-checkpoint>=4,<5
++# psycopg (pool + binary) backs the pooled PostgresSaver now that the checkpointer
++# durability tests run against a Postgres service container in CI (#260).
++psycopg[binary,pool]>=3.1,<4
+ langchain-core>=1.4,<2
+ # reasoning_client imports the OTel API at module load; config loads YAML.
+ opentelemetry-sdk>=1.25,<2
+diff --git a/scripts/infra/phoenix-service.sh b/scripts/infra/phoenix-service.sh
+index c14a588..d676413 100755
+--- a/scripts/infra/phoenix-service.sh
++++ b/scripts/infra/phoenix-service.sh
+@@ -34,6 +34,18 @@ write_plist() {
+   local host port
+   host="$(cd "$REPO_ROOT" && read_cfg host)"
+   port="$(cd "$REPO_ROOT" && read_cfg port)"
++  # ADR-0002 data sovereignty (#283): the server bind — not just the client export
++  # host — is what determines whether traces are reachable off-box. Refuse any
++  # non-loopback bind so a config edit to 0.0.0.0 / a LAN IP cannot expose the
++  # trace UI/OTLP collector (SCF-derived span content) to the network.
++  case "$host" in
++    localhost|127.0.0.1|::1) ;;
++    *)
++      echo "ERROR: Phoenix bind host '$host' is not loopback (ADR-0002). Set" \
++           "observability.phoenix.host to localhost/127.0.0.1/::1 in configs/platform.yaml." >&2
++      exit 1
++      ;;
++  esac
+   mkdir -p "$STORAGE_DIR" "$(dirname "$PLIST")"
+   cat > "$PLIST" <<PLISTEOF
+ <?xml version="1.0" encoding="UTF-8"?>
+diff --git a/src/checkpointer.py b/src/checkpointer.py
+index 47eddbd..90c0bd2 100644
+--- a/src/checkpointer.py
++++ b/src/checkpointer.py
+@@ -36,6 +36,13 @@ _MIGRATION_LOCK_KEY = 0x4843_4752  # "HCGR"
+ _OPEN_POOLS: list = []
+ _atexit_registered = False
+ 
++# conn_strs whose schema bootstrap (advisory lock + setup() DDL + migration SELECT)
++# has already run in this process. setup() is idempotent but not free — re-running
++# it on every get_checkpointer() call takes a global advisory lock and replays the
++# migration version query at each run start. Bootstrap once per process per schema;
++# the advisory lock still guards the first-time cross-process migration race (#276).
++_INITIALIZED_CONN_STRS: set[str] = set()
++
+ 
+ def _register_pool_cleanup(pool) -> None:
+     global _atexit_registered
+@@ -142,12 +149,17 @@ def get_checkpointer(use_memory: bool = False):
+         # DDL, leaving the lock ineffective (pass-3 #2). So run setup() through a
+         # saver bound to the single locked connection, then return the pool-backed
+         # saver for normal operation.
+-        with pool.connection() as conn:
+-            conn.execute("SELECT pg_advisory_lock(%s)", (_MIGRATION_LOCK_KEY,))
+-            try:
+-                PostgresSaver(conn).setup()  # DDL on the locked connection
+-            finally:
+-                conn.execute("SELECT pg_advisory_unlock(%s)", (_MIGRATION_LOCK_KEY,))
++        # Bootstrap the schema once per process per conn_str. setup() is idempotent
++        # but a redundant advisory lock + migration SELECT on every run start is
++        # wasteful; the lock still protects the first-time cross-process race (#276).
++        if conn_str not in _INITIALIZED_CONN_STRS:
++            with pool.connection() as conn:
++                conn.execute("SELECT pg_advisory_lock(%s)", (_MIGRATION_LOCK_KEY,))
++                try:
++                    PostgresSaver(conn).setup()  # DDL on the locked connection
++                finally:
++                    conn.execute("SELECT pg_advisory_unlock(%s)", (_MIGRATION_LOCK_KEY,))
++            _INITIALIZED_CONN_STRS.add(conn_str)
+         return PostgresSaver(pool)
+     except Exception as e:
+         raise RuntimeError(
+diff --git a/src/infrastructure/observability/phoenix_setup.py b/src/infrastructure/observability/phoenix_setup.py
+index 65a8df0..729964d 100644
+--- a/src/infrastructure/observability/phoenix_setup.py
++++ b/src/infrastructure/observability/phoenix_setup.py
+@@ -28,17 +28,36 @@ cross-referencing MLflow / PostgresSaver / PROV-DM.
+ from __future__ import annotations
+ 
+ import atexit
++import logging
+ import os
++import signal
++import sys
++import threading
+ from contextlib import contextmanager
+ 
+ from ..config import load_platform_config
+ 
++_log = logging.getLogger(__name__)
++
+ # ADR-0002: traces carry SCF-derived content and must never leave the machine.
+ # The OTLP endpoint is required to be loopback. 0.0.0.0 is intentionally EXCLUDED
+ # — it binds all interfaces (exposing traces beyond the host), which is exactly the
+ # data-sovereignty exposure this guard exists to prevent (#241).
+ _LOOPBACK_HOSTS = {"localhost", "127.0.0.1", "::1"}
+ 
++
++def _require_loopback(host: str, what: str) -> str:
++    """Reject any non-loopback host. Used for BOTH the client export endpoint and
++    every server-bind code path — the bind the Phoenix server listens on, not just
++    the client export host, is the actual ADR-0002 sovereignty boundary (#283)."""
++    if host not in _LOOPBACK_HOSTS:
++        raise ValueError(
++            f"Phoenix {what} host {host!r} is not loopback. Traces contain "
++            "SCF-derived content and must stay on the compute node (ADR-0002). "
++            f"Use one of {sorted(_LOOPBACK_HOSTS)}."
++        )
++    return host
++
+ # Cached registered provider — registration is idempotent within a process
+ # (repeat bootstrap calls return the same provider instead of double-registering
+ # the instrumentor, which would duplicate every span).
+@@ -61,9 +80,14 @@ def phoenix_endpoint() -> str:
+ 
+ 
+ def launch_server_command() -> str:
+-    """Return the shell command that starts the persistent Phoenix server."""
++    """Return the shell command that starts the persistent Phoenix server.
++
++    Validates the bind host is loopback (#283): the server bind, not just the
++    client export host, is what determines whether traces are reachable off-box.
++    """
+     cfg = _phoenix_cfg()
+-    return f"phoenix serve --host {cfg.get('host', 'localhost')} --port {cfg.get('port', 6006)}"
++    host = _require_loopback(str(cfg.get("host", "localhost")), "server bind")
++    return f"phoenix serve --host {host} --port {cfg.get('port', 6006)}"
+ 
+ 
+ def instrument_langchain(project_name: str | None = None):
+@@ -81,31 +105,75 @@ def instrument_langchain(project_name: str | None = None):
+         return _PROVIDER
+ 
+     from openinference.instrumentation.langchain import LangChainInstrumentor
++    from opentelemetry import trace as _trace
+     from phoenix.otel import register
+ 
+     cfg = _phoenix_cfg()
+-    host = str(cfg.get("host", "localhost"))
+-    if host not in _LOOPBACK_HOSTS:
+-        # ADR-0002 data sovereignty: refuse to export SCF-derived traces off-box.
+-        raise ValueError(
+-            f"Phoenix host {host!r} is not loopback. Traces contain SCF-derived "
+-            "content and must stay on the compute node (ADR-0002). Use localhost."
+-        )
++    # ADR-0002 data sovereignty: refuse to export SCF-derived traces off-box.
++    _require_loopback(str(cfg.get("host", "localhost")), "OTLP export")
++
++    # Bound the OTLP/HTTP exporter so a downed Phoenix server cannot block process
++    # teardown for the exporter's default 10s on the shutdown flush. The installed
++    # OTel BatchProcessor.force_flush() ignores its timeout_millis argument, so the
++    # only effective cap is at the exporter level (#277). Don't clobber an explicit
++    # operator override.
++    os.environ.setdefault("OTEL_EXPORTER_OTLP_TRACES_TIMEOUT", "2")
++
+     provider = register(
+         project_name=project_name or cfg.get("project_name", "hc-grc"),
+         endpoint=phoenix_endpoint(),
+         batch=True,                        # BatchSpanProcessor: buffer + async export
+         set_global_tracer_provider=True,   # so reasoning_client spans export too
+     )
++    # set_tracer_provider can only succeed once per process; if a competing global
++    # provider already won the race, register() still RETURNS the Phoenix provider
++    # (so LangChain spans, passed it explicitly, still reach Phoenix) but the GLOBAL
++    # provider is something else — and reasoning_client's module-level tracer resolves
++    # through the global, so Tier-3 frontier spans (their ONLY record) would silently
++    # vanish. Surface that collision instead of dropping them silently (#278).
++    if _trace.get_tracer_provider() is not provider:
++        _log.warning(
++            "Phoenix did not become the global OTel tracer provider — a competing "
++            "provider was registered first. Tier-3 reasoning_client spans will not "
++            "reach Phoenix. Ensure bootstrap_observability() runs before any other "
++            "OTel instrumentation."
++        )
+     LangChainInstrumentor().instrument(tracer_provider=provider, skip_dep_check=True)
+     # Flush buffered spans at process exit so the BatchSpanProcessor does not drop
+-    # the tail of a run on shutdown/interruption (#215).
++    # the tail of a run on a clean exit / SIGINT (#215). atexit does NOT run on
++    # SIGTERM (launchd/kill/container-stop), so also install a SIGTERM handler that
++    # flushes then exits — otherwise the tail of a killed run is silently lost
++    # (#281). Both flushes are bounded by the exporter timeout set above (#277).
+     if hasattr(provider, "force_flush"):
+         atexit.register(provider.force_flush)
++        _install_sigterm_flush(provider)
+     _PROVIDER = provider
+     return provider
+ 
+ 
++def _install_sigterm_flush(provider) -> None:
++    """Flush + shut down the span processor on SIGTERM before the process exits.
++
++    Signal handlers can only be installed from the main thread; if we're not on it
++    (e.g. instrumentation wired from a worker), skip silently — atexit still covers
++    the clean-exit and SIGINT paths."""
++    if threading.current_thread() is not threading.main_thread():
++        return
++
++    def _handler(_signum, _frame):
++        try:
++            provider.force_flush()
++            if hasattr(provider, "shutdown"):
++                provider.shutdown()
++        finally:
++            sys.exit(0)
++
++    try:
++        signal.signal(signal.SIGTERM, _handler)
++    except (ValueError, OSError):  # pragma: no cover - non-main-thread / unsupported
++        pass
++
++
+ def bootstrap_observability():
+     """
+     Idempotently wire tracing for the current process. Called once by each run
+diff --git a/src/nodes/gates.py b/src/nodes/gates.py
+index 34fd902..d5cd34d 100644
+--- a/src/nodes/gates.py
++++ b/src/nodes/gates.py
+@@ -243,8 +243,20 @@ def gate_2_node(state: HCGRCState) -> dict[str, Any]:
+         # spin forever because re-running exploratory cannot satisfy an unmet
+         # prerequisite (pass-3 #20). The operator re-triggers once prereqs are met.
+         rationale = "Hard prerequisite failure: " + "; ".join(hard_failures)
+-        update = {
+-            "failure_events": [
++        # 'deferred' is non-terminal, so this path re-runs whenever gate_2 is
++        # re-entered (operator re-trigger after the park, or the reject→exploratory
++        # →…→gate_2 loop) while prereqs are still unmet. failure_events has a plain
++        # append reducer (state.py:86), so re-appending an identical
++        # gate_prerequisite_failure on every re-entry duplicates the audit record
++        # and biases the Agent Evolution failure-count signal. Only append when this
++        # exact deferred prerequisite failure is not already recorded (#267).
++        prior = state.get("gate_status", {}).get("gate_2") or {}
++        already_recorded = (
++            prior.get("decision") == "deferred" and prior.get("rationale") == rationale
++        )
++        update: dict[str, Any] = {}
++        if not already_recorded:
++            update["failure_events"] = [
+                 {
+                     "event_type": "gate_prerequisite_failure",
+                     "gate_id": "gate_2",
+@@ -253,7 +265,6 @@ def gate_2_node(state: HCGRCState) -> dict[str, Any]:
+                     "timestamp_utc": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+                 }
+             ]
+-        }
+         from .gate_coordinator import gate_coordinator_node
+         update.update(
+             gate_coordinator_node(state, "gate_2", "deferred", rationale, reviewer="system")
+diff --git a/src/reasoning_client.py b/src/reasoning_client.py
+index 73e59be..73b749b 100644
+--- a/src/reasoning_client.py
++++ b/src/reasoning_client.py
+@@ -45,6 +45,7 @@ from __future__ import annotations
+ import asyncio
+ import json
+ import os
++import threading
+ import time
+ from concurrent.futures import ThreadPoolExecutor
+ from concurrent.futures import TimeoutError as FuturesTimeout
+@@ -118,7 +119,45 @@ _tracer = trace.get_tracer("hcgrc.reasoning_client")
+ # Shared executor for enforcing sync-call timeouts. Not shut down: a hung backend
+ # call leaks one daemon worker rather than blocking the node (a ThreadPoolExecutor
+ # context-manager exit would join the hung thread, defeating the timeout).
+-_timeout_pool = ThreadPoolExecutor(max_workers=8, thread_name_prefix="reasoning-timeout")
++_TIMEOUT_POOL_WORKERS = 8
++_timeout_pool = ThreadPoolExecutor(
++    max_workers=_TIMEOUT_POOL_WORKERS, thread_name_prefix="reasoning-timeout"
++)
++
++# In-flight worker accounting (#272). A timed-out call abandons (does NOT cancel)
++# its worker — ThreadPoolExecutor cannot interrupt a thread blocked in
++# llm.invoke/asyncio.run — so a truly-hung backend leaks that slot until (if ever)
++# the call returns. Without a bound, accumulated leaks saturate the 8-slot pool and
++# every subsequent submit silently queues behind work that never starts, converting
++# ALL traffic into guaranteed timeouts. We track in-flight slots and fail FAST and
++# LOUD with a distinct error when the pool is saturated, instead of degrading into a
++# silent cliff. The per-tier inner timeouts (T2 HTTP timeout, T3 asyncio.wait_for)
++# normally let workers self-terminate, so this guard only fires under genuine leaks.
++_inflight_lock = threading.Lock()
++_inflight = 0
++
++
++def _submit_bounded(fn):
++    """Submit to the shared pool, refusing if all worker slots are already in
++    flight (i.e. leaked to hung backends). Decrements the count when the future
++    completes — a leaked worker keeps its slot counted until it finally returns."""
++    global _inflight
++    with _inflight_lock:
++        if _inflight >= _TIMEOUT_POOL_WORKERS:
++            raise ReasoningError(
++                f"reasoning timeout pool saturated ({_inflight}/{_TIMEOUT_POOL_WORKERS} "
++                "workers in-flight) — hung backend call(s) have leaked every worker slot"
++            )
++        _inflight += 1
++    future = _timeout_pool.submit(fn)
++
++    def _release(_):
++        global _inflight
++        with _inflight_lock:
++            _inflight -= 1
++
++    future.add_done_callback(_release)
++    return future
+ 
+ 
+ # ── Timeout helpers ───────────────────────────────────────────────────────────
+@@ -142,7 +181,7 @@ def _with_timeout(fn, timeout: float, what: str):
+         finally:
+             otel_context.detach(token)
+ 
+-    future = _timeout_pool.submit(_run)
++    future = _submit_bounded(_run)
+     try:
+         return future.result(timeout=timeout)
+     except FuturesTimeout as exc:
+@@ -157,8 +196,9 @@ def _run_sync(coro: Any) -> Any:
+         return asyncio.run(coro)
+     # Bound the cross-thread wait so a starved/leaked pool can't deadlock a node
+     # forever (#227). The inner coroutine already has its own asyncio timeout; this
+-    # is a backstop slightly beyond it.
+-    return _timeout_pool.submit(lambda: asyncio.run(coro)).result(timeout=T3_TIMEOUT + 30)
++    # is a backstop slightly beyond it. _submit_bounded fails fast if the pool is
++    # already saturated with leaked workers rather than queueing forever (#272).
++    return _submit_bounded(lambda: asyncio.run(coro)).result(timeout=T3_TIMEOUT + 30)
+ 
+ 
+ # ── Tier 2: local Ollama ──────────────────────────────────────────────────────
+@@ -208,7 +248,13 @@ def _t2_complete(prompt: str, system: str | None, temperature: float, model: str
+         return text, getattr(resp, "usage_metadata", None)  # token counts (#279)
+ 
+     try:
+-        text, usage = _with_timeout(_call, T2_TIMEOUT, f"Tier 2 (Ollama @ {T2_BASE_URL})")
++        # Give the outer future timeout margin over the inner HTTP timeout
++        # (client_kwargs timeout == T2_TIMEOUT) so the inner socket timeout wins and
++        # the worker self-terminates cleanly, instead of racing exactly and risking
++        # an abandoned (leaked) worker — mirrors the T3_TIMEOUT + 30 backstop (#272).
++        text, usage = _with_timeout(
++            _call, T2_TIMEOUT + 10, f"Tier 2 (Ollama @ {T2_BASE_URL})"
++        )
+         text = text.strip()
+         if not text:
+             # An empty/whitespace reply is not a valid result — surface it as a
+@@ -265,6 +311,11 @@ async def _t3_async(prompt: str, system: str | None, max_turns: int,
+         env=_scrubbed_env(),       # ADR-0016: no metered API key (#146)
+         setting_sources=[],        # don't load ANY on-disk settings into the
+                                    # subprocess — keep the sandbox closed (#12)
++        permission_mode="dontAsk",  # never wait on an interactive permission prompt
++                                    # in this headless, single-turn, no-tools path —
++                                    # deny if not pre-approved so any attempted tool
++                                    # use fails fast instead of hanging until the
++                                    # T3_TIMEOUT backstop (#274)
+     )
+     if model:
+         opts.model = model
+@@ -368,12 +419,27 @@ def _record_usage(span, usage: Any) -> None:
+ 
+     prompt_toks = g("input_tokens")
+     completion_toks = g("output_tokens")
+-    if prompt_toks is not None:
+-        span.set_attribute("llm.token_count.prompt", prompt_toks)
++    # Anthropic/Agent-SDK report cache tokens in SEPARATE fields excluded from
++    # input_tokens; on a cached-prefix run they can dominate real input. Fold them
++    # into the prompt/total counts (and emit the OpenInference cache slots) so
++    # llm.token_count.total reflects all tokens processed, not an undercount on the
++    # very tier where usage visibility matters most (#280). Real spend is still
++    # tracked separately via llm.cost_usd.
++    cache_read = g("cache_read_input_tokens")
++    cache_write = g("cache_creation_input_tokens")
++    if cache_read is not None:
++        span.set_attribute("llm.token_count.prompt_details.cache_read", cache_read)
++    if cache_write is not None:
++        span.set_attribute("llm.token_count.prompt_details.cache_write", cache_write)
++
++    prompt_total = None
++    if prompt_toks is not None or cache_read is not None or cache_write is not None:
++        prompt_total = (prompt_toks or 0) + (cache_read or 0) + (cache_write or 0)
++        span.set_attribute("llm.token_count.prompt", prompt_total)
+     if completion_toks is not None:
+         span.set_attribute("llm.token_count.completion", completion_toks)
+-    if prompt_toks is not None and completion_toks is not None:
+-        span.set_attribute("llm.token_count.total", prompt_toks + completion_toks)
++    if prompt_total is not None and completion_toks is not None:
++        span.set_attribute("llm.token_count.total", prompt_total + completion_toks)
+ 
+ 
+ def complete(
+@@ -499,6 +565,11 @@ def complete_json(
+     then parsed, falling back to a balanced-brace extractor for models that wrap
+     JSON in prose/fences. A parse failure is retried (re-generating the reply) up
+     to MAX_RETRIES — the retry budget belongs here, not only in complete() (#230).
++    Each retry bumps the decoding temperature (#275): with a fixed seed + temp 0,
++    Ollama decoding is deterministic, so re-issuing the identical prompt would yield
++    a byte-identical bad reply and the regenerate-on-parse-failure contract could
++    never recover. A small bump yields a distinct cached client and a genuinely
++    different generation. (T3 ignores temperature and is non-deterministic anyway.)
+     Raises ReasoningError if no valid JSON can be recovered.
+     """
+     json_system = (system + "\n\n" if system else "") + (
+@@ -513,8 +584,11 @@ def complete_json(
+         if run_id:
+             span.set_attribute("hcgrc.run_id", run_id)
+         for attempt in range(MAX_RETRIES + 1):
++            # Vary decoding across regenerations so a retry can actually differ from
++            # the prior attempt (#275); attempt 0 uses the caller's temperature.
++            attempt_temp = temperature if attempt == 0 else min(1.0, temperature + 0.2 * attempt)
+             raw = complete(
+-                tier, prompt, system=json_system, temperature=temperature,
++                tier, prompt, system=json_system, temperature=attempt_temp,
+                 max_turns=max_turns, model=model, run_id=run_id, agent_id=agent_id,
+                 _json_mode=True,
+             )
+diff --git a/tests/test_phase0/test_gates_hardening.py b/tests/test_phase0/test_gates_hardening.py
+index ec90a16..a81cd0d 100644
+--- a/tests/test_phase0/test_gates_hardening.py
++++ b/tests/test_phase0/test_gates_hardening.py
+@@ -103,6 +103,25 @@ def test_gate2_prereq_failure_writes_gate_status():
+     assert update["failure_events"][0]["event_type"] == "gate_prerequisite_failure"
+ 
+ 
++def test_gate2_prereq_failure_is_idempotent_on_reentry():
++    # #267: 'deferred' is non-terminal, so gate_2 re-runs on operator re-trigger or
++    # the reject→exploratory→gate_2 loop. failure_events has an append reducer, so
++    # re-entering with the SAME unmet prereqs must NOT duplicate the failure event
++    # (which would bias the Agent Evolution failure-count signal).
++    state = initial_state(run_id="g-idem")  # prerequisites unmet
++
++    first = gate_2_node(state)
++    assert "failure_events" in first  # recorded the first time
++
++    # Merge the deferred decision back into state, as the graph reducer would.
++    state["gate_status"] = {**state.get("gate_status", {}), **first["gate_status"]}
++
++    second = gate_2_node(state)
++    # Still refreshes the gate_status record, but does NOT re-append the event.
++    assert "gate_2" in second["gate_status"]
++    assert "failure_events" not in second
++
++
+ # ── interrupt → resume path (#162) ────────────────────────────────────────────
+ 
+ 
+diff --git a/tests/test_phase0/test_postgres_checkpointer.py b/tests/test_phase0/test_postgres_checkpointer.py
+index 33e86bd..211200f 100644
+--- a/tests/test_phase0/test_postgres_checkpointer.py
++++ b/tests/test_phase0/test_postgres_checkpointer.py
+@@ -2,17 +2,28 @@
+ Checkpointer factory tests (hardening pass 1, #161).
+ 
+ MemorySaver is always exercised. The PostgresSaver path (self-healing pool) is
+-exercised and round-tripped when Postgres is reachable, else skipped.
++exercised and round-tripped against real Postgres. In CI a Postgres service
++container is provisioned (see .github/workflows/test.yml), so these run there too;
++locally they skip only when no database is reachable (#260).
+ """
+ 
+ from __future__ import annotations
+ 
++import os
++
+ import pytest
+ from langgraph.checkpoint.memory import MemorySaver
+ 
+ from src.checkpointer import get_checkpointer, get_postgres_connection_string
+ from src.state import initial_state
+ 
++# GitHub Actions sets GITHUB_ACTIONS=true. In CI the durability/recovery invariant
++# MUST be exercised, not silently skipped — a plain skipif on a DB-less runner left
++# the cross-boundary recovery contract unverified exactly where regressions land
++# (#260). Locally (no CI), missing Postgres still skips so contributors without a
++# database can run the rest of the suite.
++_IN_CI = os.environ.get("GITHUB_ACTIONS", "").lower() == "true"
++
+ 
+ def test_memory_checkpointer():
+     cp = get_checkpointer(use_memory=True)
+@@ -28,8 +39,27 @@ def _postgres_reachable() -> bool:
+         return False
+ 
+ 
+-@pytest.mark.skipif(not _postgres_reachable(), reason="Postgres not reachable")
++def _require_postgres() -> None:
++    """Skip locally when Postgres is absent, but FAIL in CI — the durability
++    invariant must never silently skip on the runner where regressions slip in.
++
++    Evaluated at call time (in the test body), not at import time like a skipif
++    decorator, so a service container that finishes coming up just after collection
++    is still picked up (#260)."""
++    if _postgres_reachable():
++        return
++    if _IN_CI:
++        pytest.fail(
++            "Postgres is unreachable in CI — the checkpointer durability/recovery "
++            "tests must run here (provision the service container and set "
++            "HCGRC_POSTGRES_URL). The cross-boundary recovery invariant must not "
++            "silently skip in CI (#260)."
++        )
++    pytest.skip("Postgres not reachable (local run without a database)")
++
++
+ def test_postgres_checkpointer_round_trips():
++    _require_postgres()
+     from langgraph.checkpoint.postgres import PostgresSaver
+ 
+     cp = get_checkpointer(use_memory=False)
+@@ -39,11 +69,11 @@ def test_postgres_checkpointer_round_trips():
+     assert isinstance(list(cp.list(cfg)), list)
+ 
+ 
+-@pytest.mark.skipif(not _postgres_reachable(), reason="Postgres not reachable")
+ def test_checkpoint_recovers_across_a_fresh_checkpointer():
+     # Durability across a process/connection boundary (#224): write a checkpoint
+     # with one checkpointer/pool, then read it back through a SEPARATE checkpointer
+     # (new pool) — simulating a process restart resuming a parked run.
++    _require_postgres()
+     from src.graph import build_graph
+ 
+     run_id = "test-cp-recovery"
+diff --git a/tests/test_reasoning_client.py b/tests/test_reasoning_client.py
+index 33719c0..b62cf07 100644
+--- a/tests/test_reasoning_client.py
++++ b/tests/test_reasoning_client.py
+@@ -164,6 +164,89 @@ def test_with_timeout_raises_on_overrun():
+         rc._with_timeout(lambda: time.sleep(5), 0.1, "slow op")
+ 
+ 
++def test_complete_json_exhausts_retries_then_raises(monkeypatch):
++    # #270: when the reply never parses as JSON, complete_json must retry the full
++    # budget (MAX_RETRIES + 1) and then surface ReasoningError — the give-up branch
++    # that reports the failure to the caller.
++    monkeypatch.delenv("HCGRC_DISABLE_REASONING", raising=False)
++    monkeypatch.setattr(rc.time, "sleep", lambda *_: None)
++    calls = {"n": 0}
++
++    def always_prose(*args, **kwargs):
++        calls["n"] += 1
++        return "this is not json at all", {"model": "m"}
++
++    monkeypatch.setattr(rc, "_attempt", always_prose)
++    with pytest.raises(ReasoningError):
++        rc.complete_json(Tier.T2, "classify")
++    assert calls["n"] == rc.MAX_RETRIES + 1  # retried the full budget, then gave up
++
++
++def test_complete_json_varies_temperature_across_retries(monkeypatch):
++    # #275: deterministic T2 decoding (fixed seed + temp 0) would reproduce a
++    # byte-identical bad reply on every retry, so complete_json must bump the
++    # temperature on each regeneration to make a retry meaningful.
++    monkeypatch.delenv("HCGRC_DISABLE_REASONING", raising=False)
++    temps = []
++
++    def capture(tier, prompt, **kwargs):
++        temps.append(kwargs.get("temperature"))
++        return "still not json"
++
++    monkeypatch.setattr(rc, "complete", capture)
++    with pytest.raises(ReasoningError):
++        rc.complete_json(Tier.T2, "classify", temperature=0.0)
++    assert len(temps) == rc.MAX_RETRIES + 1
++    assert temps[0] == 0.0
++    assert temps == sorted(temps)              # non-decreasing
++    assert len(set(temps)) == len(temps)       # every retry actually differs
++
++
++def test_submit_bounded_fails_fast_when_pool_saturated(monkeypatch):
++    # #272: once every worker slot is leaked to a hung backend, a further submit
++    # must fail loud/fast with a distinct error instead of queueing behind work
++    # that never starts (which would silently turn all traffic into timeouts).
++    monkeypatch.setattr(rc, "_inflight", rc._TIMEOUT_POOL_WORKERS)
++    with pytest.raises(ReasoningError, match="saturated"):
++        rc._submit_bounded(lambda: 42)
++
++
++def test_submit_bounded_releases_slot_on_completion(monkeypatch):
++    # A normally-completing call must return its slot to the pool.
++    import time
++    monkeypatch.setattr(rc, "_inflight", 0)
++    fut = rc._submit_bounded(lambda: 7)
++    assert fut.result(timeout=2) == 7
++    deadline = time.monotonic() + 2
++    while rc._inflight != 0 and time.monotonic() < deadline:
++        time.sleep(0.01)
++    assert rc._inflight == 0
++
++
++def test_record_usage_folds_cache_tokens_into_total():
++    # #280: cache_read/creation tokens are part of input consumption but reported
++    # in separate fields; the recorded total must include them, not undercount.
++    class _Span:
++        def __init__(self):
++            self.attrs = {}
++
++        def set_attribute(self, k, v):
++            self.attrs[k] = v
++
++    span = _Span()
++    rc._record_usage(span, {
++        "input_tokens": 100,
++        "output_tokens": 20,
++        "cache_read_input_tokens": 500,
++        "cache_creation_input_tokens": 30,
++    })
++    assert span.attrs["llm.token_count.prompt_details.cache_read"] == 500
++    assert span.attrs["llm.token_count.prompt_details.cache_write"] == 30
++    assert span.attrs["llm.token_count.prompt"] == 100 + 500 + 30
++    assert span.attrs["llm.token_count.completion"] == 20
++    assert span.attrs["llm.token_count.total"] == 100 + 500 + 30 + 20
++
++
+ class _FakeResp:
+     def __init__(self, status, body):
+         self.status = status

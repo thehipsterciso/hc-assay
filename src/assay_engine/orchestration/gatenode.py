@@ -83,14 +83,26 @@ def already_decided(state: Mapping[str, Any], gate_name: str) -> bool:
     return False
 
 
+GateRecorder = Callable[[Mapping[str, Any]], None]
+
+
 def make_gate_node(
-    gate: Gate, propose: GateProposal
+    gate: Gate,
+    propose: GateProposal,
+    *,
+    recorder: GateRecorder | None = None,
 ) -> Callable[[Mapping[str, Any]], dict[str, Any]]:
     """Build a LangGraph node that parks at ``gate`` for an operator decision.
 
     ``propose(state)`` returns the proposal payload surfaced to the operator (what the gate is
     asking them to approve). The node returns a ``{"gate_decisions": [record]}`` update, or
     ``{}`` (no-op) if the gate is already terminally approved.
+
+    ``recorder`` (optional) bridges each validated decision into the hash-chained provenance
+    trail (#111): the durable LangGraph path otherwise records gate decisions only as
+    (untamper-evident) graph state, so the documented append-only trail would miss them. Pass a
+    callback such as ``lambda r: trail.record("gate", f"gate {r['gate']}: {r['decision']}", **r)``
+    so the graph path's approvals/rejections land in the same chained trail as the runner's.
     """
 
     def node(state: Mapping[str, Any]) -> dict[str, Any]:
@@ -110,8 +122,13 @@ def make_gate_node(
         while True:
             resumed = interrupt(current)
             try:
-                return apply_gate_decision(gate, resumed)
+                update = apply_gate_decision(gate, resumed)
             except GateError as exc:
                 current = {"gate_id": gate.name, "proposal": proposal, "error": str(exc)}
+                continue
+            if recorder is not None:
+                for rec in update.get("gate_decisions", []):
+                    recorder(rec)  # land the decision in the hash-chained provenance trail
+            return update
 
     return node

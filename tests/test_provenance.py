@@ -165,3 +165,37 @@ def test_deterministic_hashes_under_fixed_clock():
     b = ProvenanceTrail(clock=_fixed_clock())
     b.record("k", "s", v={"a": 1, "b": 2})
     assert a.entries[0].entry_hash == b.entries[0].entry_hash
+
+
+def test_record_is_thread_safe_under_concurrency():
+    # #114: concurrent record() must not corrupt the seq/prev_hash chain.
+    # A naive concurrency test is non-discriminating under the GIL — the read->append window is
+    # too narrow to interleave. We inject a clock that sleeps INSIDE that window (record() reads
+    # seq/prev_hash, then calls the clock, then appends), so an UNLOCKED record() would let
+    # threads read the same seq and corrupt the chain. With the lock (held across the whole
+    # _record_locked, clock included) threads serialize and the chain stays intact. Verified
+    # discriminating: removing the lock makes this fail (duplicate seqs / broken chain).
+    import threading
+    import time
+
+    def widening_clock():
+        time.sleep(0.0005)  # widen the read->append window to force interleaving if unlocked
+        return _dt.datetime.now(tz=_UTC)
+
+    t = ProvenanceTrail(clock=widening_clock)
+    n_threads, per = 8, 15
+    barrier = threading.Barrier(n_threads)
+
+    def worker(w):
+        barrier.wait()  # release all threads at once → maximal contention in the window
+        for i in range(per):
+            t.record("k", f"w{w}-{i}", w=w, i=i)
+
+    threads = [threading.Thread(target=worker, args=(w,)) for w in range(n_threads)]
+    for th in threads:
+        th.start()
+    for th in threads:
+        th.join()
+    assert len(t) == n_threads * per
+    t.verify()  # intact hash chain despite concurrent appends through a widened window
+    assert [e.seq for e in t.entries] == list(range(n_threads * per))  # contiguous, no dupes/gaps

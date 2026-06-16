@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+# Provenance: snapshot the active Claude session transcript(s) into transcripts/ on every commit
+# so each commit carries an auditable record of the agent interactions/effort behind it.
+# Best-effort — never block a commit.
+set -u
+ROOT="$(git rev-parse --show-toplevel 2>/dev/null)" || exit 0
+PY="$ROOT/.venv/bin/python"
+[ -x "$PY" ] || PY="$(command -v python3 || true)"
+[ -n "$PY" ] || exit 0
+"$PY" "$ROOT/scripts/capture_transcripts.py" 2>/dev/null || true
+git add -- "$ROOT/transcripts" 2>/dev/null || true
+exit 0
