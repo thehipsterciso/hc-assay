@@ -25,17 +25,26 @@ no engine implementation at all.
 ## Decision
 
 1. Provide `methodology.adjudicate(corpus, claims_source, *, baseline_builder, hypothesis_for,
-   confirm)` as the engine-owned adjudication composition. It enforces Firewall A **by
-   construction**: the claims source is kept in the runner's local scope and is *never handed
-   to the builder*; the baseline is built inside a sealed `ClaimBlindGuard` that holds nothing,
-   and the claims are used only *after* the baseline exists. No object reachable from the
-   builder contains the claims, so it cannot read them by any path. (An adversarial review of
-   an earlier custodial-guard design — where the guard held the source — found a builder could
-   read past the sealed check via the guard's private `_claims_source`; keeping the source out
-   of the builder's reach entirely is strictly stronger.)
-2. It enforces that every adjudicated claim yields an `EXTERNAL_CLAIM` (pre-stated) hypothesis,
+   confirm)` as the engine-owned adjudication composition. It enforces Firewall A at the
+   **signature level**: the claims source is kept in the runner's local scope and is *never
+   handed to the builder* (whose `build(corpus, *, claim_guard)` signature has nowhere to
+   receive it), and the baseline is built inside a sealed `ClaimBlindGuard` that holds nothing.
+   So the builder cannot *accidentally* consult the claims — the realistic failure mode (a
+   study glancing at the claims "just for features"). Honest scope: this is **not** frame
+   isolation. A builder that deliberately reflects into the runner's call stack
+   (`sys._getframe`) could still reach the local `claims_source`; only running the builder in a
+   separate process would prevent that, which is out of scope. The guarantee is against
+   *accidental* circularity, not a builder that willfully defeats the firewall. (An adversarial
+   review found both this limit and that an earlier custodial-guard design was weaker still —
+   its private `_claims_source` could be read past the sealed check; holding nothing is the
+   better of the in-process options.)
+2. The runner enforces claim↔hypothesis↔verdict **identity**: the hypothesis's
+   `source_claim_id` must match the claim, the hypothesis must be locked (pre-registered), and
+   the verdict's `hypothesis_id` must match the hypothesis — so a `hypothesis_for` or `confirm`
+   bug cannot silently misattribute a verdict and pollute the scorecard.
+3. It enforces that every adjudicated claim yields an `EXTERNAL_CLAIM` (pre-stated) hypothesis,
    not a data-surfaced one — conflating the two would breach the discover/confirm separation.
-3. It implements §5 as a `SourceScorecard`: counts of supported/contradicted/indeterminate and
+4. It implements §5 as a `SourceScorecard`: counts of supported/contradicted/indeterminate and
    an `alignment_rate` = supported / (supported + contradicted) — the frequency with which the
    independent baseline corroborates the source on *decisive* claims, with indeterminate
    excluded. This is a measured frequency, explicitly **not** a normative judgement of the

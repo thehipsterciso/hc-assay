@@ -25,6 +25,7 @@ from typing import TYPE_CHECKING, Callable, Protocol
 
 from assay_engine.contracts.claims import ClaimRecord, ExternalClaimsSource
 from assay_engine.contracts.schema import Corpus
+from assay_engine.methodology.confirm import require_locked
 from assay_engine.methodology.firewalls import ClaimBlindGuard, FirewallViolation
 from assay_engine.methodology.hypothesis import Hypothesis, HypothesisOrigin
 from assay_engine.methodology.verdict import Verdict, VerdictLabel
@@ -104,15 +105,22 @@ def adjudicate(
 
     1. The claims source is kept in this function's local scope and is NOT handed to the
        builder; the baseline is built inside a sealed :class:`ClaimBlindGuard` that holds
-       nothing. So no object reachable from ``baseline_builder`` contains the claims — it
-       cannot read them by any path (not even the guard's internals).
-    2. Only after the baseline exists are the claims released; each is converted to a typed,
-       pre-stated ``EXTERNAL_CLAIM`` hypothesis and confirmed against the now-frozen baseline.
-    3. The verdicts are aggregated into a :class:`SourceScorecard`.
+       nothing. This is a **signature-level** guarantee: the builder is never *handed* a
+       claims source by the engine, so it cannot accidentally consult the claims. It is NOT
+       frame isolation — a builder that deliberately reflects into this runner's call stack
+       (``sys._getframe``) could reach ``claims_source``; preventing that would require
+       running the builder in a separate process, which is out of scope. The guarantee is
+       against *accidental* circularity, not against a builder that willfully defeats the
+       firewall.
+    2. After the baseline exists, each claim is converted to a typed, pre-stated
+       ``EXTERNAL_CLAIM`` hypothesis whose ``source_claim_id`` must match the claim and which
+       must be locked (pre-registered), then confirmed against the now-frozen baseline.
+    3. The verdict's ``hypothesis_id`` must match the hypothesis it answers (no misattribution),
+       and the verdicts are aggregated into a :class:`SourceScorecard`.
 
-    Returns ``(baseline, scorecard)``. Raises ``FirewallViolation`` if a claim yields a
-    hypothesis whose origin is not ``EXTERNAL_CLAIM`` (claims must be pre-stated, not
-    data-surfaced — conflating them would breach the discover/confirm separation).
+    Returns ``(baseline, scorecard)``. Raises ``FirewallViolation`` on any
+    claim↔hypothesis↔verdict identity mismatch, a non-``EXTERNAL_CLAIM`` (data-surfaced)
+    hypothesis, or an unlocked hypothesis.
     """
     # The claims source stays in THIS function's local scope and is never given to the builder.
     # The builder receives a guard holding nothing (a blind-mode signal only), so there is no
@@ -131,6 +139,18 @@ def adjudicate(
                 f"claim {claim.claim_id!r} produced a {hypothesis.origin.value!r} hypothesis; "
                 "adjudicated claims must be EXTERNAL_CLAIM (pre-stated, not data-surfaced)"
             )
-        verdicts.append(confirm(hypothesis, baseline, claim))
+        if hypothesis.source_claim_id != claim.claim_id:
+            raise FirewallViolation(
+                f"hypothesis for claim {claim.claim_id!r} carries source_claim_id "
+                f"{hypothesis.source_claim_id!r} — claim↔hypothesis misattribution"
+            )
+        require_locked(hypothesis)  # pre-registration enforced by the runner, not just delegated
+        verdict = confirm(hypothesis, baseline, claim)
+        if verdict.hypothesis_id != hypothesis.hypothesis_id:
+            raise FirewallViolation(
+                f"verdict for hypothesis {hypothesis.hypothesis_id!r} reports hypothesis_id "
+                f"{verdict.hypothesis_id!r} — hypothesis↔verdict misattribution"
+            )
+        verdicts.append(verdict)
 
     return baseline, _score(source_name, verdicts)

@@ -70,11 +70,11 @@ class _SneakyBuilder:
         return BaselineArtifact(corpus_fingerprint="fp", contents={})
 
 
-def _confirmer(verdict_for):
+def _confirmer(label_for=lambda cid: VerdictLabel.SUPPORTED):
     def confirm(hypothesis, baseline, claim):
-        # the baseline must be the real artifact; assert the firewall didn't strip it
-        assert isinstance(baseline, BaselineArtifact)
-        return verdict_for(claim.claim_id)
+        assert isinstance(baseline, BaselineArtifact)  # the real artifact is passed through
+        # the verdict must report the hypothesis it answers (runner checks this identity)
+        return Verdict(hypothesis.hypothesis_id, label_for(claim.claim_id), "r")
     return confirm
 
 
@@ -87,27 +87,29 @@ def test_sneaky_builder_cannot_read_claims_during_build():
             _corpus(), claims,
             baseline_builder=_SneakyBuilder(),
             hypothesis_for=_hypothesis_for,
-            confirm=_confirmer(lambda cid: Verdict.supported(cid, "r")),
+            confirm=_confirmer(),
         )
 
 
-def test_builder_has_no_reachable_reference_to_claims():
-    # the strongest form of Firewall A: even a builder that inspects the guard's internals
-    # finds no claims — the source is never in the builder's reach (only the runner's scope).
+def test_builder_is_handed_no_claims_source():
+    # signature-level Firewall A (the honest guarantee, ADR-0008): the builder is never handed
+    # a claims source and the guard it receives holds nothing — so it cannot ACCIDENTALLY
+    # consult the claims. (Deliberate sys._getframe reflection into the runner's stack is out
+    # of scope; only process isolation could stop that, per ADR-0008.)
     claims = _Claims([_claim("c1")])
     seen = {}
 
     class _InspectingBuilder:
         def build(self, corpus, *, claim_guard):
-            seen["custodial"] = getattr(claim_guard, "_claims_source", None)
+            seen["guard_holds"] = getattr(claim_guard, "_claims_source", None)
             return BaselineArtifact(corpus_fingerprint="fp", contents={})
 
     adjudicate(
         _corpus(), claims, baseline_builder=_InspectingBuilder(),
         hypothesis_for=_hypothesis_for,
-        confirm=_confirmer(lambda cid: Verdict.supported(cid, "r")),
+        confirm=_confirmer(),
     )
-    assert seen["custodial"] is None  # the guard holds nothing; claims unreachable from build
+    assert seen["guard_holds"] is None  # the guard handed to the builder holds no claims
 
 
 def test_good_builder_never_receives_claims_but_adjudication_then_sees_them():
@@ -119,7 +121,7 @@ def test_good_builder_never_receives_claims_but_adjudication_then_sees_them():
     def confirm(hypothesis, baseline, claim):
         captured["baseline_contents"] = dict(baseline.contents)
         captured["confirmed"].append(claim.claim_id)
-        return Verdict.supported(claim.claim_id, "r")
+        return Verdict.supported(hypothesis.hypothesis_id, "r")
 
     baseline, scorecard = adjudicate(
         _corpus(), claims,
@@ -147,8 +149,53 @@ def test_non_external_claim_hypothesis_is_rejected():
         adjudicate(
             _corpus(), claims, baseline_builder=_GoodBuilder(),
             hypothesis_for=discovery_hypothesis,
-            confirm=_confirmer(lambda cid: Verdict.supported(cid, "r")),
+            confirm=_confirmer(),
         )
+
+
+# ---- claim<->hypothesis<->verdict identity (BREAK 2: no silent misattribution) ----
+
+def test_runner_rejects_mismatched_source_claim_id():
+    claims = _Claims([_claim("c1")])
+
+    def wrong_source(claim):  # bug: hard-codes a different source_claim_id
+        h = _hypothesis_for(claim)
+        return Hypothesis(
+            hypothesis_id=h.hypothesis_id, statement=h.statement, kind=h.kind,
+            origin=h.origin, test_name=h.test_name, decision_rule=h.decision_rule,
+            source_claim_id="WRONG", locked_at=h.locked_at, timestamp_proof=h.timestamp_proof,
+        )
+
+    with pytest.raises(FirewallViolation, match="misattribution"):
+        adjudicate(_corpus(), claims, baseline_builder=_GoodBuilder(),
+                   hypothesis_for=wrong_source, confirm=_confirmer())
+
+
+def test_runner_rejects_verdict_for_wrong_hypothesis():
+    claims = _Claims([_claim("c1")])
+
+    def mislabeled(hypothesis, baseline, claim):  # verdict reports the wrong hypothesis_id
+        return Verdict.supported("SOME-OTHER-H", "r")
+
+    with pytest.raises(FirewallViolation, match="misattribution"):
+        adjudicate(_corpus(), claims, baseline_builder=_GoodBuilder(),
+                   hypothesis_for=_hypothesis_for, confirm=mislabeled)
+
+
+def test_runner_rejects_unlocked_hypothesis():
+    claims = _Claims([_claim("c1")])
+
+    def unlocked(claim):  # not pre-registered: no lock/timestamp
+        h = _hypothesis_for(claim)
+        return Hypothesis(
+            hypothesis_id=h.hypothesis_id, statement=h.statement, kind=h.kind,
+            origin=h.origin, test_name=h.test_name, decision_rule=h.decision_rule,
+            source_claim_id=h.source_claim_id,
+        )
+
+    with pytest.raises(FirewallViolation):  # require_locked
+        adjudicate(_corpus(), claims, baseline_builder=_GoodBuilder(),
+                   hypothesis_for=unlocked, confirm=_confirmer())
 
 
 # ---- the source scorecard (METHODOLOGY.md §5) ----
@@ -163,7 +210,7 @@ def test_scorecard_counts_and_alignment_rate_excludes_indeterminate():
     claims = _Claims([_claim(c) for c in verdict_by])
 
     def confirm(hypothesis, baseline, claim):
-        return Verdict(claim.claim_id, verdict_by[claim.claim_id], "r")
+        return Verdict(hypothesis.hypothesis_id, verdict_by[claim.claim_id], "r")
 
     _, sc = adjudicate(
         _corpus(), claims, baseline_builder=_GoodBuilder(),
@@ -179,7 +226,7 @@ def test_scorecard_alignment_rate_none_when_no_decisive_verdicts():
     claims = _Claims([_claim("c1")])
 
     def confirm(hypothesis, baseline, claim):
-        return Verdict.indeterminate(claim.claim_id, "r")
+        return Verdict.indeterminate(hypothesis.hypothesis_id, "r")
 
     _, sc = adjudicate(
         _corpus(), claims, baseline_builder=_GoodBuilder(),
@@ -192,7 +239,7 @@ def test_adjudicate_runs_with_no_claims():
     _, sc = adjudicate(
         _corpus(), _Claims([]), baseline_builder=_GoodBuilder(),
         hypothesis_for=_hypothesis_for,
-        confirm=_confirmer(lambda cid: Verdict.supported(cid, "r")),
+        confirm=_confirmer(),
     )
     assert sc.total == 0 and sc.alignment_rate is None
 
