@@ -93,3 +93,78 @@ def test_postgres_checkpointer_setup_and_round_trip(monkeypatch):
     saved = cp.put(cfg, chkpt, {}, {})
     got = cp.get_tuple(saved)
     assert got is not None and got.checkpoint["channel_values"]["y"] == 11
+
+
+def _pg_url() -> str:
+    import os
+
+    return os.environ.get("ASSAY_TEST_POSTGRES_URL", "postgresql://localhost:5432/assay")
+
+
+@pytest.mark.skipif(not postgres_up(), reason="postgres not reachable on localhost:5432")
+def test_postgres_state_durable_across_fresh_pool(monkeypatch):
+    # the durability guarantee: state written through one pool is readable through a NEW pool
+    # (it lives in postgres, not process memory) — what makes interrupt/resume survive restarts.
+    from typing import TypedDict
+
+    from langgraph.graph import END, START, StateGraph
+
+    from assay_engine.persistence.checkpoint import get_checkpointer
+
+    monkeypatch.setenv("ASSAY_POSTGRES_URL", _pg_url())
+
+    class S(TypedDict):
+        n: int
+
+    def _graph(cp):
+        b = StateGraph(S)
+        b.add_node("inc", lambda s: {"n": s["n"] + 1})
+        b.add_edge(START, "inc")
+        b.add_edge("inc", END)
+        return b.compile(checkpointer=cp)
+
+    try:
+        cp1 = get_checkpointer(use_memory=False)
+    except RuntimeError as exc:
+        pytest.skip(f"postgres present but db not usable: {exc}")
+    import uuid as _uuid
+
+    tid = f"durable-{_uuid.uuid4().hex[:8]}"
+    cfg = {"configurable": {"thread_id": tid}}
+    _graph(cp1).invoke({"n": 0}, cfg)
+
+    cp2 = get_checkpointer(use_memory=False)  # a fresh pool/saver over the same db
+    persisted = _graph(cp2).get_state(cfg)
+    assert persisted.values["n"] == 1  # state recovered from postgres, not memory
+
+
+@pytest.mark.skipif(not postgres_up(), reason="postgres not reachable on localhost:5432")
+def test_postgres_concurrent_get_checkpointer(monkeypatch):
+    # concurrent initializers must not race the advisory-locked one-time schema setup: the
+    # _init_lock serializes the in-process check, the PG advisory lock the cross-process DDL.
+    import threading
+
+    from assay_engine.persistence import checkpoint as cp
+
+    monkeypatch.setenv("ASSAY_POSTGRES_URL", _pg_url())
+    monkeypatch.setattr(cp, "_INITIALIZED_CONN_STRS", set())  # force setup contention this run
+
+    results: list = []
+    errors: list = []
+
+    def worker():
+        try:
+            results.append(cp.get_checkpointer(use_memory=False))
+        except RuntimeError as exc:
+            errors.append(exc)
+
+    threads = [threading.Thread(target=worker) for _ in range(8)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(timeout=30)
+
+    if errors and not results:
+        pytest.skip(f"postgres present but db not usable: {errors[0]}")
+    assert not errors, f"concurrent get_checkpointer raised: {errors}"
+    assert len(results) == 8  # every concurrent caller got a usable saver, no race failure
