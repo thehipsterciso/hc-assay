@@ -7,12 +7,16 @@ dataset to build an independent, empirical understanding of it — and, where th
 carries external expert-asserted claims, to adjudicate those claims against that
 independent understanding.
 
-Status: **engine scaffold in place.** The dataset-agnostic engine (`src/assay_engine`) —
-contracts, the methodology core (hypotheses, three verdicts, the two firewalls, the
-measurement↔interpretation fence), and Protocol seams for the infrastructure components — is
-implemented with a passing test suite and CI. The infrastructure seams (reasoning,
-orchestration graph, observability, persistence, baseline toolkit) are stubs to be wired
-next. Adapters and concrete studies build on top.
+Status: **engine implemented.** The dataset-agnostic engine (`src/assay_engine`) is in place
+and hardened — the contracts, the methodology core (hypotheses, three verdicts, the two
+firewalls, the measurement↔interpretation fence), and all five infrastructure seams: the
+tiered reasoning seam, self-hosted observability (tracing + experiment tracking), persistence
+(durable checkpointer, vector store, content-addressed versioning), the orchestration graph
+(gate interrupt/resume), and the baseline toolkit (reproducibility harness + numeric
+primitives). The engine core is dependency-free; heavy backends are lazy-imported behind
+optional extras (`reasoning`, `observability`, `persistence`, `orchestration`) so it installs,
+imports, and unit-tests offline (ADR-0006). Adapters and concrete studies build on top — the
+next step is the first study instance.
 
 ---
 

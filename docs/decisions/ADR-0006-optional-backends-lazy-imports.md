@@ -18,7 +18,7 @@ without its backend must fail clearly, never silently.
 ## Decision
 
 1. **The core engine has zero hard runtime dependencies.** Every heavy backend is declared
-   under a named install extra (`reasoning`, `observability`, `persistence`) in
+   under a named install extra (`reasoning`, `observability`, `persistence`, `orchestration`) in
    `pyproject.toml`, never in `dependencies`.
 2. **Backends are imported lazily**, inside the function that uses them — never at module
    top level. Importing any engine module, and running the full unit-test suite, succeeds
@@ -37,7 +37,7 @@ without its backend must fail clearly, never silently.
 
 ## Consequences
 
-- `pip install .` yields an importable, testable engine; `pip install '.[reasoning,observability,persistence]'`
+- `pip install .` yields an importable, testable engine; `pip install '.[reasoning,observability,persistence,orchestration]'`
   (plus the on-box services) yields a running platform.
 - CI exercises every hardened invariant without external services, because the load-bearing
   logic is separated from the I/O it guards.
