@@ -62,9 +62,7 @@ def subset_corpus(corpus: Corpus, ids: Iterable[str]) -> Corpus:
     """
     keep = frozenset(ids)
     units = tuple(u for u in corpus.units if u.unit_id in keep)
-    relations = tuple(
-        r for r in corpus.relations if r.source_id in keep and r.target_id in keep
-    )
+    relations = tuple(r for r in corpus.relations if r.source_id in keep and r.target_id in keep)
     return Corpus(units=units, relations=relations)
 
 

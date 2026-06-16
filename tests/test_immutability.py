@@ -44,6 +44,7 @@ def test_unit_attributes_cannot_be_mutated_in_place():
 
 # ---- issue #19: freeze honors its hashable contract on leaves ----
 
+
 def test_freeze_converts_bytearray_to_bytes():
     frozen = freeze({"b": bytearray(b"xy")})
     assert frozen["b"] == b"xy"

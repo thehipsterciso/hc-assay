@@ -77,7 +77,9 @@ class Measurement(Generic[T]):
         return f"{self.produced_by}:{self.inputs_hash}"
 
 
-def fence(measurement: Measurement[Any], value: T, *, rationale: str, judged_by: str) -> Interpretation[T]:
+def fence(
+    measurement: Measurement[Any], value: T, *, rationale: str, judged_by: str
+) -> Interpretation[T]:
     """Cross the fence once, in the only permitted direction: measurement → interpretation.
 
     ``basis`` records the specific measurement's ``ref`` (``producer:inputs_hash``), so an

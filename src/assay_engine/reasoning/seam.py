@@ -44,8 +44,8 @@ from assay_engine._local import require_loopback_url
 
 
 class StakesTier(Enum):
-    BULK = "bulk"          # local model — high volume, low stakes
-    HIGH_STAKES = "high"   # frontier model via fixed-cost subscription — gated, traced
+    BULK = "bulk"  # local model — high volume, low stakes
+    HIGH_STAKES = "high"  # frontier model via fixed-cost subscription — gated, traced
 
 
 @dataclass(frozen=True, slots=True)
@@ -239,7 +239,9 @@ def _bulk_complete(
         ) from exc
 
     kwargs: dict[str, Any] = dict(
-        model=model, base_url=BULK_BASE_URL, temperature=temperature,
+        model=model,
+        base_url=BULK_BASE_URL,
+        temperature=temperature,
         client_kwargs={"timeout": BULK_TIMEOUT},
     )
     if json_mode:
@@ -330,8 +332,7 @@ def _high_stakes_complete(prompt: str, system: str | None, model: str | None) ->
                 ):
                     result_error = {
                         "status": getattr(msg, "api_error_status", None),
-                        "detail": getattr(msg, "errors", None)
-                        or getattr(msg, "stop_reason", None),
+                        "detail": getattr(msg, "errors", None) or getattr(msg, "stop_reason", None),
                     }
 
     try:
@@ -475,7 +476,9 @@ class TieredReasoningSeam:
                 params = dict(request.params)
                 params.update(temperature=temp, system=json_system, _json_mode=True)
                 attempt_req = ReasoningRequest(
-                    prompt=request.prompt, tier=request.tier, purpose=request.purpose,
+                    prompt=request.prompt,
+                    tier=request.tier,
+                    purpose=request.purpose,
                     params=params,
                 )
                 try:

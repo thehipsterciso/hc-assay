@@ -6,12 +6,19 @@ approval. A gate cannot be silently bypassed: a transition is legal only if the 
 an ``approved`` decision, and a ``requires_human`` gate refuses to pass unless a provenance
 recorder is supplied to capture the decision (audit pass 1, issue #11).
 
-Current scope: this module implements the precondition check, mode-aware transition legality
-(issue #9), and the fail-loud provenance/human-approval hook. The append-only provenance
-*store* and the interactive human-approval UI are wired by the orchestration layer when it
-lands; until then, a ``requires_human`` gate fails loud rather than silently approving, and
-the recorder is the seam that store will plug into. The strong present-tense guarantees in
-GOVERNANCE.md describe that wired end-state.
+Two complementary gate mechanisms exist (ADR-0010):
+
+- This ``Gate``/``evaluate`` model is the **declarative precondition check** — mode-aware
+  transition legality (issue #9) plus a fail-loud human-approval hook that refuses to pass a
+  ``requires_human`` gate without a :class:`~assay_engine.provenance.ProvenanceTrail`-backed
+  recorder. It is used by a study that builds its own LangGraph topology with
+  :func:`~assay_engine.orchestration.gatenode.make_gate_node` for durable interrupt/resume.
+- The composed runner :func:`assay_engine.pipeline.run_study` uses the *synchronous*
+  ``GateReview``/``GateHandler`` model for in-process governance (a handler may approve, block,
+  or be wired to park). Both record every decision to the append-only provenance trail, which
+  **is** now wired (:mod:`assay_engine.provenance`) — the present-tense guarantees in
+  GOVERNANCE.md hold. Use the graph mechanism when you need cross-process durable parking; use
+  the runner handler for a straight-line governed run.
 """
 
 from __future__ import annotations

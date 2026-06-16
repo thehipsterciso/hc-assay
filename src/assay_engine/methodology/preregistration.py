@@ -216,9 +216,7 @@ def lock_hypothesis(
     digest = canonical_hypothesis_digest(hypothesis)
     proof = authority.stamp(digest, instant=instant)
     verified = authority.verify(digest, proof)  # fail loud here if the authority is misbehaving
-    return replace(
-        hypothesis, locked_at=verified.instant.isoformat(), timestamp_proof=proof
-    )
+    return replace(hypothesis, locked_at=verified.instant.isoformat(), timestamp_proof=proof)
 
 
 def verify_preregistration(

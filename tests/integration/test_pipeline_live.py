@@ -48,7 +48,10 @@ def test_full_pipeline_emits_real_spans_per_phase(tmp_path):
     src = ref.write_source(tmp_path / "corpus.json")
 
     from assay_engine.pipeline import auto_approve
-    result = run_study(ref.make_plan(src, modes=ALL), tracer=OtelTracer(), gate_handler=auto_approve)
+
+    result = run_study(
+        ref.make_plan(src, modes=ALL), tracer=OtelTracer(), gate_handler=auto_approve
+    )
 
     # the composed workflow produced real artifacts
     assert result.discovery_verdicts and result.scorecard is not None
@@ -58,8 +61,16 @@ def test_full_pipeline_emits_real_spans_per_phase(tmp_path):
     trace.get_tracer_provider().force_flush()
     names = {s.name for s in exporter.get_finished_spans()}
     # a real span fired around every phase handoff
-    for phase in ("INGEST", "BASELINE", "DISCOVERY", "PREREGISTER", "CONFIRM",
-                  "ADJUDICATE", "SCORE", "REPORT"):
+    for phase in (
+        "INGEST",
+        "BASELINE",
+        "DISCOVERY",
+        "PREREGISTER",
+        "CONFIRM",
+        "ADJUDICATE",
+        "SCORE",
+        "REPORT",
+    ):
         assert f"phase:{phase}" in names, f"missing live span for {phase}: {sorted(names)}"
 
 

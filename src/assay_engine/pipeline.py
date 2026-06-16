@@ -93,7 +93,9 @@ def auto_approve(review: GateReview) -> GateDecision:
     return ``approved=False`` to block the transition.
     """
     return GateDecision(
-        approved=True, gate=review.gate, reason="non-interactive auto-approval",
+        approved=True,
+        gate=review.gate,
+        reason="non-interactive auto-approval",
         evidence={"transition": f"{review.frm.name}->{review.to.name}"},
     )
 
@@ -123,15 +125,24 @@ class StudyPlan:
         modes = self.definition.modes
         if StudyMode.DISCOVERY in modes:
             missing = [
-                n for n, v in (("split", self.split), ("discover", self.discover),
-                               ("confirm_held_out", self.confirm_held_out)) if v is None
+                n
+                for n, v in (
+                    ("split", self.split),
+                    ("discover", self.discover),
+                    ("confirm_held_out", self.confirm_held_out),
+                )
+                if v is None
             ]
             if missing:
                 raise ValueError(f"DISCOVERY mode requires: {', '.join(missing)}")
         if StudyMode.ADJUDICATE_EXTERNAL_CLAIMS in modes:
             missing = [
-                n for n, v in (("hypothesis_for", self.hypothesis_for),
-                               ("confirm_claim", self.confirm_claim)) if v is None
+                n
+                for n, v in (
+                    ("hypothesis_for", self.hypothesis_for),
+                    ("confirm_claim", self.confirm_claim),
+                )
+                if v is None
             ]
             if missing:
                 raise ValueError(f"ADJUDICATE_EXTERNAL_CLAIMS mode requires: {', '.join(missing)}")
@@ -155,8 +166,10 @@ class StudyResult:
 
 def _count_logger(key: str, n: float) -> Callable[[ExperimentTracker, str], None]:
     """A typed metric-logging callback for :func:`run_study`'s best-effort tracker."""
+
     def _log(t: ExperimentTracker, rid: str) -> None:
         t.log_metric(rid, key, n)
+
     return _log
 
 
@@ -222,8 +235,11 @@ def run_study(
         approved = bool(getattr(decision, "approved", False))
         reason = str(getattr(decision, "reason", ""))
         trail.record(
-            "gate", f"gate {review.gate!r}: {'approved' if approved else 'blocked'}",
-            gate=review.gate, approved=approved, reason=reason,
+            "gate",
+            f"gate {review.gate!r}: {'approved' if approved else 'blocked'}",
+            gate=review.gate,
+            approved=approved,
+            reason=reason,
             transition=f"{review.frm.name}->{review.to.name}",
         )
         if not approved:
@@ -232,16 +248,21 @@ def run_study(
             )
 
     trail.record(
-        "run_start", f"study {defn.name!r} starting",
-        study=defn.name, modes=sorted(m.value for m in modes),
+        "run_start",
+        f"study {defn.name!r} starting",
+        study=defn.name,
+        modes=sorted(m.value for m in modes),
         research_questions=list(defn.research_questions),
     )
     if tracker is not None:
         try:
-            run_id = tracker.start_run(defn.name, {
-                "modes": ",".join(sorted(m.value for m in modes)),
-                "n_research_questions": len(defn.research_questions),
-            })
+            run_id = tracker.start_run(
+                defn.name,
+                {
+                    "modes": ",".join(sorted(m.value for m in modes)),
+                    "n_research_questions": len(defn.research_questions),
+                },
+            )
         except Exception as exc:  # noqa: BLE001
             trail.record("tracking_error", f"experiment tracker start_run failed: {exc}")
 
@@ -261,9 +282,12 @@ def run_study(
             if versioner is not None:
                 source_version = versioner.put(str(plan.source))
             trail.record(
-                "ingest", "parsed source into canonical corpus",
-                source_fingerprint=source_fp, corpus_fingerprint=cfp,
-                n_units=len(corpus.units), n_relations=len(corpus.relations),
+                "ingest",
+                "parsed source into canonical corpus",
+                source_fingerprint=source_fp,
+                corpus_fingerprint=cfp,
+                n_units=len(corpus.units),
+                n_relations=len(corpus.relations),
                 source_version=source_version,
             )
             # split ids must reference real corpus units (no silent partition drift, audit H4)
@@ -283,8 +307,10 @@ def run_study(
                 fm = fb.build(corpus)
                 feature_matrices.append(fm)
                 trail.record(
-                    "features", f"built feature matrix ({len(fm.feature_names)} features)",
-                    provides=list(fb.provides), n_units=len(fm.unit_ids),
+                    "features",
+                    f"built feature matrix ({len(fm.feature_names)} features)",
+                    provides=list(fb.provides),
+                    n_units=len(fm.unit_ids),
                     feature_names=list(fm.feature_names),
                 )
 
@@ -301,9 +327,11 @@ def run_study(
                     "was not built from this corpus"
                 )
             trail.record(
-                "baseline", "built blind baseline (Firewall A)",
+                "baseline",
+                "built blind baseline (Firewall A)",
                 corpus_fingerprint=baseline.corpus_fingerprint,
-                contents=sorted(baseline.contents), determinism=dict(baseline.determinism),
+                contents=sorted(baseline.contents),
+                determinism=dict(baseline.determinism),
             )
 
         discovery_verdicts: tuple[Verdict, ...] = ()
@@ -322,8 +350,10 @@ def run_study(
                     raise FirewallViolation("discovery partition selects no corpus units")
                 hypotheses = list(plan.discover(discovery_corpus))  # only the discovery partition
                 trail.record(
-                    "discovery", f"data surfaced {len(hypotheses)} candidate hypotheses",
-                    n=len(hypotheses), ids=[h.hypothesis_id for h in hypotheses],
+                    "discovery",
+                    f"data surfaced {len(hypotheses)} candidate hypotheses",
+                    n=len(hypotheses),
+                    ids=[h.hypothesis_id for h in hypotheses],
                 )
 
             with tracer.span("phase:PREREGISTER"):
@@ -341,18 +371,24 @@ def run_study(
                         h, authority=plan.authority, not_after=preregister_instant
                     )
                     trail.record(
-                        "preregister", f"locked hypothesis {h.hypothesis_id!r}",
-                        hypothesis_id=h.hypothesis_id, digest=vt.digest,
+                        "preregister",
+                        f"locked hypothesis {h.hypothesis_id!r}",
+                        hypothesis_id=h.hypothesis_id,
+                        digest=vt.digest,
                         locked_at=vt.instant.isoformat(),
                     )
-                run_gate(GateReview(
-                    gate="review-locked-hypotheses", frm=Phase.PREREGISTER, to=Phase.CONFIRM,
-                    summary="review locked hypotheses before confirmatory testing",
-                    payload={
-                        "hypothesis_ids": [h.hypothesis_id for h in hypotheses],
-                        "research_questions": list(defn.research_questions),
-                    },
-                ))
+                run_gate(
+                    GateReview(
+                        gate="review-locked-hypotheses",
+                        frm=Phase.PREREGISTER,
+                        to=Phase.CONFIRM,
+                        summary="review locked hypotheses before confirmatory testing",
+                        payload={
+                            "hypothesis_ids": [h.hypothesis_id for h in hypotheses],
+                            "research_questions": list(defn.research_questions),
+                        },
+                    )
+                )
 
             with tracer.span("phase:CONFIRM"):
                 enter(Phase.CONFIRM)
@@ -366,8 +402,10 @@ def run_study(
                         )
                     confirmed.append(verdict)
                     trail.record(
-                        "verdict", f"confirmed {h.hypothesis_id!r}: {verdict.label.value}",
-                        hypothesis_id=h.hypothesis_id, label=verdict.label.value,
+                        "verdict",
+                        f"confirmed {h.hypothesis_id!r}: {verdict.label.value}",
+                        hypothesis_id=h.hypothesis_id,
+                        label=verdict.label.value,
                         rule=verdict.decision_rule,
                     )
                 discovery_verdicts = tuple(confirmed)
@@ -385,52 +423,69 @@ def run_study(
                     "adjudication mode but the claims source yielded no claims — nothing to adjudicate"
                 )
             prev_phase = Phase.CONFIRM if StudyMode.DISCOVERY in modes else Phase.BASELINE
-            run_gate(GateReview(
-                gate="review-baseline-and-claims", frm=prev_phase, to=Phase.ADJUDICATE,
-                summary="review the blind baseline and the external claim set before adjudication",
-                payload={
-                    "n_claims": len(claim_records),
-                    "claim_ids": [c.claim_id for c in claim_records],
-                    "claim_fingerprint": defn.claims_source.claim_fingerprint(),
-                    "baseline_fingerprint": baseline.corpus_fingerprint,
-                    "research_questions": list(defn.research_questions),
-                },
-            ))
+            run_gate(
+                GateReview(
+                    gate="review-baseline-and-claims",
+                    frm=prev_phase,
+                    to=Phase.ADJUDICATE,
+                    summary="review the blind baseline and the external claim set before adjudication",
+                    payload={
+                        "n_claims": len(claim_records),
+                        "claim_ids": [c.claim_id for c in claim_records],
+                        "claim_fingerprint": defn.claims_source.claim_fingerprint(),
+                        "baseline_fingerprint": baseline.corpus_fingerprint,
+                        "research_questions": list(defn.research_questions),
+                    },
+                )
+            )
             with tracer.span("phase:ADJUDICATE"):
                 enter(Phase.ADJUDICATE)
 
                 def _record_adjudication_step(h: Hypothesis, v: Verdict) -> None:
                     trail.record(
-                        "preregister", f"locked claim hypothesis {h.hypothesis_id!r}",
-                        hypothesis_id=h.hypothesis_id, source_claim_id=h.source_claim_id,
+                        "preregister",
+                        f"locked claim hypothesis {h.hypothesis_id!r}",
+                        hypothesis_id=h.hypothesis_id,
+                        source_claim_id=h.source_claim_id,
                         locked_at=h.locked_at,
                     )
                     trail.record(
-                        "verdict", f"adjudicated {v.hypothesis_id!r}: {v.label.value}",
-                        hypothesis_id=v.hypothesis_id, label=v.label.value, rule=v.decision_rule,
+                        "verdict",
+                        f"adjudicated {v.hypothesis_id!r}: {v.label.value}",
+                        hypothesis_id=v.hypothesis_id,
+                        label=v.label.value,
+                        rule=v.decision_rule,
                     )
 
                 # not_after = baseline_instant: a claim-derived hypothesis must have been locked
                 # before the (shared) baseline existed. The SAME materialized claim_records that
                 # were gated/recorded are scored (#95).
                 scorecard = adjudicate_with_baseline(
-                    baseline, claim_records,
-                    hypothesis_for=plan.hypothesis_for, confirm=plan.confirm_claim,
-                    authority=plan.authority, not_after=baseline_instant, source_name=defn.name,
+                    baseline,
+                    claim_records,
+                    hypothesis_for=plan.hypothesis_for,
+                    confirm=plan.confirm_claim,
+                    authority=plan.authority,
+                    not_after=baseline_instant,
+                    source_name=defn.name,
                     on_step=_record_adjudication_step,
                 )
             with tracer.span("phase:SCORE"):
                 enter(Phase.SCORE)
                 trail.record(
-                    "score", f"source scorecard for {defn.name!r}",
-                    n_supported=scorecard.n_supported, n_contradicted=scorecard.n_contradicted,
+                    "score",
+                    f"source scorecard for {defn.name!r}",
+                    n_supported=scorecard.n_supported,
+                    n_contradicted=scorecard.n_contradicted,
                     n_indeterminate=scorecard.n_indeterminate,
                     alignment_rate=scorecard.alignment_rate,
                 )
                 sc = scorecard
                 track(lambda t, rid: t.log_metric(rid, "n_supported", float(sc.n_supported)))
                 track(lambda t, rid: t.log_metric(rid, "n_contradicted", float(sc.n_contradicted)))
-                track(lambda t, rid: t.log_metric(rid, "n_indeterminate", float(sc.n_indeterminate)))
+                track(
+                    lambda t, rid: t.log_metric(rid, "n_indeterminate", float(sc.n_indeterminate))
+                )
                 ar = sc.alignment_rate
                 if ar is not None:
                     track(lambda t, rid: t.log_metric(rid, "alignment_rate", float(ar)))
@@ -439,8 +494,10 @@ def run_study(
         with tracer.span("phase:REPORT"):
             enter(Phase.REPORT)
             trail.record(
-                "report", "assembled reproducibility package",
-                n_discovery_verdicts=len(discovery_verdicts), has_scorecard=scorecard is not None,
+                "report",
+                "assembled reproducibility package",
+                n_discovery_verdicts=len(discovery_verdicts),
+                has_scorecard=scorecard is not None,
             )
 
         if tuple(visited) != required:
@@ -457,9 +514,14 @@ def run_study(
                 pass
 
     return StudyResult(
-        study=defn.name, corpus_fingerprint=cfp, baseline=baseline,
-        discovery_verdicts=discovery_verdicts, scorecard=scorecard,
-        phases=tuple(visited), provenance=trail.entries,
-        source_version=source_version, feature_matrices=tuple(feature_matrices),
+        study=defn.name,
+        corpus_fingerprint=cfp,
+        baseline=baseline,
+        discovery_verdicts=discovery_verdicts,
+        scorecard=scorecard,
+        phases=tuple(visited),
+        provenance=trail.entries,
+        source_version=source_version,
+        feature_matrices=tuple(feature_matrices),
         experiment_run_id=run_id,
     )

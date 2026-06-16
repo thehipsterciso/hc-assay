@@ -7,16 +7,47 @@ dataset to build an independent, empirical understanding of it — and, where th
 carries external expert-asserted claims, to adjudicate those claims against that
 independent understanding.
 
-Status: **engine implemented.** The dataset-agnostic engine (`src/assay_engine`) is in place
-and hardened — the contracts, the methodology core (hypotheses, three verdicts, the two
-firewalls, the measurement↔interpretation fence), and all five infrastructure seams: the
-tiered reasoning seam, self-hosted observability (tracing + experiment tracking), persistence
-(durable checkpointer, vector store, content-addressed versioning), the orchestration graph
-(gate interrupt/resume), and the baseline toolkit (reproducibility harness + numeric
-primitives). The engine core is dependency-free; heavy backends are lazy-imported behind
-optional extras (`reasoning`, `observability`, `persistence`, `orchestration`) so it installs,
-imports, and unit-tests offline (ADR-0006). Adapters and concrete studies build on top — the
-next step is the first study instance.
+Status: **engine implemented and composed.** The dataset-agnostic engine (`src/assay_engine`)
+is in place and hardened — the contracts, the methodology core (hypotheses, three verdicts, the
+two firewalls, content-bound pre-registration, the measurement↔interpretation fence), all five
+infrastructure seams (tiered reasoning, self-hosted observability, persistence, orchestration,
+baseline toolkit), an append-only hash-chained provenance trail, and a single composed runner —
+`run_study` — that ties them into one governed end-to-end flow (ADR-0010). The engine core is
+dependency-free; heavy backends are lazy-imported behind optional extras (`reasoning`,
+`observability`, `persistence`, `orchestration`, `baseline`, or `all`) so it installs, imports,
+and unit-tests offline (ADR-0006). You build a study by implementing the adapter Protocols for
+your dataset and calling `run_study`.
+
+## Quickstart
+
+```bash
+pip install assay-engine            # dependency-free core
+pip install "assay-engine[all]"     # + every optional backend
+```
+
+```python
+from assay_engine import StudyPlan, run_study, auto_approve
+
+# implement the adapter Protocols for your dataset (parser, baseline builder, the
+# discover/confirm callables, an optional external-claims source), then:
+plan = StudyPlan(definition=..., source=..., baseline_builder=..., authority=..., ...)
+
+result = run_study(plan, gate_handler=auto_approve)   # gate_handler is required
+print(result.phases, result.discovery_verdicts, result.scorecard)
+result.provenance        # append-only, hash-chained audit trail (verified before return)
+```
+
+A complete, runnable example (both modes, synthetic data, no backends needed) is in
+[`examples/minimal_study.py`](examples/minimal_study.py):
+
+```bash
+python examples/minimal_study.py
+```
+
+`gate_handler` is required so governance is a conscious choice: pass `auto_approve` to opt out
+of human review explicitly, or an operator handler that can block/park before each confirmatory
+step. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the adapter contract and
+[docs/METHODOLOGY.md](docs/METHODOLOGY.md) for the method.
 
 ---
 

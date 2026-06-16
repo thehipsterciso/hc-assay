@@ -1,8 +1,10 @@
 """Baseline builder contract + a deterministic artifact wrapper.
 
-The builders (embeddings, similarity, graph, clustering, stats) are implemented as the
-engine matures; this module fixes the *shape* of a baseline artifact and the build contract
-so the rest of the engine (gates, confirm, provenance) can be wired against it now.
+This module fixes the *shape* of a baseline artifact and the build contract. The engine ships
+the dataset-agnostic building blocks for a baseline (similarity/distance, descriptive stats,
+the determinism harness in :mod:`assay_engine.baseline`); the choice-bearing builder that
+assembles them — which embedding model, which clustering, which graph — encodes dataset
+decisions and is supplied by a study's adapter as a :class:`BaselineBuilder` (ADR-0002).
 
 Firewall A is enforced here structurally: :meth:`BaselineBuilder.build` accepts a
 :class:`~assay_engine.methodology.firewalls.ClaimBlindGuard` and never accepts a claims
