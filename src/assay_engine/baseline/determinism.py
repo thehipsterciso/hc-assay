@@ -15,79 +15,30 @@ builder ran so the result is reproducible regardless of which builder it was.
 
 from __future__ import annotations
 
-import datetime as _dt
-import decimal
 import hashlib
 import json
 import sys
-import uuid
 from dataclasses import dataclass
 from typing import Any, Mapping
 
 from assay_engine import __version__ as _ENGINE_VERSION
+
+# The canonical hashing primitives moved to ``assay_engine._canonical`` (see note below); these
+# imports re-export them at their historical home so existing call sites keep working.
+from assay_engine._canonical import canonical_plain as _plain  # noqa: F401
+from assay_engine._canonical import hash_bytes as hash_bytes  # noqa: F401  (re-export)
+from assay_engine._canonical import hash_text
+from assay_engine._canonical import hash_value as hash_value  # re-export (baseline public API)
+from assay_engine._canonical import keytag as _keytag  # noqa: F401
 from assay_engine._frozen import freeze_mapping
 from assay_engine.baseline.toolkit import BaselineArtifact
 from assay_engine.contracts.schema import Corpus
 
-
-def _keytag(key: Any) -> str:
-    """A type-faithful, sortable string for a mapping key, so distinct keys that happen to
-    share a ``str()`` (e.g. int ``1`` vs str ``"1"``) do NOT collide (audit #B1)."""
-    return f"{type(key).__name__}::{key!r}"
-
-
-def _plain(value: Any) -> Any:
-    """Canonicalize ``value`` into a fully JSON-native, type-faithful structure for hashing.
-
-    Type-faithful so two values that merely share a ``str()`` never collide (audit #B1/#B2):
-    mappings become a sorted list of ``[typed-key, value]`` pairs; bytes, sets, and any
-    non-JSON-native leaf are tagged with their type rather than stringified. Nothing is coerced
-    with ``str()``, so the content hash distinguishes ``date(2020,1,1)`` from ``"2020-01-01"``.
-    """
-    if value is None or isinstance(value, (str, bool, int, float)):
-        return value  # JSON-native scalars; json encodes 1, "1", true, 1.0 distinctly
-    if isinstance(value, bytes):
-        return {"__bytes__": value.hex()}
-    if isinstance(value, Mapping):
-        pairs = sorted(([_keytag(k), _plain(v)] for k, v in value.items()), key=lambda p: p[0])
-        return {"__map__": pairs}
-    if isinstance(value, (list, tuple)):
-        return [_plain(v) for v in value]
-    if isinstance(value, (set, frozenset)):
-        return {"__set__": sorted((_plain(v) for v in value), key=repr)}
-    # A small allowlist of leaf types with a value-faithful canonical form.
-    if isinstance(value, (_dt.date, _dt.datetime, _dt.time)):
-        return {"__temporal__": value.isoformat()}
-    if isinstance(value, decimal.Decimal):
-        return {"__decimal__": str(value)}
-    if isinstance(value, uuid.UUID):
-        return {"__uuid__": str(value)}
-    # Anything else is refused LOUDLY rather than repr-tagged: a default (address-based) repr
-    # would make the fingerprint differ every process, silently breaking reproducibility
-    # (audit #B5). The caller must canonicalize exotic values before hashing.
-    raise TypeError(
-        f"baseline hashing cannot canonicalize a leaf of type "
-        f"{type(value).__module__}.{type(value).__qualname__!r} reproducibly — convert it to a "
-        "JSON-native value, bytes, date/datetime/Decimal/UUID before hashing"
-    )
-
-
-def hash_bytes(data: bytes) -> str:
-    return hashlib.sha256(data).hexdigest()
-
-
-def hash_text(text: str) -> str:
-    return hash_bytes(text.encode("utf-8"))
-
-
-def hash_value(value: Any) -> str:
-    """Stable, type-faithful content hash of an arbitrary value.
-
-    ``_plain`` canonicalizes everything to JSON-native form first, so ``json.dumps`` needs no
-    ``default=`` coercion — anything it still cannot encode is a real bug to surface, not to
-    silently stringify (audit #B2).
-    """
-    return hash_text(json.dumps(_plain(value), sort_keys=True, allow_nan=False))
+# The canonical hashing primitives (``_plain``/``_keytag``/``hash_bytes``/``hash_text``/
+# ``hash_value``) live in ``assay_engine._canonical`` so they sit below both ``baseline`` and
+# ``methodology`` in the import graph (audit #B1/#B2/#B5 originally landed here; hoisted so
+# pre-registration can content-bind a hypothesis with the *same* type-faithful digest). They are
+# re-exported above for back-compat.
 
 
 def corpus_fingerprint(corpus: Corpus) -> str:

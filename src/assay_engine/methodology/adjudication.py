@@ -20,14 +20,18 @@ dimensions — where it aligns, diverges, leaves gaps — are data-surfaced down
 
 from __future__ import annotations
 
+import datetime as _dt
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Callable, Protocol
 
 from assay_engine.contracts.claims import ClaimRecord, ExternalClaimsSource
 from assay_engine.contracts.schema import Corpus
-from assay_engine.methodology.confirm import require_locked
 from assay_engine.methodology.firewalls import ClaimBlindGuard, FirewallViolation
 from assay_engine.methodology.hypothesis import Hypothesis, HypothesisOrigin
+from assay_engine.methodology.preregistration import (
+    TimestampAuthority,
+    require_preregistered,
+)
 from assay_engine.methodology.verdict import Verdict, VerdictLabel
 
 if TYPE_CHECKING:
@@ -99,6 +103,7 @@ def adjudicate(
     baseline_builder: BaselineBuilder,
     hypothesis_for: Callable[[ClaimRecord], Hypothesis],
     confirm: ClaimConfirmer,
+    authority: TimestampAuthority,
     source_name: str = "external",
 ) -> tuple[BaselineArtifact, SourceScorecard]:
     """Run the full adjudication, enforcing Firewall A by construction.
@@ -112,21 +117,39 @@ def adjudicate(
        running the builder in a separate process, which is out of scope. The guarantee is
        against *accidental* circularity, not against a builder that willfully defeats the
        firewall.
-    2. After the baseline exists, each claim is converted to a typed, pre-stated
-       ``EXTERNAL_CLAIM`` hypothesis whose ``source_claim_id`` must match the claim and which
-       must be locked (pre-registered), then confirmed against the now-frozen baseline.
+    2. After the baseline exists, each claim is mapped (by ``hypothesis_for``) to its typed,
+       pre-stated ``EXTERNAL_CLAIM`` hypothesis whose ``source_claim_id`` must match the claim
+       and which must be genuinely **pre-registered** — :func:`~assay_engine.methodology.
+       preregistration.require_preregistered` checks (via the supplied ``authority``) that the
+       proof binds this hypothesis's content and that its attested lock time precedes the
+       **baseline build** (the ordering instant is captured before the build). A claim-derived
+       hypothesis must therefore be locked *before* ``adjudicate`` is called — ``hypothesis_for``
+       looks up an already-locked hypothesis; locking on demand inside it (after the baseline
+       exists) is rejected, so the hypothesis cannot have been tuned to the baseline.
     3. The verdict's ``hypothesis_id`` must match the hypothesis it answers (no misattribution),
        and the verdicts are aggregated into a :class:`SourceScorecard`.
 
-    Returns ``(baseline, scorecard)``. Raises ``FirewallViolation`` on any
+    ``authority`` is the pre-registration timestamp authority (e.g.
+    :class:`~assay_engine.methodology.preregistration.LocalHmacAuthority`, or an RFC-3161
+    adapter); the engine ships no silent-accept default, so a study must supply a real one.
+
+    Returns ``(baseline, scorecard)``. Raises ``FirewallViolation`` (incl.
+    :class:`~assay_engine.methodology.preregistration.PreRegistrationError`) on any
     claim↔hypothesis↔verdict identity mismatch, a non-``EXTERNAL_CLAIM`` (data-surfaced)
-    hypothesis, or an unlocked hypothesis.
+    hypothesis, or a hypothesis that is not verifiably pre-registered before confirmation.
     """
     # The claims source stays in THIS function's local scope and is never given to the builder.
     # The builder receives a guard holding nothing (a blind-mode signal only), so there is no
     # object reachable from the builder that contains the claims — not even via the guard's
     # internals. This is stronger than a custodial guard, whose private `_claims_source` a
     # determined builder could read past the sealed `release()` check (adversarial review).
+    # Captured BEFORE the baseline is built: an EXTERNAL_CLAIM hypothesis derives from the
+    # external claim, not from the baseline, so it must be pre-registered before the baseline (the
+    # answer) exists. Using this as `not_after` makes "lock before the result is in hand" real —
+    # a hypothesis locked on demand inside `hypothesis_for` (i.e. after the build) is rejected,
+    # forcing studies to pre-lock their claim-derived hypotheses (#83).
+    not_after = _dt.datetime.now(tz=_dt.timezone.utc)
+
     guard: ClaimBlindGuard[ExternalClaimsSource] = ClaimBlindGuard()
     with guard.sealed():
         baseline = baseline_builder.build(corpus, claim_guard=guard)
@@ -144,7 +167,10 @@ def adjudicate(
                 f"hypothesis for claim {claim.claim_id!r} carries source_claim_id "
                 f"{hypothesis.source_claim_id!r} — claim↔hypothesis misattribution"
             )
-        require_locked(hypothesis)  # pre-registration enforced by the runner, not just delegated
+        # Pre-registration enforced by the runner: the proof must bind THIS hypothesis's content
+        # (no post-lock content swap) and its attested lock time must precede the baseline build
+        # (so the claim-derived hypothesis cannot have been tuned to the baseline).
+        require_preregistered(hypothesis, authority=authority, not_after=not_after)
         verdict = confirm(hypothesis, baseline, claim)
         if verdict.hypothesis_id != hypothesis.hypothesis_id:
             raise FirewallViolation(

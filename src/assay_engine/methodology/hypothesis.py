@@ -43,16 +43,19 @@ class Hypothesis:
 
     ``locked_at`` and ``timestamp_proof`` are populated when the hypothesis is sealed for
     pre-registration. An unlocked hypothesis (either field ``None``) must not be passed to a
-    confirmatory test — the engine refuses this, and the ``locked`` property is the in-code
-    check.
+    confirmatory test.
 
-    Scope of ``locked`` today (audit pass 1, issue #6): ``locked`` is a **pre-registration
-    sentinel** — it asserts only that both fields are populated. It does NOT yet parse
-    ``locked_at`` as a timestamp, validate ``timestamp_proof`` as an RFC-3161 token, or
-    verify that the lock precedes confirmation. Real RFC-3161 verification and
-    lock-before-confirm ordering are deferred until the pre-registration / timestamp-authority
-    infrastructure lands (see GOVERNANCE.md). Do not read ``locked`` as a cryptographic
-    guarantee yet.
+    Scope of ``locked`` (audit pass 1, issue #6): ``locked`` is only a cheap **presence**
+    predicate — both fields populated. It is NOT the methodology-grade check and carries no
+    cryptographic meaning on its own. The real pre-registration verification —
+    content-binding (the proof covers this hypothesis's content), timestamp attestation, and
+    lock-before-confirm ordering — lives in
+    :mod:`assay_engine.methodology.preregistration` (``verify_preregistration`` /
+    ``require_preregistered``), and the confirmatory runners (:mod:`adjudication`,
+    :mod:`discovery`) enforce it via a supplied ``TimestampAuthority``. Use
+    :func:`~assay_engine.methodology.preregistration.lock_hypothesis` to produce a hypothesis
+    whose lock actually verifies; a hand-set ``timestamp_proof`` string satisfies ``locked``
+    but will fail ``verify_preregistration``.
     """
 
     hypothesis_id: str

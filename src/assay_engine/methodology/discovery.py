@@ -26,12 +26,16 @@ not a step that willfully reflects into the caller's frame (only process isolati
 
 from __future__ import annotations
 
+import datetime as _dt
 from typing import Callable, Iterable, Protocol
 
 from assay_engine.contracts.schema import Corpus
-from assay_engine.methodology.confirm import require_locked
 from assay_engine.methodology.firewalls import DiscoverConfirmSplit, FirewallViolation
 from assay_engine.methodology.hypothesis import Hypothesis, HypothesisOrigin
+from assay_engine.methodology.preregistration import (
+    TimestampAuthority,
+    require_preregistered,
+)
 from assay_engine.methodology.verdict import Verdict
 
 
@@ -70,19 +74,29 @@ def discover_and_confirm(
     *,
     discover: Callable[[Corpus], Iterable[Hypothesis]],
     confirm: HeldOutConfirmer,
+    authority: TimestampAuthority,
 ) -> list[Verdict]:
     """Run discovery then confirmation with the data separation enforced by construction.
 
     1. ``discover`` is handed a corpus containing only the discovery partition and returns
-       candidate hypotheses. They must be ``DISCOVERY``-origin and **locked** (pre-registered)
-       before confirmation — discovering and confirming on the same data, or confirming an
-       unlocked hypothesis, is the double-dipping Firewall B exists to prevent.
+       candidate hypotheses. They must be ``DISCOVERY``-origin and genuinely **pre-registered**
+       before confirmation — ``require_preregistered`` checks (via ``authority``) that the proof
+       binds each hypothesis's content and that its attested lock time precedes confirmation.
+       Discovering and confirming on the same data, or confirming a hypothesis whose content was
+       changed after locking, is the double-dipping Firewall B exists to prevent.
     2. ``confirm`` is handed a corpus containing only the held-out partition and tests each
        hypothesis there; the verdict must report the hypothesis it answers.
 
-    Returns the verdicts. Raises ``FirewallViolation`` on an empty discovery or held-out
-    partition (split ids that select no corpus units — a vacuous test), a non-``DISCOVERY``
-    hypothesis, an unlocked hypothesis, or a verdict↔hypothesis misattribution.
+    ``authority`` is the pre-registration timestamp authority (e.g.
+    :class:`~assay_engine.methodology.preregistration.LocalHmacAuthority`, or an RFC-3161
+    adapter); the engine ships no silent-accept default. A study's ``discover`` step locks each
+    discovered hypothesis (e.g. via :func:`~assay_engine.methodology.preregistration.
+    lock_hypothesis`) before returning it.
+
+    Returns the verdicts. Raises ``FirewallViolation`` (incl. ``PreRegistrationError``) on an
+    empty discovery or held-out partition (split ids that select no corpus units — a vacuous
+    test), a non-``DISCOVERY`` hypothesis, a hypothesis that is not verifiably pre-registered
+    before confirmation, or a verdict↔hypothesis misattribution.
     """
     discovery_corpus = subset_corpus(corpus, split.discovery_ids)
     if not discovery_corpus.units:
@@ -110,7 +124,11 @@ def discover_and_confirm(
                 f"hypothesis {hypothesis.hypothesis_id!r} is {hypothesis.origin.value!r}; the "
                 "discovery runner expects DISCOVERY-origin (data-surfaced) hypotheses"
             )
-        require_locked(hypothesis)  # must be pre-registered before it is confirmed (Firewall B)
+        # Pre-registration enforced by the runner: the proof must bind THIS hypothesis's content
+        # (no post-lock content swap) and its attested lock time must precede this confirmation.
+        require_preregistered(
+            hypothesis, authority=authority, not_after=_dt.datetime.now(tz=_dt.timezone.utc)
+        )
         verdict = confirm(hypothesis, held_out)
         if verdict.hypothesis_id != hypothesis.hypothesis_id:
             raise FirewallViolation(
