@@ -22,6 +22,17 @@ dev = [
     "ruff>=0.6",
     "mypy>=1.11",
 ]
+# Heavy backends for the reasoning seam — installed only where real LLM calls run.
+# The engine imports and unit-tests (mocking the backends) without these.
+reasoning = [
+    "langchain-ollama>=1.1,<2",
+    "claude-agent-sdk>=0.2.101,<0.3",
+    "anyio>=4,<5",
+]
+observability = [
+    "opentelemetry-sdk>=1.25,<2",
+    "opentelemetry-exporter-otlp>=1.25,<2",
+]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/assay_engine"]
@@ -38,3 +49,9 @@ src = ["src", "tests"]
 python_version = "3.11"
 packages = ["assay_engine"]
 strict = true
+
+# Optional reasoning/observability backends are not installed in the type-check env; their
+# imports are lazy and guarded at runtime, so treat them as untyped third-party modules.
+[[tool.mypy.overrides]]
+module = ["langchain_ollama.*", "claude_agent_sdk.*", "anyio.*", "opentelemetry.*"]
+ignore_missing_imports = true
