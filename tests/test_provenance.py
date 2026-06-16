@@ -22,6 +22,7 @@ def _fixed_clock():
 
 # ---- append-only + chain integrity ----
 
+
 def test_records_chain_and_verify():
     t = ProvenanceTrail()
     t.record("a", "first", x=1)
@@ -53,6 +54,7 @@ def test_naive_tamper_is_detected_unkeyed():
 
 # ---- #88: keyed (HMAC) trail is forgery-resistant; unkeyed is honestly only naive-evident ----
 
+
 def test_keyed_trail_cannot_be_reforged_without_secret():
     secret = b"provenance-seal-secret-0123456789"
     t = ProvenanceTrail(secret=secret, clock=_fixed_clock())
@@ -81,6 +83,7 @@ def test_weak_secret_refused():
 
 
 # ---- #89/#90: typed errors, never raw leaks ----
+
 
 def test_deeply_nested_payload_raises_provenance_error():
     payload: dict = {}
@@ -115,6 +118,7 @@ def test_clock_that_raises_is_typed():
     # #96: a clock that raises must surface ProvenanceError, not the raw exception
     def boom() -> _dt.datetime:
         raise OverflowError("boom")
+
     with pytest.raises(ProvenanceError):
         ProvenanceTrail(clock=boom).record("a", "x")
 
@@ -124,12 +128,14 @@ def test_datetime_whose_isoformat_raises_is_typed():
     class BadDT(_dt.datetime):
         def isoformat(self, *a, **k):  # type: ignore[override]
             raise ValueError("nope")
+
     bad = BadDT(2026, 6, 16, 12, 0, 0, tzinfo=_UTC)
     with pytest.raises(ProvenanceError):
         ProvenanceTrail(clock=lambda: bad).record("a", "x")
 
 
 # ---- #91: as_recorder hardened against a hostile decision object ----
+
 
 def test_as_recorder_handles_missing_attrs_gracefully():
     t = ProvenanceTrail()
@@ -140,15 +146,18 @@ def test_as_recorder_handles_missing_attrs_gracefully():
 def test_as_recorder_raises_provenance_error_on_booby_trapped_decision():
     class Evil:
         gate = "g"
+
         @property
         def approved(self):  # property that raises
             raise ValueError("evil")
+
     t = ProvenanceTrail()
     with pytest.raises(ProvenanceError):
         t.as_recorder()(Evil())
 
 
 # ---- determinism ----
+
 
 def test_deterministic_hashes_under_fixed_clock():
     a = ProvenanceTrail(clock=_fixed_clock())

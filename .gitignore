@@ -26,3 +26,8 @@ artifacts/
 # Local infra / logs
 *.log
 .DS_Store
+
+# Run outputs / local stores (never commit)
+*.db
+mlruns/
+assay_mlflow.db

@@ -8,13 +8,32 @@ version = "0.0.1"
 description = "Dataset-agnostic engine for rigorous, reproducible empirical ML/NLP on security & privacy data."
 readme = "README.md"
 requires-python = ">=3.11,<3.15"
-license = { text = "Proprietary" }
-authors = [{ name = "hc-assay" }]
-
-# The engine depends only on goal-agnostic infrastructure. Concrete versions are pinned
-# when each component is lifted from the prior hardened platform; kept unpinned here so the
-# scaffold installs cleanly before the infra is wired.
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+authors = [{ name = "thehipsterciso" }]
+keywords = ["empirical", "reproducibility", "methodology", "security", "privacy", "ml", "nlp"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Scientific/Engineering",
+    "Topic :: Security",
+    "Typing :: Typed",
+]
+# The engine core is dependency-free; heavy backends are optional extras (lazy-imported,
+# ADR-0006). The composed runner and methodology work with no extras installed.
 dependencies = []
+
+[project.urls]
+Homepage = "https://github.com/thehipsterciso/hc-assay"
+Repository = "https://github.com/thehipsterciso/hc-assay"
+Issues = "https://github.com/thehipsterciso/hc-assay/issues"
 
 [project.optional-dependencies]
 dev = [
@@ -47,6 +66,10 @@ orchestration = [
 ]
 baseline = [
     "numpy>=1.26,<3",  # vectorized similarity at corpus scale (pure-Python fallback otherwise)
+]
+# Every backend in one shot (for a full local install). dev tooling stays separate.
+all = [
+    "assay-engine[reasoning,observability,persistence,orchestration,baseline]",
 ]
 
 [tool.hatch.build.targets.wheel]

@@ -27,6 +27,7 @@ def _req(tier=StakesTier.BULK, **params) -> ReasoningRequest:
 
 # ---- credential scrubbing (ADR-0003 / no metered API) ----
 
+
 @pytest.mark.parametrize(
     "key,metered",
     [
@@ -34,7 +35,7 @@ def _req(tier=StakesTier.BULK, **params) -> ReasoningRequest:
         ("ANTHROPIC_AUTH_TOKEN", True),
         ("ANTHROPIC_FOUNDRY_API_KEY", True),
         ("ANTHROPIC_FUTURE_TOKEN", True),  # forward-proofing
-        ("ANTHROPIC_BASE_URL", False),     # not a credential
+        ("ANTHROPIC_BASE_URL", False),  # not a credential
         ("CLAUDE_CODE_OAUTH_TOKEN", False),  # subscription auth — keep
         ("PATH", False),
     ],
@@ -57,11 +58,12 @@ def test_scrubbed_env_strips_metered_keeps_subscription(monkeypatch):
 
 # ---- JSON extraction / balanced-brace walker ----
 
+
 @pytest.mark.parametrize(
     "raw,expected",
     [
         ('{"a": 1}', {"a": 1}),
-        ("```json\n{\"a\": 1}\n```", {"a": 1}),
+        ('```json\n{"a": 1}\n```', {"a": 1}),
         ('{"nested": {"s": "a } brace in a string"}}', {"nested": {"s": "a } brace in a string"}}),
         ('prefix {"relation": "subset"} trailing prose {junk', {"relation": "subset"}),
         ("[1, 2, 3]", [1, 2, 3]),
@@ -82,6 +84,7 @@ def test_extract_json_raises_on_malformed():
 
 
 # ---- retry budgets ----
+
 
 def test_retry_then_success(monkeypatch):
     monkeypatch.setattr(rc.time, "sleep", lambda *_: None)
@@ -144,6 +147,7 @@ def test_rate_limit_uses_long_backpressure(monkeypatch):
 
 # ---- timeout pool + saturation guard ----
 
+
 def test_submit_bounded_fails_fast_when_saturated(monkeypatch):
     monkeypatch.setattr(rc, "_inflight", rc._POOL_WORKERS)
     with pytest.raises(PermanentReasoningError, match="saturated"):
@@ -194,6 +198,7 @@ def test_pool_saturation_and_release_under_real_threads(monkeypatch):
 
 # ---- kill switch + tier routing ----
 
+
 def test_kill_switch_disables_reasoning(monkeypatch):
     monkeypatch.setenv("ASSAY_DISABLE_REASONING", "1")
     with pytest.raises(ReasoningError, match="disabled"):
@@ -214,6 +219,7 @@ def test_unknown_tier_is_permanent(monkeypatch):
 
 # ---- loopback enforcement (ADR-0003) ----
 
+
 def test_require_loopback_accepts_local():
     require_loopback_url("http://127.0.0.1:11434", what="x")
     require_loopback_url("http://localhost:11434", what="x")
@@ -225,7 +231,7 @@ def test_require_loopback_accepts_local():
         "http://192.168.1.50:11434",
         "http://127.0.0.1.evil.com:11434",  # spoof: starts with 127. but is a public name
         "http://127.attacker.net/",
-        "http://0.0.0.0:11434",             # not a loopback bind for egress
+        "http://0.0.0.0:11434",  # not a loopback bind for egress
         "http://example.com/",
     ],
 )
@@ -246,6 +252,7 @@ def test_bulk_tier_rejects_non_loopback_base_url(monkeypatch):
 
 
 # ---- public seam ----
+
 
 def test_seam_run_delegates(monkeypatch):
     monkeypatch.setattr(rc, "_attempt", lambda _req: "answer")

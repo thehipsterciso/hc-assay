@@ -37,9 +37,7 @@ from assay_engine.methodology.preregistration import (
 from assay_engine.methodology.verdict import Verdict
 
 
-def _gate_preregistration(
-    hypothesis: Hypothesis, authority: TimestampAuthority | None
-) -> None:
+def _gate_preregistration(hypothesis: Hypothesis, authority: TimestampAuthority | None) -> None:
     """Pre-registration gate for the confirm primitives.
 
     If ``authority`` is supplied, run the full :func:`require_preregistered` check (content
@@ -133,9 +131,7 @@ def verdict_from_pvalue(
         if direction_supports_claim:
             return Verdict.supported(hypothesis_id, rule, **common)
         return Verdict.contradicted(hypothesis_id, rule, **common)
-    return Verdict.indeterminate(
-        hypothesis_id, rule, notes="not significant at alpha", **common
-    )
+    return Verdict.indeterminate(hypothesis_id, rule, notes="not significant at alpha", **common)
 
 
 def confirm_unit_level(
@@ -180,9 +176,7 @@ def _empirical_p(null: Sequence[float], observed: float, tail: Direction) -> flo
     return (extreme + 1) / (n + 1)
 
 
-def _resample_stability(
-    resamples: Sequence[float], reference: float, tail: Direction
-) -> float:
+def _resample_stability(resamples: Sequence[float], reference: float, tail: Direction) -> float:
     """Fraction of resampled statistics that fall on the predicted side of ``reference``.
 
     A measured stand-in for "the effect direction reproduces across resamples": the closer
@@ -195,9 +189,7 @@ def _resample_stability(
     return agree / len(resamples)
 
 
-def _resolve_direction(
-    hypothesis: Hypothesis, predicted_direction: Direction | None
-) -> Direction:
+def _resolve_direction(hypothesis: Hypothesis, predicted_direction: Direction | None) -> Direction:
     """Direction is fixed at lock time on the hypothesis (issue #24); the confirm-time
     argument is optional and, if given, must match the pre-registered one."""
     locked_dir = hypothesis.predicted_direction
@@ -250,7 +242,9 @@ def confirm_whole_corpus(
     _validate_alpha(alpha)
     _validate_finite("observed", observed)
     if not null_distribution:
-        raise ValueError("a null/permutation distribution is required for whole-corpus confirmation")
+        raise ValueError(
+            "a null/permutation distribution is required for whole-corpus confirmation"
+        )
     for v in null_distribution:
         _validate_finite("null_distribution value", v)
     if not (0.0 < stability_threshold <= 1.0):
@@ -293,8 +287,10 @@ def confirm_whole_corpus(
         )
     if stability is None:
         return Verdict.indeterminate(
-            hypothesis.hypothesis_id, rule,
-            notes="stability not assessed (no resamples supplied)", **common,
+            hypothesis.hypothesis_id,
+            rule,
+            notes="stability not assessed (no resamples supplied)",
+            **common,
         )
     if not stable:
         return Verdict.indeterminate(

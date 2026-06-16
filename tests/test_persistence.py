@@ -19,6 +19,7 @@ from assay_engine.persistence.versioning import LocalDataVersioner
 
 # ---- credential redaction (security) ----
 
+
 def test_sanitize_strips_userinfo():
     assert _sanitize_conn_str("postgresql://user:pw@localhost:5432/db") == (
         "postgresql://localhost:5432/db"
@@ -31,9 +32,7 @@ def test_sanitize_handles_ipv6():
     assert "u:p@" not in out and out == "postgresql://[::1]:5432/db"
 
 
-@pytest.mark.parametrize(
-    "pw", ["plain", "p/w", "p w", "p@ss", "s3cr#t!"]
-)
+@pytest.mark.parametrize("pw", ["plain", "p/w", "p w", "p@ss", "s3cr#t!"])
 def test_redact_creds_strips_passwords_with_special_chars(pw):
     conn = f"postgresql://admin:{pw}@localhost:5432/db"
     msg = f"connection failed for {conn} — timeout"
@@ -49,6 +48,7 @@ def test_redact_creds_generic_backstop_without_connstr():
 
 
 # ---- connection string + loopback ----
+
 
 def test_connection_string_default_is_loopback(monkeypatch):
     monkeypatch.delenv("ASSAY_POSTGRES_URL", raising=False)
@@ -81,14 +81,14 @@ def test_connection_string_accepts_local_libpq_dsn(monkeypatch):
 @pytest.mark.parametrize(
     "dsn",
     [
-        "host = db.evil.com dbname=x",       # space around '='
+        "host = db.evil.com dbname=x",  # space around '='
         "host =db.evil.com dbname=x",
         "host= db.evil.com dbname=x",
         "host=  db.evil.com  dbname=x",
-        "host\t=\tdb.evil.com dbname=x",     # tabs
-        "host='db.evil.com' dbname=x",       # quoted
+        "host\t=\tdb.evil.com dbname=x",  # tabs
+        "host='db.evil.com' dbname=x",  # quoted
         "hostaddr=8.8.8.8 dbname=x",
-        "HOST=db.evil.com dbname=x",         # case-insensitive key
+        "HOST=db.evil.com dbname=x",  # case-insensitive key
     ],
 )
 def test_connection_string_rejects_remote_dsn_all_spellings(monkeypatch, dsn):
@@ -106,8 +106,8 @@ def test_connection_string_accepts_local_dsn_with_spaces(monkeypatch):
 @pytest.mark.parametrize(
     "uri",
     [
-        "postgresql://localhost/x?host=db.evil.com",      # query host overrides authority
-        "postgresql://localhost/x?hostaddr=8.8.8.8",       # libpq dials hostaddr
+        "postgresql://localhost/x?host=db.evil.com",  # query host overrides authority
+        "postgresql://localhost/x?hostaddr=8.8.8.8",  # libpq dials hostaddr
         "postgresql://localhost/x?host=evil.com&hostaddr=8.8.8.8",
         "postgresql://127.0.0.1/x?host=evil.com",
         "postgresql://[::1]/x?host=evil.com",
@@ -129,7 +129,7 @@ def test_connection_string_accepts_uri_with_loopback_query_host(monkeypatch):
 @pytest.mark.parametrize(
     "uri",
     [
-        "postgresql://localhost:5432,evil.com:5432/db",     # multi-host: 2nd is remote (#D3)
+        "postgresql://localhost:5432,evil.com:5432/db",  # multi-host: 2nd is remote (#D3)
         "postgresql://127.0.0.1:5432,8.8.8.8:5432/db",
         "postgresql://localhost:5432,a.evil.com,b.evil.com/db",
         "postgresql://[::1]:5432,evil.com:5432/db",
@@ -220,6 +220,7 @@ def test_memory_checkpointer_fails_loud_without_extra():
 
 # ---- vector store loopback ----
 
+
 def test_vector_store_url_loopback():
     assert vector_store_url().startswith("http://localhost:")
 
@@ -233,6 +234,7 @@ def test_vector_store_rejects_non_loopback(monkeypatch):
 
 
 # ---- content-addressed versioning ----
+
 
 def test_versioner_is_deterministic_and_addressable(tmp_path):
     store = tmp_path / "store"
@@ -256,6 +258,7 @@ def test_versioner_rejects_non_file(tmp_path):
 
 
 # ---- hardened checkpointer invariants (fake backends injected, no Postgres) ----
+
 
 @pytest.fixture
 def fake_pg(monkeypatch):
@@ -322,9 +325,15 @@ def fake_pg(monkeypatch):
     monkeypatch.setattr(cp, "_INITIALIZED_CONN_STRS", set())
     monkeypatch.setattr(cp, "_OPEN_POOLS", [])
     monkeypatch.setattr(cp, "_atexit_registered", False)
-    monkeypatch.setattr(cp, "atexit", types.SimpleNamespace(
-        register=lambda fn: state.__setitem__("atexit_registered", state["atexit_registered"] + 1)
-    ))
+    monkeypatch.setattr(
+        cp,
+        "atexit",
+        types.SimpleNamespace(
+            register=lambda fn: state.__setitem__(
+                "atexit_registered", state["atexit_registered"] + 1
+            )
+        ),
+    )
     monkeypatch.setenv("ASSAY_POSTGRES_URL", "postgresql://localhost:5432/assay")
     return cp, state
 

@@ -8,7 +8,9 @@ import pytest
 
 from tests.integration.conftest import have, ollama_up
 
-pytestmark = pytest.mark.skipif(not have("langchain_ollama"), reason="reasoning extra not installed")
+pytestmark = pytest.mark.skipif(
+    not have("langchain_ollama"), reason="reasoning extra not installed"
+)
 
 from assay_engine.reasoning.seam import (  # noqa: E402
     ReasoningRequest,

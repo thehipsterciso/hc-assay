@@ -115,9 +115,7 @@ def build_baseline_artifact(
         # Derive from all input hashes (the corpus hash is already among them under "corpus").
         seed = stable_seed(*(input_hashes[k] for k in sorted(input_hashes)))
 
-    record = DeterminismRecord(
-        seed=seed, input_hashes=input_hashes, component_versions=versions
-    )
+    record = DeterminismRecord(seed=seed, input_hashes=input_hashes, component_versions=versions)
     return BaselineArtifact(
         corpus_fingerprint=corpus_hash, contents=contents, determinism=record.as_dict()
     )

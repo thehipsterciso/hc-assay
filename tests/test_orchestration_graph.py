@@ -16,17 +16,22 @@ def _gate() -> Gate:
         "gate_2",
         Phase.PREREGISTER,
         Phase.CONFIRM,
-        lambda ctx: __import__("assay_engine.orchestration.gates", fromlist=["GateDecision"]).GateDecision(
-            approved=True, gate="gate_2", reason="ok"
-        ),
+        lambda ctx: __import__(
+            "assay_engine.orchestration.gates", fromlist=["GateDecision"]
+        ).GateDecision(approved=True, gate="gate_2", reason="ok"),
     )
 
 
 # ---- apply_gate_decision (pure) ----
 
+
 def test_apply_gate_decision_records_valid():
-    upd = apply_gate_decision(_gate(), {"gate_id": "gate_2", "decision": "Approved", "rationale": "looks good"})
-    assert upd == {"gate_decisions": [{"gate": "gate_2", "decision": "approved", "rationale": "looks good"}]}
+    upd = apply_gate_decision(
+        _gate(), {"gate_id": "gate_2", "decision": "Approved", "rationale": "looks good"}
+    )
+    assert upd == {
+        "gate_decisions": [{"gate": "gate_2", "decision": "approved", "rationale": "looks good"}]
+    }
 
 
 def test_apply_gate_decision_correlation_guard_rejects_other_gate():
@@ -51,6 +56,7 @@ def test_apply_gate_decision_accepts_all_verdicts(d):
 
 
 # ---- fake langgraph injection ----
+
 
 @pytest.fixture
 def fake_langgraph(monkeypatch):
@@ -92,6 +98,7 @@ def fake_langgraph(monkeypatch):
 
 # ---- make_gate_node ----
 
+
 def test_gate_node_interrupts_with_proposal_and_records(fake_langgraph):
     fake_langgraph["resumes"] = [{"gate_id": "gate_2", "decision": "approved", "rationale": "ok"}]
     node = make_gate_node(_gate(), lambda state: {"hypotheses": state.get("n", 0)})
@@ -103,8 +110,8 @@ def test_gate_node_interrupts_with_proposal_and_records(fake_langgraph):
 def test_gate_node_reprompts_on_bad_resume_then_recovers(fake_langgraph):
     # issue #G1: a mis-correlated then malformed resume must re-fire interrupt, not raise/brick
     fake_langgraph["resumes"] = [
-        {"gate_id": "gate_9", "decision": "approved"},          # wrong gate -> re-prompt
-        {"gate_id": "gate_2", "decision": "huh"},                # invalid decision -> re-prompt
+        {"gate_id": "gate_9", "decision": "approved"},  # wrong gate -> re-prompt
+        {"gate_id": "gate_2", "decision": "huh"},  # invalid decision -> re-prompt
         {"gate_id": "gate_2", "decision": "approved", "rationale": "ok"},  # good
     ]
     node = make_gate_node(_gate(), lambda state: {})
@@ -126,7 +133,9 @@ def test_gate_node_noop_when_already_approved(fake_langgraph):
 
 def test_gate_node_reprompts_when_previously_rejected(fake_langgraph):
     # rejected is NOT terminal — the gate must re-prompt so a revise->re-review loop works
-    fake_langgraph["resumes"] = [{"gate_id": "gate_2", "decision": "approved", "rationale": "now ok"}]
+    fake_langgraph["resumes"] = [
+        {"gate_id": "gate_2", "decision": "approved", "rationale": "now ok"}
+    ]
     node = make_gate_node(_gate(), lambda state: {})
     upd = node({"gate_decisions": [{"gate": "gate_2", "decision": "rejected", "rationale": "no"}]})
     assert upd["gate_decisions"][0]["decision"] == "approved"
@@ -143,6 +152,7 @@ def test_blank_rationale_defaults_to_sentinel(rationale):
 
 
 # ---- compile_graph / run / resume ----
+
 
 def test_compile_graph_invokes_build_and_attaches_checkpointer(fake_langgraph):
     built = {}

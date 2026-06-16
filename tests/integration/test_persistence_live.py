@@ -79,7 +79,8 @@ def test_postgres_checkpointer_setup_and_round_trip(monkeypatch):
 
     # Use a dedicated db/url if provided; otherwise the loopback default.
     monkeypatch.setenv(
-        "ASSAY_POSTGRES_URL", os.environ.get("ASSAY_TEST_POSTGRES_URL", "postgresql://localhost:5432/assay")
+        "ASSAY_POSTGRES_URL",
+        os.environ.get("ASSAY_TEST_POSTGRES_URL", "postgresql://localhost:5432/assay"),
     )
     from assay_engine.persistence.checkpoint import get_checkpointer
 
@@ -88,8 +89,14 @@ def test_postgres_checkpointer_setup_and_round_trip(monkeypatch):
     except RuntimeError as exc:
         pytest.skip(f"postgres present but db not usable: {exc}")
     cfg = {"configurable": {"thread_id": "pg-t1", "checkpoint_ns": ""}}
-    chkpt = {"v": 1, "id": "pc1", "ts": "2026-01-01T00:00:00Z", "channel_values": {"y": 11},
-             "channel_versions": {}, "versions_seen": {}}
+    chkpt = {
+        "v": 1,
+        "id": "pc1",
+        "ts": "2026-01-01T00:00:00Z",
+        "channel_values": {"y": 11},
+        "channel_versions": {},
+        "versions_seen": {},
+    }
     saved = cp.put(cfg, chkpt, {}, {})
     got = cp.get_tuple(saved)
     assert got is not None and got.checkpoint["channel_values"]["y"] == 11

@@ -48,12 +48,11 @@ class ReferenceParser:
 class ReferenceBaselineBuilder:
     """Blind baseline: a deterministic summary stat over the corpus text only."""
 
-    def build(
-        self, corpus: Corpus, *, claim_guard: ClaimBlindGuard[object]
-    ) -> BaselineArtifact:
+    def build(self, corpus: Corpus, *, claim_guard: ClaimBlindGuard[object]) -> BaselineArtifact:
         mean_len = sum(len(u.text) for u in corpus.units) / max(1, len(corpus.units))
         return build_baseline_artifact(
-            corpus, {"mean_text_len": mean_len, "n_units": len(corpus.units)},
+            corpus,
+            {"mean_text_len": mean_len, "n_units": len(corpus.units)},
             component_versions={"builder": "reference@1"},
         )
 
@@ -77,8 +76,10 @@ def discover(discovery_corpus: Corpus) -> list[Hypothesis]:
     h = Hypothesis(
         hypothesis_id="H-disc-1",
         statement="discovery-partition units share above-chance internal similarity",
-        kind=HypothesisKind.WHOLE_CORPUS, origin=HypothesisOrigin.DISCOVERY,
-        test_name="permutation", decision_rule="empirical p<=0.05 in the 'greater' tail",
+        kind=HypothesisKind.WHOLE_CORPUS,
+        origin=HypothesisOrigin.DISCOVERY,
+        test_name="permutation",
+        decision_rule="empirical p<=0.05 in the 'greater' tail",
         predicted_direction="greater",
     )
     return [lock_hypothesis(h, authority=AUTHORITY, instant=_PAST)]
@@ -95,14 +96,19 @@ def hypothesis_for(claim: ClaimRecord) -> Hypothesis:
     h = Hypothesis(
         hypothesis_id=f"H-{claim.claim_id}",
         statement="claim holds against the blind baseline",
-        kind=HypothesisKind.WHOLE_CORPUS, origin=HypothesisOrigin.EXTERNAL_CLAIM,
-        test_name="adjudication", decision_rule="baseline corroborates the asserted relationship",
-        source_claim_id=claim.claim_id, predicted_direction="greater",
+        kind=HypothesisKind.WHOLE_CORPUS,
+        origin=HypothesisOrigin.EXTERNAL_CLAIM,
+        test_name="adjudication",
+        decision_rule="baseline corroborates the asserted relationship",
+        source_claim_id=claim.claim_id,
+        predicted_direction="greater",
     )
     return lock_hypothesis(h, authority=AUTHORITY, instant=_PAST)
 
 
-def confirm_claim(hypothesis: Hypothesis, baseline: BaselineArtifact, claim: ClaimRecord) -> Verdict:
+def confirm_claim(
+    hypothesis: Hypothesis, baseline: BaselineArtifact, claim: ClaimRecord
+) -> Verdict:
     assert "mean_text_len" in baseline.contents  # the real baseline is passed through
     return Verdict.supported(hypothesis.hypothesis_id, "baseline corroborates (reference)")
 
@@ -120,11 +126,14 @@ def make_plan(source: Path, *, modes: frozenset[StudyMode]) -> StudyPlan:
     )
     split = (
         DiscoverConfirmSplit.from_partition({"u0", "u1", "u2"}, {"u3", "u4", "u5"})
-        if discovery else None
+        if discovery
+        else None
     )
     return StudyPlan(
-        definition=definition, source=source,
-        baseline_builder=ReferenceBaselineBuilder(), authority=AUTHORITY,
+        definition=definition,
+        source=source,
+        baseline_builder=ReferenceBaselineBuilder(),
+        authority=AUTHORITY,
         split=split,
         discover=discover if discovery else None,
         confirm_held_out=confirm_held_out if discovery else None,

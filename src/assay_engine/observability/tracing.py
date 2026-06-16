@@ -164,8 +164,7 @@ def run_trace_context(run_id: str | None) -> Iterator[None]:
 @runtime_checkable
 class Tracer(Protocol):
     @contextmanager
-    def span(self, name: str, attributes: Mapping[str, Any] | None = None) -> Iterator[None]:
-        ...
+    def span(self, name: str, attributes: Mapping[str, Any] | None = None) -> Iterator[None]: ...
 
 
 class OtelTracer:
