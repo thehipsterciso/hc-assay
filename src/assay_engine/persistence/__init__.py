@@ -1,15 +1,35 @@
-"""Persistence — durable run state, data versioning, vector store (all local).
+"""Persistence — durable run state, data versioning, vector store (all local, ADR-0003).
 
-- ``checkpoint`` — durable checkpointing of run state so a study can resume.
-- ``versioning`` — content-addressed data versioning for inputs and artifacts.
-- ``vectorstore`` — a local vector store for embedding-based baseline builders.
+- ``checkpoint`` — engine phase-state Protocol + the hardened LangGraph checkpointer factory
+  (loopback-enforced connection, credential redaction).
+- ``versioning`` — content-addressed local artifact store (deterministic, offline).
+- ``vectorstore`` — loopback-enforced local vector store factory.
 
-All on-box (ADR-0003). Lifted from the prior platform's hardened persistence layer (durable
-checkpointer + data versioning + local vector store).
+Backends (langgraph-checkpoint-postgres, psycopg, qdrant-client) are optional (the
+``persistence`` extra) and imported lazily; the security-critical logic is pure and tested.
 """
 
-from assay_engine.persistence.checkpoint import Checkpointer
-from assay_engine.persistence.vectorstore import VectorStore
-from assay_engine.persistence.versioning import DataVersioner
+from assay_engine.persistence.checkpoint import (
+    Checkpointer,
+    configured_checkpointer,
+    get_postgres_connection_string,
+    redact_creds,
+)
+from assay_engine.persistence.vectorstore import (
+    VectorStore,
+    get_qdrant_client,
+    vector_store_url,
+)
+from assay_engine.persistence.versioning import DataVersioner, LocalDataVersioner
 
-__all__ = ["Checkpointer", "VectorStore", "DataVersioner"]
+__all__ = [
+    "Checkpointer",
+    "configured_checkpointer",
+    "get_postgres_connection_string",
+    "redact_creds",
+    "VectorStore",
+    "get_qdrant_client",
+    "vector_store_url",
+    "DataVersioner",
+    "LocalDataVersioner",
+]
