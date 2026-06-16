@@ -54,11 +54,13 @@ def test_apply_gate_decision_accepts_all_verdicts(d):
 
 @pytest.fixture
 def fake_langgraph(monkeypatch):
-    captured: dict = {}
+    captured: dict = {"payloads": [], "resumes": []}
 
     def fake_interrupt(payload):
-        captured["payload"] = payload
-        return captured["resume"]
+        captured["payloads"].append(payload)
+        if not captured["resumes"]:
+            raise AssertionError("interrupt called more times than resumes provided")
+        return captured["resumes"].pop(0)
 
     class Command:
         def __init__(self, resume=None):
@@ -91,18 +93,49 @@ def fake_langgraph(monkeypatch):
 # ---- make_gate_node ----
 
 def test_gate_node_interrupts_with_proposal_and_records(fake_langgraph):
-    fake_langgraph["resume"] = {"gate_id": "gate_2", "decision": "approved", "rationale": "ok"}
+    fake_langgraph["resumes"] = [{"gate_id": "gate_2", "decision": "approved", "rationale": "ok"}]
     node = make_gate_node(_gate(), lambda state: {"hypotheses": state.get("n", 0)})
     upd = node({"n": 3})
-    assert fake_langgraph["payload"] == {"gate_id": "gate_2", "proposal": {"hypotheses": 3}}
+    assert fake_langgraph["payloads"][0] == {"gate_id": "gate_2", "proposal": {"hypotheses": 3}}
     assert upd["gate_decisions"][0]["decision"] == "approved"
 
 
-def test_gate_node_correlation_guard_on_resume(fake_langgraph):
-    fake_langgraph["resume"] = {"gate_id": "gate_9", "decision": "approved"}
+def test_gate_node_reprompts_on_bad_resume_then_recovers(fake_langgraph):
+    # issue #G1: a mis-correlated then malformed resume must re-fire interrupt, not raise/brick
+    fake_langgraph["resumes"] = [
+        {"gate_id": "gate_9", "decision": "approved"},          # wrong gate -> re-prompt
+        {"gate_id": "gate_2", "decision": "huh"},                # invalid decision -> re-prompt
+        {"gate_id": "gate_2", "decision": "approved", "rationale": "ok"},  # good
+    ]
     node = make_gate_node(_gate(), lambda state: {})
-    with pytest.raises(GateError, match="correlation guard"):
-        node({})
+    upd = node({})
+    assert upd["gate_decisions"][0]["decision"] == "approved"
+    assert len(fake_langgraph["payloads"]) == 3
+    assert "error" in fake_langgraph["payloads"][1]  # re-prompt carried the correlation error
+    assert "error" in fake_langgraph["payloads"][2]  # and the invalid-decision error
+
+
+def test_gate_node_noop_when_already_approved(fake_langgraph):
+    # issue #G2: re-entering an approved gate is a no-op (no interrupt, no duplicate record)
+    fake_langgraph["resumes"] = []  # interrupt must NOT be called
+    node = make_gate_node(_gate(), lambda state: {})
+    upd = node({"gate_decisions": [{"gate": "gate_2", "decision": "approved", "rationale": "x"}]})
+    assert upd == {}
+    assert fake_langgraph["payloads"] == []
+
+
+def test_gate_node_reprompts_when_previously_rejected(fake_langgraph):
+    # rejected is NOT terminal — the gate must re-prompt so a revise->re-review loop works
+    fake_langgraph["resumes"] = [{"gate_id": "gate_2", "decision": "approved", "rationale": "now ok"}]
+    node = make_gate_node(_gate(), lambda state: {})
+    upd = node({"gate_decisions": [{"gate": "gate_2", "decision": "rejected", "rationale": "no"}]})
+    assert upd["gate_decisions"][0]["decision"] == "approved"
+    assert len(fake_langgraph["payloads"]) == 1
+
+
+def test_empty_rationale_defaults_to_sentinel():
+    upd = apply_gate_decision(_gate(), {"gate_id": "gate_2", "decision": "rejected"})
+    assert upd["gate_decisions"][0]["rationale"] == "No rationale provided."
 
 
 # ---- compile_graph / run / resume ----
@@ -119,6 +152,12 @@ def test_compile_graph_invokes_build_and_attaches_checkpointer(fake_langgraph):
     assert built["called"] is True
     assert fake_langgraph["compile_kw"] == {"checkpointer": cp}
     assert graph == ("compiled", ("n",))
+
+
+def test_compile_graph_requires_checkpointer_for_gate_graph():
+    # issue #G3: a gate-bearing graph without a checkpointer would never park — fail loud
+    with pytest.raises(RuntimeError, match="checkpointer"):
+        compile_graph(dict, build=lambda b: None, checkpointer=None, requires_checkpointer=True)
 
 
 class _FakeGraph:

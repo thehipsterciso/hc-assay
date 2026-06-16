@@ -42,14 +42,24 @@ def compile_graph(
     *,
     build: Callable[[Any], None],
     checkpointer: Any | None = None,
+    requires_checkpointer: bool = False,
 ) -> Any:
     """Compile a study's analysis graph.
 
     ``build(builder)`` is a study-supplied callback that adds the study's nodes, edges, and
     entry point to the LangGraph ``StateGraph`` builder; the engine owns construction and
-    attaching the durable ``checkpointer`` (required for gate interrupt/resume — ``interrupt``
-    is a no-op without one). Returns the compiled graph.
+    attaching the durable ``checkpointer``. Returns the compiled graph.
+
+    Set ``requires_checkpointer=True`` for any graph containing gate nodes: ``interrupt`` is a
+    silent no-op without a checkpointer, so a gate graph compiled without one would never park
+    for the operator. The engine fails loud rather than ship a silently-broken governance
+    graph (audit #G3).
     """
+    if requires_checkpointer and checkpointer is None:
+        raise RuntimeError(
+            "compile_graph(requires_checkpointer=True): a gate-bearing graph needs a durable "
+            "checkpointer — interrupt() cannot park the run for the operator without one"
+        )
     _require_langgraph()
     from langgraph.graph import StateGraph
 

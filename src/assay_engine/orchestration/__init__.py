@@ -7,6 +7,7 @@ The graph itself is built on LangGraph/LangChain and lifted from the prior platf
 
 from assay_engine.orchestration.gatenode import (
     GateProposal,
+    already_decided,
     apply_gate_decision,
     make_gate_node,
 )
@@ -33,6 +34,7 @@ __all__ = [
     "required_phases",
     "GateProposal",
     "apply_gate_decision",
+    "already_decided",
     "make_gate_node",
     "RECURSION_LIMIT",
     "compile_graph",
