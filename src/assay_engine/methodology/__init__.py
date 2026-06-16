@@ -15,6 +15,11 @@ from assay_engine.methodology.adjudication import (
     SourceScorecard,
     adjudicate,
 )
+from assay_engine.methodology.discovery import (
+    HeldOutConfirmer,
+    discover_and_confirm,
+    subset_corpus,
+)
 from assay_engine.methodology.fence import Interpretation, Measurement, fence
 from assay_engine.methodology.firewalls import (
     ClaimBlindGuard,
@@ -39,4 +44,7 @@ __all__ = [
     "adjudicate",
     "SourceScorecard",
     "ClaimConfirmer",
+    "discover_and_confirm",
+    "subset_corpus",
+    "HeldOutConfirmer",
 ]
