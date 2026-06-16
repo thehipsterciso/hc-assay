@@ -73,16 +73,16 @@ def compile_graph(
     return builder.compile()
 
 
-def _thread_config(
-    run_id: str, recursion_limit: int, checkpoint_id: str | None = None
-) -> dict[str, Any]:
-    cfg: dict[str, Any] = {
+def _thread_config(run_id: str, recursion_limit: int) -> dict[str, Any]:
+    # Resume/run are keyed ONLY by thread_id — the checkpointer loads the latest (interrupted)
+    # state itself. We deliberately do NOT thread a checkpoint_id: passing one is the
+    # time-travel/replay API, and Command(resume=...) WITH a checkpoint_id replays from that
+    # historical checkpoint instead of resuming the interrupt (version-dependent; LangGraph
+    # issue #7361) — which would re-execute already-completed gates and break governance order.
+    return {
         "configurable": {"thread_id": run_id},
         "recursion_limit": recursion_limit,
     }
-    if checkpoint_id:
-        cfg["configurable"]["checkpoint_id"] = checkpoint_id
-    return cfg
 
 
 def run(
@@ -95,12 +95,17 @@ def run(
 ) -> Any:
     """Invoke a compiled graph for ``run_id`` (the checkpointer thread id), within a trace
     context, bounded by ``recursion_limit``. The run parks at the first gate ``interrupt``;
-    resume it with :func:`resume`."""
+    resume it with :func:`resume`.
+
+    Uses ``durability="sync"``: a governance run must have its parked-at-gate checkpoint written
+    *before* the operator is notified, so a crash in the (otherwise async) write window cannot
+    lose the interrupt. (The LangGraph default is ``"async"``.)
+    """
     if trace:
         bootstrap_tracing()
     config = _thread_config(run_id, recursion_limit)
     with run_trace_context(run_id):
-        return graph.invoke(state, config=config)
+        return graph.invoke(state, config=config, durability="sync")
 
 
 def resume(
@@ -111,7 +116,6 @@ def resume(
     decision: str,
     rationale: str,
     recursion_limit: int = RECURSION_LIMIT,
-    checkpoint_id: str | None = None,
     trace: bool = True,
 ) -> Any:
     """Resume a run parked at a gate with the operator's decision.
@@ -119,14 +123,15 @@ def resume(
     ``gate_id`` is the gate the operator intended to decide (from the governance channel) and
     is REQUIRED — the gate node's correlation guard rejects it if it does not match the parked
     gate, so a stale/misrouted decision cannot resume the wrong gate. Must use the SAME
-    checkpointer the run started with (``thread_id == run_id``).
+    checkpointer the run started with (``thread_id == run_id``); resume always continues the
+    latest interrupted state for the thread (no checkpoint_id — see :func:`_thread_config`).
     """
     _require_langgraph()
     from langgraph.types import Command
 
     if trace:
         bootstrap_tracing()
-    config = _thread_config(run_id, recursion_limit, checkpoint_id)
+    config = _thread_config(run_id, recursion_limit)
     resume_value = {"gate_id": gate_id, "decision": decision, "rationale": rationale}
     with run_trace_context(run_id):
-        return graph.invoke(Command(resume=resume_value), config=config)
+        return graph.invoke(Command(resume=resume_value), config=config, durability="sync")

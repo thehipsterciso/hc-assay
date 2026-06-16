@@ -178,24 +178,28 @@ class _FakeGraph:
     def __init__(self):
         self.calls = []
 
-    def invoke(self, arg, config=None):
-        self.calls.append((arg, config))
+    def invoke(self, arg, config=None, durability=None):
+        self.calls.append((arg, config, durability))
         return {"ok": True}
 
 
 def test_run_wires_thread_id_and_recursion_limit():
     g = _FakeGraph()
     run(g, {"x": 1}, run_id="run-7", trace=False)
-    arg, config = g.calls[0]
+    arg, config, durability = g.calls[0]
     assert arg == {"x": 1}
     assert config["configurable"]["thread_id"] == "run-7"
     assert config["recursion_limit"] == RECURSION_LIMIT
+    assert "checkpoint_id" not in config["configurable"]  # resume!=replay (no time-travel id)
+    assert durability == "sync"  # parked-gate state persisted before the operator is notified
 
 
 def test_resume_sends_command_with_decision(fake_langgraph):
     g = _FakeGraph()
     resume(g, run_id="run-7", gate_id="gate_2", decision="approved", rationale="ok", trace=False)
-    arg, config = g.calls[0]
+    arg, config, durability = g.calls[0]
     assert isinstance(arg, sys.modules["langgraph.types"].Command)
     assert arg.resume == {"gate_id": "gate_2", "decision": "approved", "rationale": "ok"}
     assert config["configurable"]["thread_id"] == "run-7"
+    assert "checkpoint_id" not in config["configurable"]
+    assert durability == "sync"
