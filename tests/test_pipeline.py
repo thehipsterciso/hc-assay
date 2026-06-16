@@ -1,0 +1,167 @@
+"""Study runner — the composed end-to-end pipeline (ADR-0010).
+
+Drives the engine's run_study over the synthetic reference adapter (tests/reference_study.py),
+asserting the workflow composes correctly AND that its methodological/governance invariants hold
+by construction: phase order, blind baseline, pre-registration before confirm, the governance
+gate, and an append-only, tamper-evident provenance trail.
+"""
+
+from __future__ import annotations
+
+import datetime as _dt
+from dataclasses import replace
+
+import pytest
+
+from assay_engine.contracts.study import StudyMode
+from assay_engine.methodology.firewalls import FirewallViolation
+from assay_engine.methodology.hypothesis import Hypothesis, HypothesisKind, HypothesisOrigin
+from assay_engine.methodology.preregistration import PreRegistrationError
+from assay_engine.methodology.verdict import Verdict
+from assay_engine.orchestration.gates import GateDecision, GateError
+from assay_engine.orchestration.phases import Phase, required_phases
+from assay_engine.provenance import ProvenanceError, from_records, verify_records
+from assay_engine.pipeline import StudyPlan, StudyResult, run_study
+from tests import reference_study as ref
+
+ALL = frozenset(StudyMode)
+DISCOVERY = frozenset({StudyMode.DISCOVERY})
+ADJUDICATE = frozenset({StudyMode.ADJUDICATE_EXTERNAL_CLAIMS})
+
+
+def _fixed_clock():
+    t = _dt.datetime(2026, 6, 16, 12, 0, 0, tzinfo=_dt.timezone.utc)
+    return lambda: t
+
+
+def _run(tmp_path, modes, **kw) -> StudyResult:
+    src = ref.write_source(tmp_path / "corpus.json")
+    return run_study(ref.make_plan(src, modes=modes), **kw)
+
+
+# ---- the workflow composes, both modes ----
+
+def test_discovery_only_runs_end_to_end(tmp_path):
+    res = _run(tmp_path, DISCOVERY)
+    assert res.phases == required_phases(DISCOVERY)
+    assert Phase.ADJUDICATE not in res.phases and Phase.SCORE not in res.phases
+    assert [v.hypothesis_id for v in res.discovery_verdicts] == ["H-disc-1"]
+    assert res.scorecard is None
+    res_verify_ok(res)
+
+
+def test_adjudicate_only_runs_end_to_end(tmp_path):
+    res = _run(tmp_path, ADJUDICATE)
+    assert res.phases == required_phases(ADJUDICATE)
+    assert Phase.DISCOVERY not in res.phases
+    assert res.discovery_verdicts == ()
+    assert res.scorecard is not None and res.scorecard.total == 2
+    res_verify_ok(res)
+
+
+def test_combined_modes_run_all_phases(tmp_path):
+    res = _run(tmp_path, ALL)
+    assert res.phases == required_phases(ALL)
+    assert res.discovery_verdicts and res.scorecard is not None
+    res_verify_ok(res)
+
+
+def res_verify_ok(res: StudyResult) -> None:
+    verify_records(res.provenance)  # the trail is an intact hash chain
+    kinds = [e.kind for e in res.provenance]
+    assert kinds[0] == "run_start" and kinds[-1] == "report"  # closes with the report record
+    # the REPORT phase was entered before the report record was written
+    assert any(e.kind == "phase" and e.payload["phase"] == "REPORT" for e in res.provenance)
+    assert res.baseline.corpus_fingerprint == res.corpus_fingerprint
+
+
+# ---- provenance: append-only + tamper-evident ----
+
+def test_provenance_roundtrips_and_detects_tampering(tmp_path):
+    res = _run(tmp_path, DISCOVERY)
+    records = tuple(
+        {"seq": e.seq, "kind": e.kind, "summary": e.summary, "payload": dict(e.payload),
+         "timestamp": e.timestamp, "prev_hash": e.prev_hash, "entry_hash": e.entry_hash}
+        for e in res.provenance
+    )
+    assert from_records(records)  # intact chain rebuilds fine
+    # edit a payload deep in the chain -> hash mismatch detected
+    bad = list(records)
+    bad[2] = {**bad[2], "summary": "TAMPERED"}
+    with pytest.raises(ProvenanceError):
+        from_records(bad)
+    # drop an entry -> reorder/linkage detected
+    with pytest.raises(ProvenanceError):
+        from_records(records[:3] + records[4:])
+
+
+def test_provenance_is_deterministic_under_fixed_clock(tmp_path):
+    a = _run(tmp_path, DISCOVERY, clock=_fixed_clock())
+    b = _run(tmp_path, DISCOVERY, clock=_fixed_clock())
+    assert [e.entry_hash for e in a.provenance] == [e.entry_hash for e in b.provenance]
+
+
+def test_provenance_records_baseline_and_each_verdict(tmp_path):
+    res = _run(tmp_path, ALL)
+    kinds = [e.kind for e in res.provenance]
+    assert "baseline" in kinds and "discovery" in kinds and "score" in kinds
+    assert sum(1 for k in kinds if k == "verdict") == 1 + 2  # 1 discovery + 2 adjudication
+
+
+# ---- the governance gate is real ----
+
+def test_gate_rejection_halts_before_confirm(tmp_path):
+    def reject(r):
+        return GateDecision(approved=False, gate=r.gate, reason="operator rejected")
+    with pytest.raises(GateError, match="blocked PREREGISTER->CONFIRM"):
+        _run(tmp_path, DISCOVERY, gate_handler=reject)
+
+
+def test_gate_handler_sees_locked_hypotheses(tmp_path):
+    seen = {}
+    def handler(review):
+        seen["ids"] = list(review.payload["hypothesis_ids"])
+        seen["transition"] = (review.frm, review.to)
+        return GateDecision(approved=True, gate=review.gate, reason="ok")
+    _run(tmp_path, DISCOVERY, gate_handler=handler)
+    assert seen["ids"] == ["H-disc-1"]
+    assert seen["transition"] == (Phase.PREREGISTER, Phase.CONFIRM)
+
+
+# ---- methodological invariants enforced by the runner ----
+
+def test_unlocked_discovery_hypothesis_is_rejected(tmp_path):
+    src = ref.write_source(tmp_path / "c.json")
+    plan = ref.make_plan(src, modes=DISCOVERY)
+    def bad_discover(corpus):
+        return [Hypothesis(hypothesis_id="H", statement="x", kind=HypothesisKind.WHOLE_CORPUS,
+                           origin=HypothesisOrigin.DISCOVERY, test_name="t", decision_rule="r")]
+    with pytest.raises(PreRegistrationError):
+        run_study(replace(plan, discover=bad_discover))
+
+
+def test_baseline_not_matching_corpus_is_rejected(tmp_path):
+    src = ref.write_source(tmp_path / "c.json")
+    plan = ref.make_plan(src, modes=DISCOVERY)
+    class WrongBaseline:
+        def build(self, corpus, *, claim_guard):
+            from assay_engine.baseline.toolkit import BaselineArtifact
+            return BaselineArtifact(corpus_fingerprint="WRONG", contents={"x": 1})
+    with pytest.raises(FirewallViolation, match="corpus_fingerprint"):
+        run_study(replace(plan, baseline_builder=WrongBaseline()))
+
+
+def test_confirm_misattribution_is_rejected(tmp_path):
+    src = ref.write_source(tmp_path / "c.json")
+    plan = ref.make_plan(src, modes=DISCOVERY)
+    with pytest.raises(FirewallViolation, match="misattribution"):
+        run_study(replace(plan, confirm_held_out=lambda h, c: Verdict.supported("WRONG-ID", "r")))
+
+
+def test_plan_validates_required_callables_per_mode():
+    src = type("P", (), {})()  # unused; __post_init__ fires before any run
+    from assay_engine.contracts.study import StudyDefinition
+    defn = StudyDefinition.discovery("s", ref.ReferenceParser(), ("q",))
+    with pytest.raises(ValueError, match="DISCOVERY mode requires"):
+        StudyPlan(definition=defn, source=src, baseline_builder=ref.ReferenceBaselineBuilder(),
+                  authority=ref.AUTHORITY)  # missing split/discover/confirm_held_out

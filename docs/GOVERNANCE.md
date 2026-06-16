@@ -86,10 +86,15 @@ An **append-only** audit trail (W3C PROV-DM style) records every action before t
 executes. No step can be retroactively removed or reordered. This is the spine of
 reproducibility and of the independence claim.
 
-> **Implementation status (engine):** the engine ships the *seams* for this — gate decisions
-> are emitted as append-only `gate_decisions` records, and a `ProvenanceRecorder` hook is
-> available at the gate. The persistent, ordered provenance *store* itself is wired by a
-> study/runner; the present-tense guarantees above describe that wired end-state.
+> **Implementation status (engine):** wired (ADR-0010). `assay_engine.provenance.ProvenanceTrail`
+> is an append-only, hash-chained trail; the study runner (`assay_engine.pipeline.run_study`)
+> records every action — ingest, blind baseline, each locked hypothesis, every gate decision,
+> each verdict, the scorecard, the report — *before the next runs*, and verifies the chain before
+> returning. There is no remove/edit/reorder API, and `verify_records`/`from_records` detect any
+> tampering in a serialized trail. Honest scope: an in-memory trail is as trustworthy as its
+> process; the hash chain lets an external store or reviewer verify a *persisted* trail is intact.
+> Non-repudiable third-party attestation of the trail's *time* is the same pluggable concern as
+> pre-registration (§2) and is out of scope here.
 
 ## 4. Single-operator structural independence
 

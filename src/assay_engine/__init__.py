@@ -17,6 +17,8 @@ This package contains only goal-agnostic machinery:
 - ``reasoning``      — the tiered LLM reasoning seam.
 - ``observability``  — self-hosted tracing + experiment tracking.
 - ``persistence``    — durable checkpointing, data versioning, vector store.
+- ``provenance``     — the append-only, hash-chained audit trail (GOVERNANCE §3).
+- ``pipeline``       — ``run_study``: the composed, governed end-to-end runner (ADR-0010).
 - ``registry``       — adapter registration.
 
 Nothing in this package may import an adapter module or name a specific dataset, authority,

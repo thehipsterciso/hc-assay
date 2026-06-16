@@ -154,6 +154,33 @@ def adjudicate(
     with guard.sealed():
         baseline = baseline_builder.build(corpus, claim_guard=guard)
 
+    scorecard = adjudicate_with_baseline(
+        baseline, claims_source,
+        hypothesis_for=hypothesis_for, confirm=confirm, authority=authority,
+        not_after=not_after, source_name=source_name,
+    )
+    return baseline, scorecard
+
+
+def adjudicate_with_baseline(
+    baseline: BaselineArtifact,
+    claims_source: ExternalClaimsSource,
+    *,
+    hypothesis_for: Callable[[ClaimRecord], Hypothesis],
+    confirm: ClaimConfirmer,
+    authority: TimestampAuthority,
+    not_after: _dt.datetime,
+    source_name: str = "external",
+) -> SourceScorecard:
+    """Adjudicate claims against an **already-built blind baseline** (the composable core).
+
+    Factored out of :func:`adjudicate` so a composed pipeline that builds the baseline once
+    (and shares it with discovery) can reuse the identical, hardened Firewall-A loop instead of
+    rebuilding the baseline. The caller is responsible for having built ``baseline`` blind and
+    for passing the ``not_after`` ordering instant captured *before* that build — so the
+    lock-before-baseline guarantee is preserved across the shared-baseline composition. Enforces
+    the same claim↔hypothesis↔verdict identity + pre-registration checks as :func:`adjudicate`.
+    """
     verdicts: list[Verdict] = []
     for claim in claims_source.claims():  # claims used only after the blind baseline is built
         hypothesis = hypothesis_for(claim)
@@ -167,9 +194,9 @@ def adjudicate(
                 f"hypothesis for claim {claim.claim_id!r} carries source_claim_id "
                 f"{hypothesis.source_claim_id!r} — claim↔hypothesis misattribution"
             )
-        # Pre-registration enforced by the runner: the proof must bind THIS hypothesis's content
-        # (no post-lock content swap) and its attested lock time must precede the baseline build
-        # (so the claim-derived hypothesis cannot have been tuned to the baseline).
+        # Pre-registration: the proof must bind THIS hypothesis's content (no post-lock content
+        # swap) and its attested lock time must precede the baseline build (so the claim-derived
+        # hypothesis cannot have been tuned to the baseline).
         require_preregistered(hypothesis, authority=authority, not_after=not_after)
         verdict = confirm(hypothesis, baseline, claim)
         if verdict.hypothesis_id != hypothesis.hypothesis_id:
@@ -179,4 +206,4 @@ def adjudicate(
             )
         verdicts.append(verdict)
 
-    return baseline, _score(source_name, verdicts)
+    return _score(source_name, verdicts)
