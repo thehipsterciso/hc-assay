@@ -22,6 +22,7 @@ from assay_engine.baseline.determinism import (
 from assay_engine.baseline.primitives import (
     cosine_similarity,
     cosine_similarity_matrix,
+    cosine_similarity_matrix_array,
     descriptive_stats,
     euclidean_distance,
 )
@@ -37,6 +38,7 @@ __all__ = [
     "stable_seed",
     "cosine_similarity",
     "cosine_similarity_matrix",
+    "cosine_similarity_matrix_array",
     "descriptive_stats",
     "euclidean_distance",
 ]

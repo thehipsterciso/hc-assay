@@ -107,6 +107,23 @@ def test_gate_node_interrupts_with_proposal_and_records(fake_langgraph):
     assert upd["gate_decisions"][0]["decision"] == "approved"
 
 
+def test_gate_node_bridges_decision_into_provenance_trail(fake_langgraph):
+    # #111: a recorder lands the durable-path gate decision in the hash-chained provenance trail
+    from assay_engine.provenance import ProvenanceTrail, verify_records
+
+    trail = ProvenanceTrail()
+    fake_langgraph["resumes"] = [{"gate_id": "gate_2", "decision": "approved", "rationale": "ok"}]
+    node = make_gate_node(
+        _gate(),
+        lambda state: {},
+        recorder=lambda r: trail.record("gate", f"gate {r['gate']}: {r['decision']}", **r),
+    )
+    node({})
+    verify_records(trail.entries)  # the bridged decision is in an intact hash chain
+    gates = [e for e in trail.entries if e.kind == "gate"]
+    assert gates and gates[0].payload["decision"] == "approved"
+
+
 def test_gate_node_reprompts_on_bad_resume_then_recovers(fake_langgraph):
     # issue #G1: a mis-correlated then malformed resume must re-fire interrupt, not raise/brick
     fake_langgraph["resumes"] = [
