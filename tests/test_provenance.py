@@ -111,6 +111,24 @@ def test_naive_datetime_clock_raises_provenance_error():
         t.record("a", "x")
 
 
+def test_clock_that_raises_is_typed():
+    # #96: a clock that raises must surface ProvenanceError, not the raw exception
+    def boom() -> _dt.datetime:
+        raise OverflowError("boom")
+    with pytest.raises(ProvenanceError):
+        ProvenanceTrail(clock=boom).record("a", "x")
+
+
+def test_datetime_whose_isoformat_raises_is_typed():
+    # #96: a hostile datetime whose normalization raises must still be ProvenanceError
+    class BadDT(_dt.datetime):
+        def isoformat(self, *a, **k):  # type: ignore[override]
+            raise ValueError("nope")
+    bad = BadDT(2026, 6, 16, 12, 0, 0, tzinfo=_UTC)
+    with pytest.raises(ProvenanceError):
+        ProvenanceTrail(clock=lambda: bad).record("a", "x")
+
+
 # ---- #91: as_recorder hardened against a hostile decision object ----
 
 def test_as_recorder_handles_missing_attrs_gracefully():

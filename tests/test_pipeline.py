@@ -138,6 +138,34 @@ def test_every_confirmatory_path_invokes_a_gate(tmp_path):
     assert seen == ["review-locked-hypotheses", "review-baseline-and-claims"]
 
 
+def test_adjudication_scores_the_gated_claim_snapshot_not_a_remutated_source(tmp_path):
+    # #95: a source returning different claims on successive .claims() calls must NOT let the gate
+    # review one set while a different set is scored. The runner materializes once and scores that.
+    from assay_engine.contracts.claims import ClaimRecord
+    calls = {"n": 0}
+
+    class Mutating:
+        def claims(self):
+            calls["n"] += 1
+            cid = "c-A" if calls["n"] == 1 else "c-B"
+            return [ClaimRecord(claim_id=cid, subject=cid, referents=(cid,),
+                                assertion={"expected": "high"})]
+        def claim_fingerprint(self):
+            return "fp"
+
+    src = ref.write_source(tmp_path / "c.json")
+    plan = ref.make_plan(src, modes=ADJUDICATE)
+    plan = replace(plan, definition=replace(plan.definition, claims_source=Mutating()))
+    seen = {}
+    def handler(review):
+        seen["ids"] = list(review.payload["claim_ids"])
+        return GateDecision(approved=True, gate=review.gate, reason="ok")
+    res = run_study(plan, gate_handler=handler)
+    scored = {v.hypothesis_id for v in res.scorecard.verdicts}
+    assert seen["ids"] == ["c-A"]       # the gate reviewed the materialized snapshot
+    assert scored == {"H-c-A"}          # and exactly that snapshot was scored (not c-B)
+
+
 def test_empty_claims_source_fails_loud(tmp_path):
     src = ref.write_source(tmp_path / "c.json")
     plan = ref.make_plan(src, modes=ADJUDICATE)

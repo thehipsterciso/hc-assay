@@ -22,7 +22,7 @@ from __future__ import annotations
 
 import datetime as _dt
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Callable, Protocol
+from typing import TYPE_CHECKING, Callable, Iterable, Protocol
 
 from assay_engine.contracts.claims import ClaimRecord, ExternalClaimsSource
 from assay_engine.contracts.schema import Corpus
@@ -155,7 +155,7 @@ def adjudicate(
         baseline = baseline_builder.build(corpus, claim_guard=guard)
 
     scorecard = adjudicate_with_baseline(
-        baseline, claims_source,
+        baseline, claims_source.claims(),
         hypothesis_for=hypothesis_for, confirm=confirm, authority=authority,
         not_after=not_after, source_name=source_name,
     )
@@ -164,7 +164,7 @@ def adjudicate(
 
 def adjudicate_with_baseline(
     baseline: BaselineArtifact,
-    claims_source: ExternalClaimsSource,
+    claims: "Iterable[ClaimRecord]",
     *,
     hypothesis_for: Callable[[ClaimRecord], Hypothesis],
     confirm: ClaimConfirmer,
@@ -173,17 +173,21 @@ def adjudicate_with_baseline(
     source_name: str = "external",
     on_step: "Callable[[Hypothesis, Verdict], None] | None" = None,
 ) -> SourceScorecard:
-    """Adjudicate claims against an **already-built blind baseline** (the composable core).
+    """Adjudicate a **materialized claim set** against an already-built blind baseline (core).
 
     Factored out of :func:`adjudicate` so a composed pipeline that builds the baseline once
     (and shares it with discovery) can reuse the identical, hardened Firewall-A loop instead of
     rebuilding the baseline. The caller is responsible for having built ``baseline`` blind and
     for passing the ``not_after`` ordering instant captured *before* that build — so the
-    lock-before-baseline guarantee is preserved across the shared-baseline composition. Enforces
-    the same claim↔hypothesis↔verdict identity + pre-registration checks as :func:`adjudicate`.
+    lock-before-baseline guarantee is preserved across the shared-baseline composition.
+
+    ``claims`` is **materialized once** here (not re-pulled from a source): a caller that gated
+    or recorded a claim snapshot must adjudicate *that* snapshot, not a set a re-iterable source
+    could change between the gate and the scoring (adversarial review #95). Enforces the same
+    claim↔hypothesis↔verdict identity + pre-registration checks as :func:`adjudicate`.
     """
     verdicts: list[Verdict] = []
-    for claim in claims_source.claims():  # claims used only after the blind baseline is built
+    for claim in list(claims):  # claims used only after the blind baseline is built
         hypothesis = hypothesis_for(claim)
         if hypothesis.origin is not HypothesisOrigin.EXTERNAL_CLAIM:
             raise FirewallViolation(

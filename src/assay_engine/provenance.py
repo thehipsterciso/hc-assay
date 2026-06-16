@@ -110,12 +110,22 @@ class ProvenanceTrail:
             raise ProvenanceError("provenance entry kind must be non-empty")
         seq = len(self._entries)
         prev_hash = self._entries[-1].entry_hash if self._entries else _GENESIS
-        instant = self._clock()
+        try:
+            instant = self._clock()
+        except Exception as exc:  # noqa: BLE001 — the clock is an injected dependency
+            raise ProvenanceError(f"provenance clock raised: {exc}") from None
         if not isinstance(instant, _dt.datetime):
             raise ProvenanceError("provenance clock must return a datetime")
-        if instant.tzinfo is None or instant.utcoffset() is None:
-            raise ProvenanceError("provenance clock must return a timezone-aware datetime")
-        timestamp = instant.astimezone(_UTC).isoformat()
+        try:
+            # utcoffset()/astimezone()/isoformat() can raise on a hostile datetime subclass or an
+            # out-of-range value — keep the typed-error contract (#96).
+            if instant.tzinfo is None or instant.utcoffset() is None:
+                raise ProvenanceError("provenance clock must return a timezone-aware datetime")
+            timestamp = instant.astimezone(_UTC).isoformat()
+        except ProvenanceError:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            raise ProvenanceError(f"provenance timestamp could not be normalized: {exc}") from None
         entry_hash = _digest(seq, kind, summary, payload, timestamp, prev_hash, self._secret)
         try:
             entry = ProvenanceEntry(

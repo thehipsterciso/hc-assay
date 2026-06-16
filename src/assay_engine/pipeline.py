@@ -312,13 +312,16 @@ def run_study(
             )
         # GOVERNANCE GATE: adjudication is a confirmatory step (it emits verdicts + a scorecard),
         # so it is gated too — the operator reviews the blind baseline + the claim set before any
-        # claim is scored against it (#86). frm is the phase actually preceding ADJUDICATE.
+        # claim is scored against it (#86). frm is the phase actually preceding ADJUDICATE. The
+        # review binds the EXACT materialized claim ids that will be scored (not a re-pull that a
+        # mutable source could change between gate and scoring, #95).
         prev_phase = Phase.CONFIRM if StudyMode.DISCOVERY in modes else Phase.BASELINE
         run_gate(GateReview(
             gate="review-baseline-and-claims", frm=prev_phase, to=Phase.ADJUDICATE,
             summary="review the blind baseline and the external claim set before adjudication",
             payload={
                 "n_claims": len(claim_records),
+                "claim_ids": [c.claim_id for c in claim_records],
                 "claim_fingerprint": defn.claims_source.claim_fingerprint(),
                 "baseline_fingerprint": baseline.corpus_fingerprint,
                 "research_questions": list(defn.research_questions),
@@ -340,9 +343,10 @@ def run_study(
                 )
 
             # not_after = baseline_instant: a claim-derived hypothesis must have been locked
-            # before the (shared) baseline existed, so it cannot have been tuned to it.
+            # before the (shared) baseline existed, so it cannot have been tuned to it. The
+            # SAME materialized claim_records that were gated/recorded are scored (#95).
             scorecard = adjudicate_with_baseline(
-                baseline, defn.claims_source,
+                baseline, claim_records,
                 hypothesis_for=plan.hypothesis_for, confirm=plan.confirm_claim,
                 authority=plan.authority, not_after=baseline_instant, source_name=defn.name,
                 on_step=_record_adjudication_step,
