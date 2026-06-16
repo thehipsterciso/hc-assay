@@ -1,5 +1,7 @@
 """Persistence port — credential redaction, loopback, content-addressing (offline)."""
 
+import importlib.util
+
 import pytest
 
 from assay_engine._local import NonLocalEndpointError
@@ -7,6 +9,7 @@ from assay_engine.persistence import vectorstore as vs
 from assay_engine.persistence.checkpoint import (
     _sanitize_conn_str,
     configured_checkpointer,
+    get_checkpointer,
     get_postgres_connection_string,
     redact_creds,
 )
@@ -70,6 +73,14 @@ def test_configured_checkpointer_fails_loud_without_extra(monkeypatch):
         configured_checkpointer()
 
 
+def test_memory_checkpointer_fails_loud_without_extra():
+    # the in-memory saver is also a langgraph type; without the extra it fails loud, not silent
+    if importlib.util.find_spec("langgraph") is not None:
+        pytest.skip("langgraph installed — exercises the absent-extra path")
+    with pytest.raises(RuntimeError, match="persistence' extra"):
+        get_checkpointer(use_memory=True)
+
+
 # ---- vector store loopback ----
 
 def test_vector_store_url_loopback():
@@ -105,3 +116,15 @@ def test_versioner_rejects_non_file(tmp_path):
     v = LocalDataVersioner(store_dir=str(tmp_path / "s"))
     with pytest.raises(FileNotFoundError):
         v.fingerprint(str(tmp_path / "missing"))
+
+
+def test_versioner_publish_leaves_no_temp_files(tmp_path):
+    # atomic publish must not leave .tmp- scratch behind, and an empty file is versionable
+    store = tmp_path / "store"
+    empty = tmp_path / "empty.bin"
+    empty.write_bytes(b"")
+    v = LocalDataVersioner(store_dir=str(store))
+    digest = v.put(str(empty))
+    assert v.path_for(digest).is_file()
+    leftovers = [p.name for p in store.rglob(".tmp-*")]
+    assert leftovers == []

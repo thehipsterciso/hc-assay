@@ -71,5 +71,7 @@ module = [
     "openinference.*",
     "langgraph.*",
     "qdrant_client.*",
+    "psycopg.*",
+    "psycopg_pool.*",
 ]
 ignore_missing_imports = true

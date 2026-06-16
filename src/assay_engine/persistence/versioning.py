@@ -12,6 +12,7 @@ from __future__ import annotations
 import hashlib
 import os
 import shutil
+import tempfile
 from pathlib import Path
 from typing import Protocol, runtime_checkable
 
@@ -55,13 +56,27 @@ class LocalDataVersioner:
         return _hash_file(p)
 
     def put(self, path: str) -> str:
+        """Store the artifact under its content hash; return the hash (version id).
+
+        Idempotent: storing the same bytes twice is a no-op returning the same id. Publish is
+        atomic — content is copied to a *per-writer-unique* temp file (so two processes
+        storing the same digest never clobber a shared temp) and then ``os.replace``-d into
+        place, so a reader never observes a partial artifact. The store is content-addressed,
+        so an interrupted/duplicate write is harmless.
+        """
         digest = self.fingerprint(path)
         dest = self._root / digest[:2] / digest
-        if not dest.exists():
-            dest.parent.mkdir(parents=True, exist_ok=True)
-            tmp = dest.with_suffix(".tmp")
+        if dest.exists():
+            return digest
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        fd, tmp_name = tempfile.mkstemp(dir=str(dest.parent), prefix=".tmp-")
+        os.close(fd)
+        tmp = Path(tmp_name)
+        try:
             shutil.copy2(path, tmp)
-            tmp.replace(dest)  # atomic publish — readers never see a partial artifact
+            os.replace(tmp, dest)  # atomic publish within the same filesystem
+        finally:
+            tmp.unlink(missing_ok=True)  # no-op once replaced; cleans up on copy failure
         return digest
 
     def path_for(self, digest: str) -> Path:
