@@ -66,6 +66,23 @@ def test_connection_string_accepts_loopback_env(monkeypatch):
     assert get_postgres_connection_string().endswith("/x")
 
 
+def test_connection_string_rejects_remote_libpq_dsn(monkeypatch):
+    # issue #P1: a keyword/value DSN has no '://' and must not bypass loopback enforcement
+    monkeypatch.setenv("ASSAY_POSTGRES_URL", "host=db.evil.com port=5432 dbname=x password=s")
+    with pytest.raises(NonLocalEndpointError):
+        get_postgres_connection_string()
+
+
+def test_connection_string_accepts_local_libpq_dsn(monkeypatch):
+    monkeypatch.setenv("ASSAY_POSTGRES_URL", "host=localhost port=5432 dbname=x")
+    assert "localhost" in get_postgres_connection_string()
+
+
+def test_redact_strips_dsn_password():
+    out = redact_creds("OperationalError: host=localhost password=s3cr#t dbname=x failed")
+    assert "s3cr#t" not in out and "password=***" in out
+
+
 def test_configured_checkpointer_fails_loud_without_extra(monkeypatch):
     # langgraph absent in this env -> RuntimeError naming the extra (postgres path)
     monkeypatch.setenv("ASSAY_CHECKPOINT_BACKEND", "postgres")
@@ -116,6 +133,120 @@ def test_versioner_rejects_non_file(tmp_path):
     v = LocalDataVersioner(store_dir=str(tmp_path / "s"))
     with pytest.raises(FileNotFoundError):
         v.fingerprint(str(tmp_path / "missing"))
+
+
+# ---- hardened checkpointer invariants (fake backends injected, no Postgres) ----
+
+@pytest.fixture
+def fake_pg(monkeypatch):
+    """Inject fake langgraph/psycopg modules so get_checkpointer runs the full hardened path
+    offline, and reset the module's process-local bootstrap state."""
+    import sys
+    import types
+
+    from assay_engine.persistence import checkpoint as cp
+
+    state = {"setup_on": [], "lock_on": [], "pools": [], "atexit_registered": 0}
+
+    class FakeConn:
+        def execute(self, sql, params=None):
+            if "pg_advisory_lock" in sql:
+                state["lock_on"].append(id(self))
+
+    class FakePool:
+        check_connection = staticmethod(lambda *a, **k: None)
+
+        def __init__(self, conn_str, **kw):
+            self.conn_str = conn_str
+            self._conn = FakeConn()
+            state["pools"].append(self)
+
+        def connection(self):
+            conn = self._conn
+
+            class _Ctx:
+                def __enter__(self_):
+                    return conn
+
+                def __exit__(self_, *a):
+                    return False
+
+            return _Ctx()
+
+        def close(self):
+            pass
+
+    class FakeSaver:
+        def __init__(self, arg):
+            self.arg = arg
+
+        def setup(self):
+            state["setup_on"].append(id(self.arg))
+
+    def _mod(name, **attrs):
+        m = types.ModuleType(name)
+        for k, v in attrs.items():
+            setattr(m, k, v)
+        monkeypatch.setitem(sys.modules, name, m)
+        return m
+
+    _mod("langgraph")
+    _mod("langgraph.checkpoint")
+    _mod("langgraph.checkpoint.postgres", PostgresSaver=FakeSaver)
+    _mod("langgraph.checkpoint.memory", MemorySaver=type("MemorySaver", (), {}))
+    _mod("psycopg")
+    _mod("psycopg.rows", dict_row=object())
+    _mod("psycopg_pool", ConnectionPool=FakePool)
+
+    # reset process-local bootstrap bookkeeping
+    monkeypatch.setattr(cp, "_INITIALIZED_CONN_STRS", set())
+    monkeypatch.setattr(cp, "_OPEN_POOLS", [])
+    monkeypatch.setattr(cp, "_atexit_registered", False)
+    monkeypatch.setattr(cp, "atexit", types.SimpleNamespace(
+        register=lambda fn: state.__setitem__("atexit_registered", state["atexit_registered"] + 1)
+    ))
+    monkeypatch.setenv("ASSAY_POSTGRES_URL", "postgresql://localhost:5432/assay")
+    return cp, state
+
+
+def test_setup_runs_once_per_conn_and_on_locked_connection(fake_pg):
+    cp, state = fake_pg
+    cp.get_checkpointer()
+    cp.get_checkpointer()  # second call, same conn_str
+    # setup() ran exactly once despite two factory calls (once-per-conn guard)
+    assert len(state["setup_on"]) == 1
+    # the advisory lock and the DDL ran on the SAME connection object
+    assert state["lock_on"] == state["setup_on"]
+
+
+def test_atexit_pool_cleanup_registered_once(fake_pg):
+    cp, state = fake_pg
+    cp.get_checkpointer()
+    cp.get_checkpointer()
+    # two pools opened and tracked, but only one shared atexit handler registered
+    assert len(state["pools"]) == 2
+    assert len(cp._OPEN_POOLS) == 2
+    assert state["atexit_registered"] == 1
+
+
+def test_connection_failure_redacts_and_leaks_no_context(fake_pg, monkeypatch):
+    # issue #P2: on failure the credential-bearing original must be retained as neither
+    # __cause__ nor __context__, and the message must be redacted.
+    import sys
+
+    cp, _ = fake_pg
+    conn = "postgresql://admin:SUPERSECRET@127.0.0.1:5432/x"
+    monkeypatch.setenv("ASSAY_POSTGRES_URL", conn)
+
+    def boom(*a, **k):
+        raise OSError(f"could not connect using {conn}")
+
+    monkeypatch.setattr(sys.modules["psycopg_pool"], "ConnectionPool", boom)
+    with pytest.raises(RuntimeError) as ei:
+        cp.get_checkpointer()
+    err = ei.value
+    assert "SUPERSECRET" not in str(err)
+    assert err.__cause__ is None and err.__context__ is None  # no credential-bearing original
 
 
 def test_versioner_publish_leaves_no_temp_files(tmp_path):

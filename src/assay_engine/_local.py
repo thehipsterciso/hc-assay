@@ -55,18 +55,34 @@ def require_loopback_host(host: str, *, what: str) -> str:
 
 
 def require_local_uri(uri: str, *, what: str) -> str:
-    """Return ``uri`` if it is local (ADR-0003).
+    """Return ``uri`` if it is local (ADR-0003), else raise :class:`NonLocalEndpointError`.
 
-    A bare path or ``sqlite:///`` file is local; any networked scheme (http/https/postgresql/
-    mysql/mssql/…) must point at a loopback host. Rejects remote stores that would exfiltrate.
+    Three forms are recognized:
+
+    - **URI with a host component** (``scheme://host…`` or scheme-relative ``//host…``): the
+      host must be loopback. A networked host smuggled into a ``sqlite://host`` or ``//host``
+      spelling is rejected; a host-less ``sqlite:///file`` or ``file:///path`` is local.
+    - **libpq keyword/value DSN** (no URI host but contains ``key=value`` tokens, e.g.
+      ``host=db port=5432 dbname=x``): the ``host``/``hostaddr`` token must be loopback. This
+      form has no ``://`` and would otherwise slip past a URI-only check (audit issue #P1).
+    - **bare path** (no URI host, no ``=``): a local file/dir — local.
     """
-    # Check the host regardless of scheme first: a networked host smuggled into a sqlite:// or
-    # scheme-less spelling (e.g. sqlite://evil.com/x, //evil.com/share) must NOT slip past
-    # (audit issue #O4). A host-less sqlite:///file, bare path, or file:///path is local.
     host = (urlparse(uri).hostname or "").strip()
-    if host and not is_loopback_host(host):
-        raise NonLocalEndpointError(
-            f"{what} must be a local store (ADR-0003 data sovereignty); got host {host!r} "
-            f"from {uri!r}"
-        )
-    return uri
+    if host:
+        if not is_loopback_host(host):
+            raise NonLocalEndpointError(
+                f"{what} must be a local store (ADR-0003 data sovereignty); got host {host!r}"
+            )
+        return uri
+    if "=" in uri:  # libpq keyword/value DSN (no URI host component)
+        for token in uri.split():
+            key, sep, val = token.partition("=")
+            if sep and key.strip().lower() in {"host", "hostaddr"}:
+                h = val.strip().strip("'\"")
+                if h and not is_loopback_host(h):
+                    raise NonLocalEndpointError(
+                        f"{what} must be a local store (ADR-0003 data sovereignty); DSN names "
+                        f"non-loopback host {h!r}"
+                    )
+        return uri
+    return uri  # bare path / dir store
