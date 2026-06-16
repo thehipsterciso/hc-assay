@@ -83,7 +83,9 @@ def already_decided(state: Mapping[str, Any], gate_name: str) -> bool:
     return False
 
 
-def make_gate_node(gate: Gate, propose: GateProposal) -> Callable[[Mapping[str, Any]], dict[str, Any]]:
+def make_gate_node(
+    gate: Gate, propose: GateProposal
+) -> Callable[[Mapping[str, Any]], dict[str, Any]]:
     """Build a LangGraph node that parks at ``gate`` for an operator decision.
 
     ``propose(state)`` returns the proposal payload surfaced to the operator (what the gate is

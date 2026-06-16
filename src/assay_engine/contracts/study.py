@@ -42,9 +42,7 @@ class StudyDefinition:
             raise ValueError("StudyDefinition must declare at least one mode")
         needs_claims = StudyMode.ADJUDICATE_EXTERNAL_CLAIMS in self.modes
         if needs_claims and self.claims_source is None:
-            raise ValueError(
-                "Adjudication mode requires a claims_source; none was provided"
-            )
+            raise ValueError("Adjudication mode requires a claims_source; none was provided")
         if not needs_claims and self.claims_source is not None:
             # A discovery-only study must not carry a claims source — it would risk
             # leaking external judgments into a pipeline that is meant to be blind.

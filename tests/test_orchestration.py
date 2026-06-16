@@ -12,6 +12,7 @@ ADJUDICATE = frozenset({StudyMode.ADJUDICATE_EXTERNAL_CLAIMS})
 
 # ---- phases (#9) ----
 
+
 def test_can_advance_to_is_strict_full_pipeline_adjacency():
     assert Phase.INGEST.can_advance_to(Phase.BASELINE)
     assert not Phase.CONFIRM.can_advance_to(Phase.REPORT)
@@ -53,6 +54,7 @@ def test_combined_study_follows_full_path():
 
 
 # ---- gates (#11) ----
+
 
 def _approve(_ctx):
     return GateDecision(approved=True, gate="g", reason="ok")

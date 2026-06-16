@@ -34,6 +34,15 @@ construction as inputs, features, or training labels. If they do, "the baseline 
 with the claims" is circular and the result is void. The baseline is built from the data;
 the claims are quarantined until adjudication.
 
+> **Honest scope (engine):** the engine enforces this structurally where it can — the baseline
+> builder is never *handed* a claims source (it is built inside a sealed `ClaimBlindGuard`), and
+> the adjudication runner keeps claims out of the builder's reach (ADR-0008). What the guard
+> cannot police is an adapter that smuggles external judgments into `Corpus` metadata/attributes
+> or relations and then reads them in the builder — that path is closed by the adapter contract,
+> not by the guard. Nor is it frame isolation: a builder that deliberately reflects into the
+> runner's stack could reach the claims; only running the builder in a separate process would
+> prevent that. The guarantee is against *accidental* circularity, which is the realistic failure.
+
 **Firewall B — discover / confirm separation.** A pattern used to *discover* a hypothesis
 must not be the data used to *confirm* it. Discovering a pattern and then "testing" it on
 the same data proves nothing. So:
@@ -87,6 +96,14 @@ The scoring dimensions are **outputs of method, not a pre-set checklist**: the d
 narrative, determines what is worth scoring. The source had no hand in producing the
 reference it is scored against.
 
+> **Implementation status (engine):** the engine computes the **measured frequency** part — a
+> `SourceScorecard` with supported/contradicted/indeterminate counts and an `alignment_rate`
+> (supported / decisive, indeterminate excluded). This is a measured frequency, explicitly not a
+> normative quality score. The richer, data-surfaced dimensions (where it diverges, what it
+> leaves as gaps, where it is redundant) are produced **downstream from the per-claim verdicts**
+> the scorecard carries — a study surfaces them from the data; the engine does not impose a fixed
+> set. The per-verdict evidence needed for that analysis is all in `SourceScorecard.verdicts`.
+
 ## 6. Method, not interpretation
 
 There is a hard boundary between **measurement** (numbers produced by the engine) and
@@ -94,6 +111,17 @@ There is a hard boundary between **measurement** (numbers produced by the engine
 feed back into measurement. Any use of judgment — including LLM-assisted classification —
 is treated as interpretation, fenced off, and labeled, so it cannot contaminate the
 upstream baseline or the verdicts.
+
+> **Implementation status (engine):** the engine provides this as a **type-level boundary**,
+> not an automatic whole-pipeline retrofit. `assay_engine.methodology.fence` defines
+> `Measurement` and `Interpretation`, and `Measurement` **refuses at construction** to hold an
+> `Interpretation` (even nested) — so once a value is typed as a measurement, judgment cannot be
+> smuggled into it. `fence()` crosses the boundary in the one legal direction
+> (measurement → interpretation) and records the source measurement's ref. A study applies these
+> types where judgment enters: LLM output from the reasoning seam is *raw judgment* and must be
+> wrapped as an `Interpretation` (`judged_by` = the model id), never passed where a `Measurement`
+> is expected. The engine enforces the direction structurally at the type boundary; it does not,
+> and cannot, retro-classify arbitrary study values it never sees.
 
 ## 7. Reproducibility
 

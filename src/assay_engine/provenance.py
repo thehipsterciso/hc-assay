@@ -66,8 +66,13 @@ class ProvenanceEntry:
 
 
 def _digest(
-    seq: int, kind: str, summary: str, payload: Mapping[str, Any],
-    timestamp: str, prev_hash: str, secret: bytes | None,
+    seq: int,
+    kind: str,
+    summary: str,
+    payload: Mapping[str, Any],
+    timestamp: str,
+    prev_hash: str,
+    secret: bytes | None,
 ) -> str:
     try:
         msg = canonical_json(
@@ -129,11 +134,18 @@ class ProvenanceTrail:
         entry_hash = _digest(seq, kind, summary, payload, timestamp, prev_hash, self._secret)
         try:
             entry = ProvenanceEntry(
-                seq=seq, kind=kind, summary=summary, payload=payload,
-                timestamp=timestamp, prev_hash=prev_hash, entry_hash=entry_hash,
+                seq=seq,
+                kind=kind,
+                summary=summary,
+                payload=payload,
+                timestamp=timestamp,
+                prev_hash=prev_hash,
+                entry_hash=entry_hash,
             )
         except (ValueError, TypeError, RecursionError) as exc:
-            raise ProvenanceError(f"provenance entry for {kind!r} could not be frozen ({exc})") from None
+            raise ProvenanceError(
+                f"provenance entry for {kind!r} could not be frozen ({exc})"
+            ) from None
         self._entries.append(entry)
         return entry
 
@@ -143,6 +155,7 @@ class ProvenanceTrail:
         Reads each attribute exactly once and defensively, so a booby-trapped decision object
         (a property that raises) surfaces a typed ``ProvenanceError`` rather than a raw error.
         """
+
         def _record(decision: Any) -> None:
             try:
                 gate = getattr(decision, "gate", None)
@@ -150,11 +163,18 @@ class ProvenanceTrail:
                 reason = getattr(decision, "reason", "")
                 evidence = dict(getattr(decision, "evidence", {}) or {})
             except Exception as exc:  # noqa: BLE001 — the decision is on the trust boundary
-                raise ProvenanceError(f"could not read gate decision for provenance: {exc}") from None
+                raise ProvenanceError(
+                    f"could not read gate decision for provenance: {exc}"
+                ) from None
             self.record(
-                "gate", f"gate {gate!r}: {'approved' if approved else 'blocked'}",
-                gate=gate, approved=approved, reason=reason, evidence=evidence,
+                "gate",
+                f"gate {gate!r}: {'approved' if approved else 'blocked'}",
+                gate=gate,
+                approved=approved,
+                reason=reason,
+                evidence=evidence,
             )
+
         return _record
 
     @property
@@ -177,9 +197,13 @@ class ProvenanceTrail:
         """Serialize to plain dicts (for a persistent store); re-checkable via :func:`verify_records`."""
         return tuple(
             {
-                "seq": e.seq, "kind": e.kind, "summary": e.summary,
-                "payload": dict(e.payload), "timestamp": e.timestamp,
-                "prev_hash": e.prev_hash, "entry_hash": e.entry_hash,
+                "seq": e.seq,
+                "kind": e.kind,
+                "summary": e.summary,
+                "payload": dict(e.payload),
+                "timestamp": e.timestamp,
+                "prev_hash": e.prev_hash,
+                "entry_hash": e.entry_hash,
             }
             for e in self._entries
         )
@@ -217,8 +241,13 @@ def from_records(
     """Rebuild entries from :meth:`ProvenanceTrail.to_records` output and verify the chain."""
     entries = tuple(
         ProvenanceEntry(
-            seq=r["seq"], kind=r["kind"], summary=r["summary"], payload=r["payload"],
-            timestamp=r["timestamp"], prev_hash=r["prev_hash"], entry_hash=r["entry_hash"],
+            seq=r["seq"],
+            kind=r["kind"],
+            summary=r["summary"],
+            payload=r["payload"],
+            timestamp=r["timestamp"],
+            prev_hash=r["prev_hash"],
+            entry_hash=r["entry_hash"],
         )
         for r in records
     )

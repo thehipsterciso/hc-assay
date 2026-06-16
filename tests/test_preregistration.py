@@ -30,8 +30,12 @@ def _auth(secret=b"preregistration-unit-test-key-01"):
 
 def _unlocked(hid="H1", **over):
     base = dict(
-        hypothesis_id=hid, statement="pattern", kind=HypothesisKind.UNIT_LEVEL,
-        origin=HypothesisOrigin.DISCOVERY, test_name="t", decision_rule="r",
+        hypothesis_id=hid,
+        statement="pattern",
+        kind=HypothesisKind.UNIT_LEVEL,
+        origin=HypothesisOrigin.DISCOVERY,
+        test_name="t",
+        decision_rule="r",
     )
     base.update(over)
     return Hypothesis(**base)
@@ -43,12 +47,17 @@ def _past():
 
 # ---- the content digest ----
 
+
 def test_digest_covers_content_and_id_but_not_lock_fields():
     h = _unlocked()
     # hypothesis_id IS bound (#80): it is the verdict's attribution key, so a swap must be caught
-    assert canonical_hypothesis_digest(h) != canonical_hypothesis_digest(replace(h, hypothesis_id="X"))
+    assert canonical_hypothesis_digest(h) != canonical_hypothesis_digest(
+        replace(h, hypothesis_id="X")
+    )
     # decision-bearing content changes the digest
-    assert canonical_hypothesis_digest(h) != canonical_hypothesis_digest(replace(h, decision_rule="r2"))
+    assert canonical_hypothesis_digest(h) != canonical_hypothesis_digest(
+        replace(h, decision_rule="r2")
+    )
     assert canonical_hypothesis_digest(h) != canonical_hypothesis_digest(replace(h, statement="s2"))
     assert canonical_hypothesis_digest(h) != canonical_hypothesis_digest(
         replace(h, predicted_direction="greater")
@@ -65,6 +74,7 @@ def test_digest_is_stable_and_does_not_change_when_locked():
 
 
 # ---- lock_hypothesis + verify round-trip ----
+
 
 def test_lock_then_verify_roundtrip():
     auth = _auth()
@@ -84,6 +94,7 @@ def test_relocking_is_forbidden():
 
 
 # ---- the breaks pre-registration must catch ----
+
 
 def test_unlocked_hypothesis_is_rejected():
     with pytest.raises(PreRegistrationError, match="not locked"):
@@ -138,7 +149,9 @@ def test_non_finite_param_raises_preregistration_error():
 
 
 def test_proof_from_another_authority_is_rejected():
-    locked = lock_hypothesis(_unlocked(), authority=_auth(b"secret-aaaaaaaaaaaaaaaaaaaaaaa1"), instant=_past())
+    locked = lock_hypothesis(
+        _unlocked(), authority=_auth(b"secret-aaaaaaaaaaaaaaaaaaaaaaa1"), instant=_past()
+    )
     other = _auth(b"secret-bbbbbbbbbbbbbbbbbbbbbbb2")  # different key
     with pytest.raises(PreRegistrationError):
         verify_preregistration(locked, authority=other)
@@ -154,14 +167,23 @@ def test_tampered_locked_at_disagrees_with_attested_instant():
 
 
 def test_malformed_proof_is_rejected_not_crashed():
-    for bad in ["", "garbage", "local-hmac:v1:", "local-hmac:v1:not-a-time|abcd",
-                "local-hmac:v1:2026-06-16T00:00:00+00:00", "wrong-prefix:2026|ab"]:
+    for bad in [
+        "",
+        "garbage",
+        "local-hmac:v1:",
+        "local-hmac:v1:not-a-time|abcd",
+        "local-hmac:v1:2026-06-16T00:00:00+00:00",
+        "wrong-prefix:2026|ab",
+    ]:
         with pytest.raises(PreRegistrationError):
-            verify_preregistration(_unlocked(timestamp_proof=bad, locked_at="2026-06-16T00:00:00+00:00"),
-                                   authority=_auth())
+            verify_preregistration(
+                _unlocked(timestamp_proof=bad, locked_at="2026-06-16T00:00:00+00:00"),
+                authority=_auth(),
+            )
 
 
 # ---- lock-before-confirm ordering ----
+
 
 def test_require_preregistered_accepts_lock_before_confirmation():
     auth = _auth()
@@ -188,6 +210,7 @@ def test_require_preregistered_rejects_lock_equal_to_confirmation():
 
 # ---- authority hygiene ----
 
+
 def test_naive_instants_are_rejected():
     auth = _auth()
     with pytest.raises(PreRegistrationError, match="timezone-aware"):
@@ -206,10 +229,15 @@ def test_confirm_primitive_optional_authority_rejects_fake_lock():
     # #84: a direct confirm caller can opt into real verification by passing authority=
     auth = _auth()
     fake = Hypothesis(
-        hypothesis_id="H1", statement="s", kind=HypothesisKind.WHOLE_CORPUS,
-        origin=HypothesisOrigin.DISCOVERY, test_name="t", decision_rule="r",
+        hypothesis_id="H1",
+        statement="s",
+        kind=HypothesisKind.WHOLE_CORPUS,
+        origin=HypothesisOrigin.DISCOVERY,
+        test_name="t",
+        decision_rule="r",
         predicted_direction="greater",
-        locked_at="2026-06-16T00:00:00+00:00", timestamp_proof="rfc3161:demo",  # sentinel
+        locked_at="2026-06-16T00:00:00+00:00",
+        timestamp_proof="rfc3161:demo",  # sentinel
     )
     null = [0.05 + 0.001 * i for i in range(50)]
     # with authority: the fake (presence-only) lock is refused

@@ -21,6 +21,7 @@ from assay_engine.contracts.schema import Corpus, Relation, Unit
 
 # ---- determinism harness ----
 
+
 def _corpus() -> Corpus:
     return Corpus(
         units=(Unit("a", "hello", {"k": 1}), Unit("b", "world")),
@@ -122,6 +123,7 @@ def test_build_artifact_extra_inputs_change_seed():
 
 
 # ---- primitives ----
+
 
 def test_cosine_identical_orthogonal_opposite():
     assert cosine_similarity([1.0, 0.0], [2.0, 0.0]) == pytest.approx(1.0)

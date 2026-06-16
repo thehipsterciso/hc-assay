@@ -85,7 +85,5 @@ class Corpus:
             {e for r in self.relations for e in (r.source_id, r.target_id) if e not in known}
         )
         if dangling:
-            raise ValueError(
-                f"Corpus has relations referencing unknown unit_id(s): {dangling[:5]}"
-            )
+            raise ValueError(f"Corpus has relations referencing unknown unit_id(s): {dangling[:5]}")
         object.__setattr__(self, "metadata", freeze_mapping(self.metadata))

@@ -39,8 +39,12 @@ def _split():
 def _locked_discovery(hid="H1"):
     return lock_hypothesis(
         Hypothesis(
-            hypothesis_id=hid, statement="pattern", kind=HypothesisKind.UNIT_LEVEL,
-            origin=HypothesisOrigin.DISCOVERY, test_name="t", decision_rule="r",
+            hypothesis_id=hid,
+            statement="pattern",
+            kind=HypothesisKind.UNIT_LEVEL,
+            origin=HypothesisOrigin.DISCOVERY,
+            test_name="t",
+            decision_rule="r",
         ),
         authority=_AUTH,
         instant=_LOCK_INSTANT,
@@ -48,6 +52,7 @@ def _locked_discovery(hid="H1"):
 
 
 # ---- subset_corpus ----
+
 
 def test_subset_keeps_only_partition_units_and_internal_relations():
     sub = subset_corpus(_corpus(), {"u0", "u1", "u2"})
@@ -65,6 +70,7 @@ def test_subset_drops_corpus_metadata():
 
 # ---- Firewall B by construction ----
 
+
 def test_discover_sees_only_discovery_partition_confirm_only_held_out():
     seen = {}
 
@@ -78,8 +84,8 @@ def test_discover_sees_only_discovery_partition_confirm_only_held_out():
         return Verdict(hypothesis.hypothesis_id, VerdictLabel.SUPPORTED, "r")
 
     discover_and_confirm(_corpus(), _split(), discover=discover, confirm=confirm, authority=_AUTH)
-    assert seen["discover_ids"] == {"u0", "u1", "u2"}   # discovery never sees held-out data
-    assert seen["confirm_ids"] == {"u3", "u4", "u5"}    # confirm never sees discovery data
+    assert seen["discover_ids"] == {"u0", "u1", "u2"}  # discovery never sees held-out data
+    assert seen["confirm_ids"] == {"u3", "u4", "u5"}  # confirm never sees discovery data
     assert seen["discover_ids"].isdisjoint(seen["confirm_ids"])
     # the corpus-level per-unit index (covering u0..u5) must NOT reach the discovery step
     assert not seen["discover_metadata"]
@@ -87,15 +93,25 @@ def test_discover_sees_only_discovery_partition_confirm_only_held_out():
 
 def test_rejects_non_discovery_hypothesis():
     def discover(_c):
-        return [Hypothesis(
-            hypothesis_id="H1", statement="x", kind=HypothesisKind.UNIT_LEVEL,
-            origin=HypothesisOrigin.EXTERNAL_CLAIM, test_name="t", decision_rule="r",
-            source_claim_id="c1", locked_at="t", timestamp_proof="p",
-        )]
+        return [
+            Hypothesis(
+                hypothesis_id="H1",
+                statement="x",
+                kind=HypothesisKind.UNIT_LEVEL,
+                origin=HypothesisOrigin.EXTERNAL_CLAIM,
+                test_name="t",
+                decision_rule="r",
+                source_claim_id="c1",
+                locked_at="t",
+                timestamp_proof="p",
+            )
+        ]
 
     with pytest.raises(FirewallViolation, match="DISCOVERY"):
         discover_and_confirm(
-            _corpus(), _split(), discover=discover,
+            _corpus(),
+            _split(),
+            discover=discover,
             confirm=lambda h, c: Verdict.supported(h.hypothesis_id, "r"),
             authority=_AUTH,
         )
@@ -103,14 +119,22 @@ def test_rejects_non_discovery_hypothesis():
 
 def test_rejects_unlocked_hypothesis():
     def discover(_c):
-        return [Hypothesis(
-            hypothesis_id="H1", statement="x", kind=HypothesisKind.UNIT_LEVEL,
-            origin=HypothesisOrigin.DISCOVERY, test_name="t", decision_rule="r",
-        )]
+        return [
+            Hypothesis(
+                hypothesis_id="H1",
+                statement="x",
+                kind=HypothesisKind.UNIT_LEVEL,
+                origin=HypothesisOrigin.DISCOVERY,
+                test_name="t",
+                decision_rule="r",
+            )
+        ]
 
     with pytest.raises(FirewallViolation):  # require_locked: not pre-registered
         discover_and_confirm(
-            _corpus(), _split(), discover=discover,
+            _corpus(),
+            _split(),
+            discover=discover,
             confirm=lambda h, c: Verdict.supported(h.hypothesis_id, "r"),
             authority=_AUTH,
         )
@@ -119,7 +143,8 @@ def test_rejects_unlocked_hypothesis():
 def test_rejects_misattributed_verdict():
     with pytest.raises(FirewallViolation, match="misattribution"):
         discover_and_confirm(
-            _corpus(), _split(),
+            _corpus(),
+            _split(),
             discover=lambda c: [_locked_discovery("H1")],
             confirm=lambda h, c: Verdict.supported("WRONG-H", "r"),
             authority=_AUTH,
@@ -131,7 +156,8 @@ def test_rejects_held_out_partition_absent_from_corpus():
     bad_split = DiscoverConfirmSplit.from_partition({"u0", "u1"}, {"ghost1", "ghost2"})
     with pytest.raises(FirewallViolation, match="nothing to confirm on"):
         discover_and_confirm(
-            _corpus(), bad_split,
+            _corpus(),
+            bad_split,
             discover=lambda c: [_locked_discovery("H1")],
             confirm=lambda h, c: Verdict.supported(h.hypothesis_id, "r"),
             authority=_AUTH,
@@ -151,7 +177,9 @@ def test_rejects_discovery_partition_absent_from_corpus():
     bad_split = DiscoverConfirmSplit.from_partition({"ghost1", "ghost2"}, {"u3", "u4"})
     with pytest.raises(FirewallViolation, match="nothing to discover from"):
         discover_and_confirm(
-            _corpus(), bad_split, discover=discover,
+            _corpus(),
+            bad_split,
+            discover=discover,
             confirm=lambda h, c: Verdict.supported(h.hypothesis_id, "r"),
             authority=_AUTH,
         )
@@ -160,7 +188,8 @@ def test_rejects_discovery_partition_absent_from_corpus():
 
 def test_end_to_end_returns_verdicts():
     verdicts = discover_and_confirm(
-        _corpus(), _split(),
+        _corpus(),
+        _split(),
         discover=lambda c: [_locked_discovery("H1"), _locked_discovery("H2")],
         confirm=lambda h, c: Verdict(h.hypothesis_id, VerdictLabel.SUPPORTED, "r"),
         authority=_AUTH,

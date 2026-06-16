@@ -81,7 +81,11 @@ class SourceScorecard:
 
 
 def _score(source: str, verdicts: list[Verdict]) -> SourceScorecard:
-    counts = {VerdictLabel.SUPPORTED: 0, VerdictLabel.CONTRADICTED: 0, VerdictLabel.INDETERMINATE: 0}
+    counts = {
+        VerdictLabel.SUPPORTED: 0,
+        VerdictLabel.CONTRADICTED: 0,
+        VerdictLabel.INDETERMINATE: 0,
+    }
     for v in verdicts:
         counts[v.label] += 1
     decisive = counts[VerdictLabel.SUPPORTED] + counts[VerdictLabel.CONTRADICTED]
@@ -155,9 +159,13 @@ def adjudicate(
         baseline = baseline_builder.build(corpus, claim_guard=guard)
 
     scorecard = adjudicate_with_baseline(
-        baseline, claims_source.claims(),
-        hypothesis_for=hypothesis_for, confirm=confirm, authority=authority,
-        not_after=not_after, source_name=source_name,
+        baseline,
+        claims_source.claims(),
+        hypothesis_for=hypothesis_for,
+        confirm=confirm,
+        authority=authority,
+        not_after=not_after,
+        source_name=source_name,
     )
     return baseline, scorecard
 

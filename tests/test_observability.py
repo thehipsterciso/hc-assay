@@ -19,6 +19,7 @@ from assay_engine.observability.tracking import (
 
 # ---- tracing ----
 
+
 def test_bootstrap_returns_none_when_disabled(monkeypatch):
     monkeypatch.setenv("ASSAY_DISABLE_TRACING", "1")
     assert bootstrap_tracing() is None
@@ -91,7 +92,9 @@ def test_install_flush_on_exit_wires_atexit_and_sigterm(monkeypatch):
     monkeypatch.setattr(tr.atexit, "register", lambda fn: calls["atexit"].append(fn))
     captured = {}
     monkeypatch.setattr(tr.signal, "getsignal", lambda s: _signal.SIG_DFL)
-    monkeypatch.setattr(tr.signal, "signal", lambda sig, handler: captured.__setitem__("h", handler))
+    monkeypatch.setattr(
+        tr.signal, "signal", lambda sig, handler: captured.__setitem__("h", handler)
+    )
 
     tr._install_flush_on_exit(_Provider())
 
@@ -113,6 +116,7 @@ def test_install_flush_on_exit_noop_without_force_flush(monkeypatch):
 
 # ---- experiment tracking ----
 
+
 def test_bootstrap_is_idempotent(monkeypatch):
     monkeypatch.delenv("ASSAY_DISABLE_TRACING", raising=False)
     sentinel = object()
@@ -132,7 +136,12 @@ def test_get_tracking_uri_resolves_sqlite_to_absolute_path(monkeypatch):
 
 @pytest.mark.parametrize(
     "uri",
-    ["sqlite://evil.com/x.db", "//evil.com/share", "http://0.0.0.0:5000", "postgresql://db.example.com/m"],
+    [
+        "sqlite://evil.com/x.db",
+        "//evil.com/share",
+        "http://0.0.0.0:5000",
+        "postgresql://db.example.com/m",
+    ],
 )
 def test_get_tracking_uri_rejects_non_local(monkeypatch, uri):
     monkeypatch.setenv("ASSAY_TRACKING_URI", uri)
