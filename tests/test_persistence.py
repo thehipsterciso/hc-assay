@@ -78,6 +78,31 @@ def test_connection_string_accepts_local_libpq_dsn(monkeypatch):
     assert "localhost" in get_postgres_connection_string()
 
 
+@pytest.mark.parametrize(
+    "dsn",
+    [
+        "host = db.evil.com dbname=x",       # space around '='
+        "host =db.evil.com dbname=x",
+        "host= db.evil.com dbname=x",
+        "host=  db.evil.com  dbname=x",
+        "host\t=\tdb.evil.com dbname=x",     # tabs
+        "host='db.evil.com' dbname=x",       # quoted
+        "hostaddr=8.8.8.8 dbname=x",
+        "HOST=db.evil.com dbname=x",         # case-insensitive key
+    ],
+)
+def test_connection_string_rejects_remote_dsn_all_spellings(monkeypatch, dsn):
+    # issue #D1: libpq permits whitespace/quoting around '=' — none may bypass loopback
+    monkeypatch.setenv("ASSAY_POSTGRES_URL", dsn)
+    with pytest.raises(NonLocalEndpointError):
+        get_postgres_connection_string()
+
+
+def test_connection_string_accepts_local_dsn_with_spaces(monkeypatch):
+    monkeypatch.setenv("ASSAY_POSTGRES_URL", "host = 127.0.0.1 dbname = x")
+    assert get_postgres_connection_string().startswith("host")
+
+
 def test_redact_strips_dsn_password():
     out = redact_creds("OperationalError: host=localhost password=s3cr#t dbname=x failed")
     assert "s3cr#t" not in out and "password=***" in out

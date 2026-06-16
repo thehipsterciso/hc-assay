@@ -8,7 +8,12 @@ address fails loud rather than silently shipping data off the machine.
 from __future__ import annotations
 
 import ipaddress
+import re
 from urllib.parse import urlparse
+
+# A libpq keyword/value token: ``key = value`` with optional whitespace around ``=`` (libpq
+# permits it) and an optionally single/double-quoted value (which may contain spaces).
+_DSN_TOKEN_RE = re.compile(r"(\w+)\s*=\s*('[^']*'|\"[^\"]*\"|\S+)")
 
 
 class NonLocalEndpointError(RuntimeError):
@@ -75,10 +80,11 @@ def require_local_uri(uri: str, *, what: str) -> str:
             )
         return uri
     if "=" in uri:  # libpq keyword/value DSN (no URI host component)
-        for token in uri.split():
-            key, sep, val = token.partition("=")
-            if sep and key.strip().lower() in {"host", "hostaddr"}:
-                h = val.strip().strip("'\"")
+        # Whitespace is permitted around '=' in libpq DSNs (e.g. "host = db.evil.com"), so a
+        # naive token split misses the host value — a real tokenizer is required (audit #D1).
+        for match in _DSN_TOKEN_RE.finditer(uri):
+            if match.group(1).strip().lower() in {"host", "hostaddr"}:
+                h = match.group(2).strip().strip("'\"")
                 if h and not is_loopback_host(h):
                     raise NonLocalEndpointError(
                         f"{what} must be a local store (ADR-0003 data sovereignty); DSN names "
