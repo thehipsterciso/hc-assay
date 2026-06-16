@@ -62,6 +62,8 @@ def fake_sdk(monkeypatch):
 
     async def query(prompt, options):  # noqa: ANN001
         for msg in scripted:
+            if isinstance(msg, Exception):  # simulate the SDK/transport raising mid-stream
+                raise msg
             yield msg
 
     mod = types.ModuleType("claude_agent_sdk")
@@ -120,6 +122,33 @@ def test_t3_429_not_clobbered_by_trailing_result_error(fake_sdk):
     fake_sdk.append(RateLimitEvent("rejected"))
     fake_sdk.append(_ResultMessage(is_error=True, api_error_status=500))
     with pytest.raises(RateLimitError):
+        _run()
+
+
+def test_t3_overloaded_529_maps_to_ratelimit(fake_sdk):
+    fake_sdk.append(_ResultMessage(is_error=True, api_error_status=529, errors=["overloaded"]))
+    with pytest.raises(RateLimitError):
+        _run()
+
+
+def test_t3_forbidden_403_maps_to_permanent(fake_sdk):
+    fake_sdk.append(_ResultMessage(is_error=True, api_error_status=403, errors=["forbidden"]))
+    with pytest.raises(PermanentReasoningError):
+        _run()
+
+
+def test_t3_top_level_rejected_status_maps_to_ratelimit(fake_sdk):
+    # a non-RateLimitEvent message carrying status=='rejected' is the second 429 path
+    msg = types.SimpleNamespace(status="rejected")
+    fake_sdk.append(msg)
+    with pytest.raises(RateLimitError):
+        _run()
+
+
+def test_t3_sdk_raises_mid_stream_maps_to_transient(fake_sdk):
+    # the SDK/transport raising (rather than completing the stream) is a transient failure
+    fake_sdk.append(RuntimeError("connection reset"))
+    with pytest.raises(ReasoningError):
         _run()
 
 
