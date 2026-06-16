@@ -53,7 +53,10 @@ def compile_graph(
     Set ``requires_checkpointer=True`` for any graph containing gate nodes: ``interrupt`` is a
     silent no-op without a checkpointer, so a gate graph compiled without one would never park
     for the operator. The engine fails loud rather than ship a silently-broken governance
-    graph (audit #G3).
+    graph (audit #G3). The engine cannot introspect the study-supplied ``build`` callback for
+    gate nodes, so this is the caller's responsibility: **any study wiring**
+    :func:`~assay_engine.orchestration.gatenode.make_gate_node` **must pass
+    ``requires_checkpointer=True``** (see GOVERNANCE.md "Gate interrupt/resume protocol").
     """
     if requires_checkpointer and checkpointer is None:
         raise RuntimeError(

@@ -63,9 +63,9 @@ def apply_gate_decision(gate: Gate, resumed: Any) -> dict[str, Any]:
             f"gate {gate.name!r}: invalid decision {decision!r} "
             f"(expected one of {sorted(_VALID_DECISIONS)})"
         )
-    # A rejection/deferral with no rationale is governance-relevant; record a sentinel
-    # rather than an empty string so the audit trail is never silently blank.
-    rationale = str(resumed.get("rationale") or "No rationale provided.")
+    # A rejection/deferral with no rationale is governance-relevant; record a sentinel rather
+    # than a blank (incl. whitespace-only) so the audit trail is never silently empty.
+    rationale = str(resumed.get("rationale") or "").strip() or "No rationale provided."
     record = {"gate": gate.name, "decision": decision, "rationale": rationale}
     return {"gate_decisions": [record]}
 

@@ -133,8 +133,12 @@ def test_gate_node_reprompts_when_previously_rejected(fake_langgraph):
     assert len(fake_langgraph["payloads"]) == 1
 
 
-def test_empty_rationale_defaults_to_sentinel():
-    upd = apply_gate_decision(_gate(), {"gate_id": "gate_2", "decision": "rejected"})
+@pytest.mark.parametrize("rationale", [None, "", "   ", "\t\n"])
+def test_blank_rationale_defaults_to_sentinel(rationale):
+    payload = {"gate_id": "gate_2", "decision": "rejected"}
+    if rationale is not None:
+        payload["rationale"] = rationale
+    upd = apply_gate_decision(_gate(), payload)
     assert upd["gate_decisions"][0]["rationale"] == "No rationale provided."
 
 
