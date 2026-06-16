@@ -64,11 +64,16 @@ def _authority_hosts(netloc: str) -> list[str]:
 
     ``urlparse().hostname`` returns only the *first* host of a multi-host authority
     (``host1:port1,host2:port2``), so a remote second host would slip past a single-host
-    check (audit #D3). Userinfo is stripped; each host may carry its own ``:port`` and IPv6
-    hosts are bracketed.
+    check (audit #D3). Each host may carry its own ``:port`` and IPv6 hosts are bracketed.
+
+    Userinfo is stripped at the **first** ``@`` — matching libpq, which (unlike ``urlparse``,
+    which uses the last ``@``) treats the first ``@`` as the userinfo delimiter. A string like
+    ``user@evil.com:5432@localhost`` is therefore read as host ``evil.com`` here, not
+    ``localhost`` (audit #D5). Any host element still containing ``@`` after that is ambiguous
+    and is returned verbatim so the caller's loopback check fails it closed.
     """
     if "@" in netloc:
-        netloc = netloc.rsplit("@", 1)[1]
+        netloc = netloc.split("@", 1)[1]
     hosts: list[str] = []
     for part in netloc.split(","):
         p = part.strip()
@@ -112,7 +117,9 @@ def require_local_uri(uri: str, *, what: str) -> str:
 
     if netloc:
         for h in _authority_hosts(netloc):
-            if not is_loopback_host(h):
+            # A residual '@' means the authority is ambiguous between this parser and libpq —
+            # fail closed (audit #D5).
+            if "@" in h or not is_loopback_host(h):
                 raise NonLocalEndpointError(
                     f"{what} must be a local store (ADR-0003 data sovereignty); authority "
                     f"names non-loopback host {h!r}"

@@ -161,6 +161,28 @@ def test_require_local_uri_fails_closed_on_unparseable():
         require_local_uri("postgresql://[:::oops]/db", what="x")
 
 
+@pytest.mark.parametrize(
+    "uri",
+    [
+        "postgresql://user@evil.com:5432@localhost/db",  # libpq reads first @ -> host=evil.com
+        "postgresql://a@10.0.0.5:5432@localhost/db",
+        "postgresql://u:p@93.184.216.34:5432@localhost/db",
+        "postgresql://user@evil.com@localhost/db",
+    ],
+)
+def test_connection_string_rejects_userinfo_at_differential(monkeypatch, uri):
+    # issue #D5: validator must strip userinfo at the FIRST '@' like libpq, not the last
+    monkeypatch.setenv("ASSAY_POSTGRES_URL", uri)
+    with pytest.raises(NonLocalEndpointError):
+        get_postgres_connection_string()
+
+
+def test_connection_string_accepts_normal_userinfo(monkeypatch):
+    # a single, ordinary userinfo@host must still work
+    monkeypatch.setenv("ASSAY_POSTGRES_URL", "postgresql://user:p,w@localhost:5432/db")
+    assert get_postgres_connection_string().endswith("/db")
+
+
 def test_redact_strips_dsn_password():
     out = redact_creds("OperationalError: host=localhost password=s3cr#t dbname=x failed")
     assert "s3cr#t" not in out and "password=***" in out
