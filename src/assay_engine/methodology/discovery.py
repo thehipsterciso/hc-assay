@@ -12,10 +12,16 @@ structural: it hands the ``discover`` step a corpus containing *only* the discov
 and the ``confirm`` step a corpus containing *only* the held-out partition, so neither step can
 accidentally use the other's data.
 
-Honest scope (same as ADR-0008): this is a **signature-level** guarantee — each step is handed
-only its subset, preventing *accidental* leakage. It is not isolation against a step that
-deliberately reflects into the caller's frame; only process isolation would prevent that, which
-is out of scope. The guarantee is against accidental double-dipping, not willful circumvention.
+Honest scope (lesson from the adjudication review, ADR-0008): the engine partitions the
+**structural** data — units, and relations whose *both* endpoints are in the partition. It
+does NOT carry the corpus's free-form ``metadata`` into a subset (an arbitrary mapping cannot
+be partitioned safely — a per-unit index in metadata would otherwise leak the other partition
+wholesale), and it cannot police free-text inside ``Unit``/``Relation.attributes`` that an
+adapter might use to reference units outside the partition. So: the structural separation is
+enforced; keeping per-unit data out of metadata/attribute *payloads* is the adapter's
+obligation (the Firewall-B analogue of the corpus-content caveat in ADR-0005). And, as with
+adjudication, this is a *signature-level* guarantee — it prevents accidental double-dipping,
+not a step that willfully reflects into the caller's frame (only process isolation could).
 """
 
 from __future__ import annotations
@@ -40,15 +46,22 @@ def subset_corpus(corpus: Corpus, ids: Iterable[str]) -> Corpus:
 
     Units not in ``ids`` are dropped; a relation is kept only if *both* endpoints are in
     ``ids`` (a relation to a unit outside the partition would leak that unit's existence/links
-    into the partition). Metadata is carried through unchanged — adapters must keep external
-    judgements out of metadata regardless (ADR-0005 / schema contract).
+    into the partition).
+
+    Corpus-level ``metadata`` is deliberately **dropped**, not carried through: it is an
+    arbitrary mapping the engine cannot partition safely. A per-unit index living in metadata
+    (e.g. ``{"by_unit": {unit_id: ...}}``) would otherwise hand the discovery step the held-out
+    partition wholesale — silently defeating Firewall B. Adapters that need partition-scoped
+    side data must put it on the ``Unit``/``Relation`` records (which *are* partitioned), not in
+    corpus metadata; free-text inside ``attributes`` that references foreign units remains the
+    adapter's obligation (ADR-0005 / ADR-0008 honest-scope caveat).
     """
     keep = frozenset(ids)
     units = tuple(u for u in corpus.units if u.unit_id in keep)
     relations = tuple(
         r for r in corpus.relations if r.source_id in keep and r.target_id in keep
     )
-    return Corpus(units=units, relations=relations, metadata=corpus.metadata)
+    return Corpus(units=units, relations=relations)
 
 
 def discover_and_confirm(
@@ -67,10 +80,19 @@ def discover_and_confirm(
     2. ``confirm`` is handed a corpus containing only the held-out partition and tests each
        hypothesis there; the verdict must report the hypothesis it answers.
 
-    Returns the verdicts. Raises ``FirewallViolation`` on a non-``DISCOVERY`` hypothesis, an
-    unlocked hypothesis, or a verdict↔hypothesis misattribution.
+    Returns the verdicts. Raises ``FirewallViolation`` on an empty discovery or held-out
+    partition (split ids that select no corpus units — a vacuous test), a non-``DISCOVERY``
+    hypothesis, an unlocked hypothesis, or a verdict↔hypothesis misattribution.
     """
     discovery_corpus = subset_corpus(corpus, split.discovery_ids)
+    if not discovery_corpus.units:
+        # the discovery partition selects no actual corpus units — a hypothesis "discovered"
+        # from zero data is not data-surfaced at all; it would confirm cleanly on the held-out
+        # set and silently launder a hand-authored claim through Firewall B. Fail loud.
+        raise FirewallViolation(
+            "discovery partition selects no corpus units — nothing to discover from "
+            "(do split ids match the corpus unit ids?)"
+        )
     hypotheses = list(discover(discovery_corpus))  # sees only the discovery partition
 
     held_out = subset_corpus(corpus, split.confirm_ids)  # disjoint from discovery (split invariant)
