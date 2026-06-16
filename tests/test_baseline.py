@@ -48,6 +48,26 @@ def test_hash_value_canonical_and_order_independent():
     assert hash_value([1, 2]) != hash_value([2, 1])  # sequence order is significant
 
 
+def test_hash_value_is_type_faithful():
+    # issue #B1: distinct keys sharing a str() must NOT collide
+    assert hash_value({1: "a", "1": "b"}) != hash_value({1: "b", "1": "a"})
+    # issue #B2: distinct values sharing a str() must NOT collide (no default=str coercion)
+    import datetime
+
+    assert hash_value(datetime.date(2020, 1, 1)) != hash_value("2020-01-01")
+    assert hash_value(b"x") != hash_value("b'x'")
+    # value type matters: int 1 vs str "1" vs float 1.0 vs bool True
+    seen = {hash_value(1), hash_value("1"), hash_value(1.0), hash_value(True)}
+    assert len(seen) == 4
+
+
+def test_corpus_fingerprint_distinguishes_nonstr_key_attrs():
+    # issue #B1 reached through the schema: numeric-keyed attributes must not collapse
+    a = Corpus(units=(Unit("u", "t", {1: "alpha", "1": "beta"}),))
+    b = Corpus(units=(Unit("u", "t", {1: "DIFFERENT", "1": "beta"}),))
+    assert corpus_fingerprint(a) != corpus_fingerprint(b)
+
+
 def test_build_artifact_records_full_determinism_and_is_reproducible():
     c = _corpus()
     a1 = build_baseline_artifact(c, {"sim": [[1.0]]}, component_versions={"builder": "demo@1"})
@@ -116,3 +136,24 @@ def test_descriptive_stats_rejects_empty_and_nonfinite():
         descriptive_stats([])
     with pytest.raises(ValueError):
         descriptive_stats([1.0, float("inf")])
+
+
+def test_descriptive_stats_quantiles_match_linear_reference():
+    # linear-interpolation reference for 10..50: q25=20, median=30, q75=40
+    s = descriptive_stats([10.0, 20.0, 30.0, 40.0, 50.0])
+    assert s["q25"] == pytest.approx(20.0)
+    assert s["median"] == pytest.approx(30.0)
+    assert s["q75"] == pytest.approx(40.0)
+    # and for 1..7: q25 = 2.5
+    assert descriptive_stats([1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0])["q25"] == pytest.approx(2.5)
+
+
+def test_cosine_stays_in_unit_range_under_float_error():
+    # issue #B3: self-similarity must be exactly within [-1, 1], never 1.0000000002
+    v = [-0.04598, 0.73061, -0.47901, 0.61005, 0.09739]
+    assert -1.0 <= cosine_similarity(v, v) <= 1.0
+    m = cosine_similarity_matrix([v, [1.0, 2.0, 3.0, 4.0, 5.0]])
+    for row in m:
+        for x in row:
+            assert -1.0 <= x <= 1.0
+    assert m[0][0] == 1.0  # non-zero self-similarity is exactly 1.0

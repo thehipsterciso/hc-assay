@@ -27,15 +27,34 @@ from assay_engine.baseline.toolkit import BaselineArtifact
 from assay_engine.contracts.schema import Corpus
 
 
+def _keytag(key: Any) -> str:
+    """A type-faithful, sortable string for a mapping key, so distinct keys that happen to
+    share a ``str()`` (e.g. int ``1`` vs str ``"1"``) do NOT collide (audit #B1)."""
+    return f"{type(key).__name__}::{key!r}"
+
+
 def _plain(value: Any) -> Any:
-    """Canonicalize a value for stable serialization (Mapping→sorted dict, set→sorted list)."""
+    """Canonicalize ``value`` into a fully JSON-native, type-faithful structure for hashing.
+
+    Type-faithful so two values that merely share a ``str()`` never collide (audit #B1/#B2):
+    mappings become a sorted list of ``[typed-key, value]`` pairs; bytes, sets, and any
+    non-JSON-native leaf are tagged with their type rather than stringified. Nothing is coerced
+    with ``str()``, so the content hash distinguishes ``date(2020,1,1)`` from ``"2020-01-01"``.
+    """
+    if value is None or isinstance(value, (str, bool, int, float)):
+        return value  # JSON-native scalars; json encodes 1, "1", true, 1.0 distinctly
+    if isinstance(value, bytes):
+        return {"__bytes__": value.hex()}
     if isinstance(value, Mapping):
-        return {str(k): _plain(v) for k, v in sorted(value.items(), key=lambda kv: str(kv[0]))}
+        pairs = sorted(([_keytag(k), _plain(v)] for k, v in value.items()), key=lambda p: p[0])
+        return {"__map__": pairs}
     if isinstance(value, (list, tuple)):
         return [_plain(v) for v in value]
     if isinstance(value, (set, frozenset)):
-        return sorted((_plain(v) for v in value), key=repr)
-    return value
+        return {"__set__": sorted((_plain(v) for v in value), key=repr)}
+    # Unknown leaf (date, Decimal, custom object): tag by type + repr so type changes and
+    # value changes both alter the hash, and it is never silently stringified away.
+    return {"__obj__": f"{type(value).__module__}.{type(value).__qualname__}", "__repr__": repr(value)}
 
 
 def hash_bytes(data: bytes) -> str:
@@ -47,8 +66,13 @@ def hash_text(text: str) -> str:
 
 
 def hash_value(value: Any) -> str:
-    """Stable content hash of an arbitrary (canonicalizable) value."""
-    return hash_text(json.dumps(_plain(value), sort_keys=True, default=str))
+    """Stable, type-faithful content hash of an arbitrary value.
+
+    ``_plain`` canonicalizes everything to JSON-native form first, so ``json.dumps`` needs no
+    ``default=`` coercion — anything it still cannot encode is a real bug to surface, not to
+    silently stringify (audit #B2).
+    """
+    return hash_text(json.dumps(_plain(value), sort_keys=True))
 
 
 def corpus_fingerprint(corpus: Corpus) -> str:
@@ -62,7 +86,7 @@ def corpus_fingerprint(corpus: Corpus) -> str:
         for r in sorted(corpus.relations, key=lambda r: (r.source_id, r.target_id, r.kind))
     ]
     payload = {"units": units, "relations": relations, "metadata": _plain(corpus.metadata)}
-    return hash_text(json.dumps(payload, sort_keys=True, default=str))
+    return hash_text(json.dumps(payload, sort_keys=True))
 
 
 def stable_seed(*parts: str, bits: int = 32) -> int:
@@ -120,7 +144,8 @@ def build_baseline_artifact(
     versions.update(component_versions or {})
 
     if seed is None:
-        seed = stable_seed(*[corpus_hash, *(input_hashes[k] for k in sorted(input_hashes))])
+        # Derive from all input hashes (the corpus hash is already among them under "corpus").
+        seed = stable_seed(*(input_hashes[k] for k in sorted(input_hashes)))
 
     record = DeterminismRecord(
         seed=seed, input_hashes=input_hashes, component_versions=versions

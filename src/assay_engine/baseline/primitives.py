@@ -34,14 +34,20 @@ def l2_norm(a: Vector) -> float:
     return math.sqrt(math.fsum(x * x for x in a))
 
 
+def _clamp_unit(x: float) -> float:
+    """Clamp to [-1, 1] to absorb floating-point overshoot (e.g. self-similarity 1.0000…002)."""
+    return max(-1.0, min(1.0, x))
+
+
 def cosine_similarity(a: Vector, b: Vector) -> float:
     """Cosine similarity in [-1, 1]. A zero vector has no direction, so its similarity to
-    anything is defined as 0.0 (rather than NaN) — documented and deterministic."""
+    anything is defined as 0.0 (rather than NaN). The result is clamped to [-1, 1] so float
+    rounding cannot push it outside the documented range (audit #B3)."""
     _check_same_length(a, b)
     na, nb = l2_norm(a), l2_norm(b)
     if na == 0.0 or nb == 0.0:
         return 0.0
-    return dot(a, b) / (na * nb)
+    return _clamp_unit(dot(a, b) / (na * nb))
 
 
 def euclidean_distance(a: Vector, b: Vector) -> float:
@@ -58,8 +64,10 @@ def cosine_similarity_matrix(rows: Sequence[Vector]) -> list[list[float]]:
         for j in range(i, n):
             if norms[i] == 0.0 or norms[j] == 0.0:
                 sim = 0.0
+            elif i == j:
+                sim = 1.0  # a non-zero vector's self-similarity is exactly 1.0 (no float drift)
             else:
-                sim = dot(rows[i], rows[j]) / (norms[i] * norms[j])
+                sim = _clamp_unit(dot(rows[i], rows[j]) / (norms[i] * norms[j]))
             out[i][j] = sim
             out[j][i] = sim
     return out
@@ -82,10 +90,11 @@ def _quantile(sorted_values: list[float], q: float) -> float:
 
 
 def descriptive_stats(values: Sequence[float]) -> dict[str, float]:
-    """Mean, sample std (ddof=1), min, max, and the median/quartiles of ``values``.
+    """Descriptive statistics of ``values``.
 
-    Sample standard deviation (ddof=1) is reported; it is ``0.0`` for a single value (the
-    population has no spread to estimate), which is documented rather than NaN.
+    Returns ``n`` (count), ``mean``, ``std`` (sample std, ddof=1; ``0.0`` for a single value
+    rather than NaN), ``min``, ``max``, and ``q25``/``median``/``q75`` (linear-interpolation
+    quantiles). Raises on an empty input or any non-finite value.
     """
     if not values:
         raise ValueError("descriptive_stats requires at least one value")
