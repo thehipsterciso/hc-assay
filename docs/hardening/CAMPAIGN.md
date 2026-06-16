@@ -33,4 +33,15 @@ All passes, findings, verdicts, fixes, confirmations, and retrospectives are doc
 | Pass | Branch | Findings | Confirmed | Fixed | PR | Status |
 |------|--------|----------|-----------|-------|----|--------|
 | 1 | harden/pass-1 | 22 confirmed (#101-#122) | 22/22 (2-agent) | 22/22 fixed+confirmed | #123 | merged |
-| 2 | harden/pass-2 | 33 confirmed (#124-#156) | 33/33 (2-agent) | 33/33 fixed; 21 CONFIRMED + 6 CONCERN→remediated, 0 rejected | (pending) | merging |
+| 2 | harden/pass-2 | 33 confirmed (#124-#156) | 33/33 (2-agent) | 33/33 fixed; 21 CONFIRMED + 6 CONCERN→remediated, 0 rejected | #157 | merged |
+| 3 | harden/pass-3 | (assessing) | — | — | — | in progress |
+
+## Pass-3 added assessment dimensions (from pass-2 retrospective)
+
+- **Artifact-vs-test fidelity** — every test targeting a non-Python artifact (YAML/TOML/docs) must
+  read *that file* and assert both corrected-content presence and stale-content absence (the
+  #131/#145/#152 class).
+- **Finding-completeness audit** — for each prior fix, diff the finding's *Suggested fix* against
+  what was implemented; flag partial closures (the #146/#147 class).
+- **Concurrency-guard discrimination** — re-run every threaded test with its synchronization
+  removed and confirm it fails (the #143 class).
