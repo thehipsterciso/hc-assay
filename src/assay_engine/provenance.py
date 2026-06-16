@@ -33,6 +33,7 @@ from __future__ import annotations
 import datetime as _dt
 import hashlib
 import hmac
+import threading
 from dataclasses import dataclass
 from typing import Any, Callable, Mapping
 
@@ -108,11 +109,20 @@ class ProvenanceTrail:
         self._entries: list[ProvenanceEntry] = []
         self._secret: bytes | None = bytes(secret) if secret is not None else None
         self._clock: Clock = clock or _utc_now
+        # serialize the read-compute-append so concurrent record() calls cannot interleave and
+        # corrupt the seq/prev_hash chain (#114)
+        self._lock = threading.Lock()
 
     def record(self, kind: str, summary: str, **payload: Any) -> ProvenanceEntry:
-        """Append one entry. Returns it. The only way to add to the trail."""
+        """Append one entry. Returns it. The only way to add to the trail. Thread-safe."""
         if not kind:
             raise ProvenanceError("provenance entry kind must be non-empty")
+        with self._lock:
+            return self._record_locked(kind, summary, payload)
+
+    def _record_locked(
+        self, kind: str, summary: str, payload: Mapping[str, Any]
+    ) -> ProvenanceEntry:
         seq = len(self._entries)
         prev_hash = self._entries[-1].entry_hash if self._entries else _GENESIS
         try:
