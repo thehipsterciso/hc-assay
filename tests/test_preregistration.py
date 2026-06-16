@@ -10,6 +10,7 @@ from dataclasses import replace
 
 import pytest
 
+from assay_engine.methodology.confirm import confirm_whole_corpus
 from assay_engine.methodology.hypothesis import Hypothesis, HypothesisKind, HypothesisOrigin
 from assay_engine.methodology.preregistration import (
     LocalHmacAuthority,
@@ -42,10 +43,10 @@ def _past():
 
 # ---- the content digest ----
 
-def test_digest_excludes_label_and_lock_fields_but_covers_content():
+def test_digest_covers_content_and_id_but_not_lock_fields():
     h = _unlocked()
-    # hypothesis_id is a label → same digest under a different id
-    assert canonical_hypothesis_digest(h) == canonical_hypothesis_digest(replace(h, hypothesis_id="X"))
+    # hypothesis_id IS bound (#80): it is the verdict's attribution key, so a swap must be caught
+    assert canonical_hypothesis_digest(h) != canonical_hypothesis_digest(replace(h, hypothesis_id="X"))
     # decision-bearing content changes the digest
     assert canonical_hypothesis_digest(h) != canonical_hypothesis_digest(replace(h, decision_rule="r2"))
     assert canonical_hypothesis_digest(h) != canonical_hypothesis_digest(replace(h, statement="s2"))
@@ -104,6 +105,36 @@ def test_content_swapped_after_locking_is_rejected():
     tampered = replace(locked, decision_rule="a different, post-hoc decision rule")
     with pytest.raises(PreRegistrationError, match="does not bind|does not cover"):
         verify_preregistration(tampered, authority=auth)
+
+
+def test_hypothesis_id_swapped_after_locking_is_rejected():
+    # #80: the id is bound, so a post-lock id swap (which would misattribute the verdict) fails
+    auth = _auth()
+    locked = lock_hypothesis(_unlocked(hid="H_original"), authority=auth, instant=_past())
+    swapped = replace(locked, hypothesis_id="H_DIFFERENT")
+    with pytest.raises(PreRegistrationError):
+        verify_preregistration(swapped, authority=auth)
+
+
+def test_non_ascii_mac_field_raises_preregistration_error_not_typeerror():
+    # #81: a non-ASCII MAC must be a controlled PreRegistrationError, not a leaked TypeError
+    auth = _auth()
+    bad = _unlocked(
+        locked_at="2026-06-16T00:00:00+00:00",
+        timestamp_proof="local-hmac:v1:2026-06-16T00:00:00+00:00|\udcffmac",
+    )
+    with pytest.raises(PreRegistrationError):
+        verify_preregistration(bad, authority=auth)
+
+
+def test_non_finite_param_raises_preregistration_error():
+    # #82: a non-finite float in params must surface as a typed firewall error, not a ValueError
+    auth = _auth()
+    h = _unlocked(params={"alpha": float("nan")})
+    with pytest.raises(PreRegistrationError):
+        canonical_hypothesis_digest(h)
+    with pytest.raises(PreRegistrationError):
+        lock_hypothesis(h, authority=auth, instant=_past())
 
 
 def test_proof_from_another_authority_is_rejected():
@@ -169,6 +200,27 @@ def test_naive_instants_are_rejected():
 def test_weak_secret_is_refused():
     with pytest.raises(ValueError, match="16 bytes"):
         LocalHmacAuthority(b"too-short")
+
+
+def test_confirm_primitive_optional_authority_rejects_fake_lock():
+    # #84: a direct confirm caller can opt into real verification by passing authority=
+    auth = _auth()
+    fake = Hypothesis(
+        hypothesis_id="H1", statement="s", kind=HypothesisKind.WHOLE_CORPUS,
+        origin=HypothesisOrigin.DISCOVERY, test_name="t", decision_rule="r",
+        predicted_direction="greater",
+        locked_at="2026-06-16T00:00:00+00:00", timestamp_proof="rfc3161:demo",  # sentinel
+    )
+    null = [0.05 + 0.001 * i for i in range(50)]
+    # with authority: the fake (presence-only) lock is refused
+    with pytest.raises(PreRegistrationError):
+        confirm_whole_corpus(fake, observed=1.0, null_distribution=null, alpha=0.05, authority=auth)
+    # a genuinely locked hypothesis with the same content passes the gate (verdict is produced)
+    real = lock_hypothesis(
+        replace(fake, locked_at=None, timestamp_proof=None), authority=auth, instant=_past()
+    )
+    v = confirm_whole_corpus(real, observed=1.0, null_distribution=null, alpha=0.05, authority=auth)
+    assert v.hypothesis_id == "H1"
 
 
 def test_non_utc_lock_instant_is_normalized():

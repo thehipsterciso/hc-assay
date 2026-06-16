@@ -193,6 +193,25 @@ def test_runner_rejects_verdict_for_wrong_hypothesis():
                    hypothesis_for=_hypothesis_for, authority=_AUTH, confirm=mislabeled)
 
 
+def test_runner_rejects_hypothesis_locked_after_baseline():
+    # #83: adjudicate captures not_after BEFORE the baseline build, so a hypothesis locked
+    # on demand (i.e. after the baseline/answer exists) is rejected — claim-derived hypotheses
+    # must be pre-locked before the baseline.
+    claims = _Claims([_claim("c1")])
+
+    def lock_on_demand(claim):  # locks at "now", which is after the runner captured not_after
+        h = Hypothesis(
+            hypothesis_id=f"H-{claim.claim_id}", statement="s",
+            kind=HypothesisKind.WHOLE_CORPUS, origin=HypothesisOrigin.EXTERNAL_CLAIM,
+            test_name="t", decision_rule="r", source_claim_id=claim.claim_id,
+        )
+        return lock_hypothesis(h, authority=_AUTH)  # default instant = now()
+
+    with pytest.raises(FirewallViolation, match="precede|strictly before"):
+        adjudicate(_corpus(), claims, baseline_builder=_GoodBuilder(),
+                   hypothesis_for=lock_on_demand, authority=_AUTH, confirm=_confirmer())
+
+
 def test_runner_rejects_unlocked_hypothesis():
     claims = _Claims([_claim("c1")])
 

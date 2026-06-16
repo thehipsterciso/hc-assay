@@ -29,12 +29,19 @@ Add `assay_engine.methodology.preregistration`, which makes the lock mean what t
 and wire the runners to enforce it.
 
 1. **Content binding.** `canonical_hypothesis_digest(hypothesis)` is a type-faithful SHA-256
-   over a hypothesis's *decision-bearing* fields (statement, kind, origin, test, decision rule,
-   predicted direction, source claim, params). It deliberately excludes `hypothesis_id` (a
-   label) and the lock fields themselves (they attest *to* the digest). The canonicalizer is
-   hoisted to `assay_engine._canonical` so it sits below both `methodology` and `baseline` and
-   is the **one** content-hash implementation (the baseline determinism harness now re-exports
-   it) — no second, drifting hasher.
+   over a hypothesis's *decision-bearing* fields **and its `hypothesis_id`** (statement, kind,
+   origin, test, decision rule, predicted direction, source claim, params, id). The id is
+   included — though nominally a label, it is fixed at lock time and is the key the runners
+   attribute verdicts by (`verdict.hypothesis_id`), so leaving it unbound would let a post-lock
+   id swap file a verdict under an id the proof never attested (adversarial review #80). Only the
+   lock fields themselves are excluded (they attest *to* the digest — binding them would be
+   circular). The canonicalizer is hoisted to `assay_engine._canonical` so it sits below both
+   `methodology` and `baseline` and is the **one** content-hash implementation (the baseline
+   determinism harness now re-exports it) — no second, drifting hasher. Canonicalization failures
+   (non-finite float / unhashable leaf in `params`) surface as `PreRegistrationError`, and the
+   `LocalHmacAuthority` proof parser rejects a non-hex MAC field rather than letting it reach
+   `hmac.compare_digest` (which raises `TypeError` on non-ASCII) — both keep the "malformed proof
+   → typed firewall error, never an unexpected exception" contract (adversarial review #81/#82).
 
 2. **Verifiable timestamp via a pluggable authority.** A `TimestampAuthority` Protocol exposes
    `verify(digest, proof) -> VerifiedTimestamp`, raising `PreRegistrationError` (a
@@ -48,25 +55,42 @@ and wire the runners to enforce it.
 
 3. **Lock before confirm.** `require_preregistered(hypothesis, *, authority, not_after)`
    verifies the proof and rejects a lock whose attested instant is not strictly earlier than
-   `not_after`. The runners capture `not_after` at the confirmation moment and replace their
-   `require_locked` calls with `require_preregistered`. `verify_preregistration` additionally
-   requires the self-reported `locked_at` to equal the attested instant, so a study cannot
-   display a time the authority did not vouch for.
+   `not_after`. `verify_preregistration` additionally requires the self-reported `locked_at` to
+   equal the attested instant, so a study cannot display a time the authority did not vouch for.
+   The two runners capture `not_after` differently, on purpose (adversarial review #83):
+   - `adjudicate` captures it **before `baseline_builder.build()`**. An `EXTERNAL_CLAIM`
+     hypothesis derives from the external claim, not the baseline, so it must be locked before
+     the baseline (the answer) exists; `hypothesis_for` therefore *looks up* an already-locked
+     hypothesis — locking on demand after the build is rejected. This makes "locked before the
+     result is in hand" real for adjudication.
+   - `discover_and_confirm` captures it per-hypothesis before confirming. A data-surfaced
+     hypothesis can only be created (and thus locked) *inside* the runner, after `discover`
+     runs, so a before-discovery instant is impossible. There the ordering check is near-trivial
+     and the **content binding** is the load-bearing guarantee — stated, not papered over.
 
 4. **Blessed locking path.** `lock_hypothesis(hypothesis, *, authority, instant=None)` returns a
    locked copy whose proof binds its content and whose `locked_at` matches the attestation —
-   the way studies (and tests) should pre-register. Re-locking is refused.
+   the way studies (and tests) should pre-register. Re-locking *this object* is refused. The
+   seal cannot stop a study that willfully reconstructs a hypothesis (`dataclasses.replace` to
+   clear the lock fields, then re-lock different content) — that is the same willful-defeat
+   boundary as ADR-0008's frame-reflection caveat; only process isolation could. What the engine
+   guarantees is that whatever is *confirmed* has a proof binding its content at an attested time
+   before confirmation, so a re-locked copy is a new, later, visible pre-registration — not a
+   silent override (adversarial review #85).
 
 `Hypothesis.locked` and `confirm.require_locked` are retained as cheap **presence** predicates
 (defense-in-depth) and documented as such; the methodology-grade check is
-`require_preregistered`, enforced by the runners.
+`require_preregistered`, enforced by the runners. The confirm primitives
+(`confirm_whole_corpus`/`confirm_unit_level`) gate on presence by default and take an optional
+`authority=` to opt into the full check, so a study confirming outside a runner can still get
+the real guarantee (adversarial review #84).
 
 ## Consequences
 
-- Pre-registration is now structural at the engine level: a hand-set sentinel proof, a post-lock
-  content swap, a forged/other-authority proof, a tampered `locked_at`, and a lock dated at or
-  after confirmation are all refused — by the engine, for all 100+ studies, not by each
-  cloner's discipline.
+- Pre-registration is now structural in the runners: a hand-set sentinel proof, a post-lock
+  content **or id** swap, a forged/other-authority proof, a tampered `locked_at`, and a lock
+  dated at or after the ordering instant are all refused — by the engine, for all 100+ studies,
+  not by each cloner's discipline.
 - **Honest scope (the recurring lesson, ADR-0008).** `LocalHmacAuthority` proves content
   integrity, time binding, and unforgeability *relative to a secret on this box*. Whoever holds
   that secret could backdate a proof: it is local tamper-evidence, **not** third-party

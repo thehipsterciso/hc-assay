@@ -94,14 +94,20 @@ def _require_aware_utc(instant: _dt.datetime, what: str) -> _dt.datetime:
 
 
 def canonical_hypothesis_digest(hypothesis: Hypothesis) -> str:
-    """A type-faithful SHA-256 over a hypothesis's decision-bearing content.
+    """A type-faithful SHA-256 over a hypothesis's decision-bearing content **and its id**.
 
-    Deliberately excludes ``hypothesis_id`` (a label, not content) and the lock fields
-    themselves (``locked_at``/``timestamp_proof`` — they attest *to* this digest, so including
-    them would be circular). Everything that defines *what is claimed and how it will be judged*
-    is included, so a proof over this digest pins the claim, the test, and the decision rule.
+    Includes ``hypothesis_id``: although it is a label, it is fixed at lock time and is the key
+    the runners attribute verdicts by (``verdict.hypothesis_id``), so leaving it unbound would
+    let a post-lock id swap file a verdict under an id the proof never attested (adversarial
+    review, #80). Excludes only the lock fields themselves (``locked_at``/``timestamp_proof`` —
+    they attest *to* this digest, so binding them would be circular).
+
+    Raises :class:`PreRegistrationError` if the content cannot be canonicalized reproducibly
+    (a non-finite float or an unhashable leaf in ``params``) — the pre-registration entrypoints
+    must surface a typed firewall error, not a bare ``ValueError``/``TypeError`` (#82).
     """
     payload = {
+        "hypothesis_id": hypothesis.hypothesis_id,
         "statement": hypothesis.statement,
         "kind": hypothesis.kind.value,
         "origin": hypothesis.origin.value,
@@ -111,7 +117,14 @@ def canonical_hypothesis_digest(hypothesis: Hypothesis) -> str:
         "predicted_direction": hypothesis.predicted_direction,
         "params": dict(hypothesis.params),
     }
-    return hash_text(canonical_json(payload))
+    try:
+        return hash_text(canonical_json(payload))
+    except (ValueError, TypeError) as exc:
+        raise PreRegistrationError(
+            f"hypothesis {hypothesis.hypothesis_id!r} cannot be canonicalized for a content "
+            f"digest ({exc}); pre-registration requires reproducibly hashable content "
+            "(no non-finite floats or unhashable leaves in params)"
+        ) from None
 
 
 class LocalHmacAuthority:
@@ -155,6 +168,11 @@ class LocalHmacAuthority:
         instant_iso, sep, mac_hex = body.partition(_PROOF_FIELD_SEP)
         if not sep or not instant_iso or not mac_hex:
             raise PreRegistrationError("malformed local-hmac proof (expected <instant>|<mac>)")
+        # The MAC field must be exactly the hex of a SHA-256 digest. Validating its shape here
+        # (a) rejects garbage early and (b) keeps non-ASCII/non-hex out of hmac.compare_digest,
+        # which raises TypeError on non-ASCII str rather than returning False (#81).
+        if len(mac_hex) != 64 or any(c not in "0123456789abcdef" for c in mac_hex):
+            raise PreRegistrationError("malformed local-hmac proof (mac is not 64 lowercase hex)")
         try:
             parsed = _dt.datetime.fromisoformat(instant_iso)
         except ValueError:
@@ -181,8 +199,15 @@ def lock_hypothesis(
 
     The engine's blessed way to pre-register: it computes the content digest, has ``authority``
     stamp it, and records the attested instant in ``locked_at`` so the displayed lock time and
-    the cryptographic proof always agree. Re-locking an already-locked hypothesis is refused —
-    locking is a one-way seal.
+    the cryptographic proof always agree. Re-locking an already-locked hypothesis is refused.
+
+    Scope of the seal (same honest boundary as ADR-0008): this refuses re-locking *this object*.
+    It cannot stop a study that willfully reconstructs a hypothesis — e.g. ``dataclasses.replace``
+    to clear the lock fields, then re-lock different content — any more than the runners can stop
+    a builder that reflects into their frame; both need process isolation, which is out of scope.
+    What the engine *does* guarantee is that whatever is ultimately confirmed has a proof binding
+    its content at an attested time before confirmation. So a re-locked copy is simply a new
+    pre-registration with a new, later timestamp — visible as such, not a silent override.
     """
     if hypothesis.locked:
         raise PreRegistrationError(

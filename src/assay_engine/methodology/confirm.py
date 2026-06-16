@@ -23,13 +23,37 @@ upper-tail-only implementation.
 
 from __future__ import annotations
 
+import datetime as _dt
 import math
 from statistics import median
 from typing import Iterable, Sequence
 
 from assay_engine.methodology.firewalls import DiscoverConfirmSplit, FirewallViolation
 from assay_engine.methodology.hypothesis import Direction, Hypothesis, HypothesisKind
+from assay_engine.methodology.preregistration import (
+    TimestampAuthority,
+    require_preregistered,
+)
 from assay_engine.methodology.verdict import Verdict
+
+
+def _gate_preregistration(
+    hypothesis: Hypothesis, authority: TimestampAuthority | None
+) -> None:
+    """Pre-registration gate for the confirm primitives.
+
+    If ``authority`` is supplied, run the full :func:`require_preregistered` check (content
+    binding + verifiable timestamp + lock-before-this-moment) — so a study calling a confirm
+    primitive *directly* (outside a runner) gets the same guarantee the runners enforce. If it
+    is ``None``, fall back to the cheap presence gate (:func:`require_locked`); the caller has
+    then opted out of real verification and owns that choice.
+    """
+    if authority is not None:
+        require_preregistered(
+            hypothesis, authority=authority, not_after=_dt.datetime.now(tz=_dt.timezone.utc)
+        )
+    else:
+        require_locked(hypothesis)
 
 
 def require_locked(hypothesis: Hypothesis) -> None:
@@ -124,11 +148,16 @@ def confirm_unit_level(
     alpha: float,
     powered: bool,
     direction_supports_claim: bool,
+    authority: TimestampAuthority | None = None,
 ) -> Verdict:
-    """Confirm a unit-level hypothesis on the held-out partition only."""
+    """Confirm a unit-level hypothesis on the held-out partition only.
+
+    Pass ``authority`` to verify pre-registration in full (content binding + timestamp +
+    lock-before-now); omit it to fall back to the presence gate (see :func:`require_locked`).
+    """
     if hypothesis.kind is not HypothesisKind.UNIT_LEVEL:
         raise ValueError("confirm_unit_level requires a UNIT_LEVEL hypothesis")
-    require_locked(hypothesis)
+    _gate_preregistration(hypothesis, authority)
     split.assert_confirm_only(evaluated_ids)  # Firewall B (rejects empty / discovery ids)
     return verdict_from_pvalue(
         hypothesis.hypothesis_id,
@@ -196,8 +225,12 @@ def confirm_whole_corpus(
     resample_statistics: Sequence[float] | None = None,
     stability_threshold: float = 0.9,
     predicted_direction: Direction | None = None,
+    authority: TimestampAuthority | None = None,
 ) -> Verdict:
     """Confirm a whole-corpus hypothesis against a null distribution + measured stability.
+
+    Pass ``authority`` to verify pre-registration in full (content binding + timestamp +
+    lock-before-now); omit it to fall back to the presence gate (see :func:`require_locked`).
 
     The predicted tail is taken from the hypothesis's pre-registered ``predicted_direction``
     (issue #24). The pattern must (a) beat the null at ``alpha`` in the predicted tail and
@@ -213,7 +246,7 @@ def confirm_whole_corpus(
     """
     if hypothesis.kind is not HypothesisKind.WHOLE_CORPUS:
         raise ValueError("confirm_whole_corpus requires a WHOLE_CORPUS hypothesis")
-    require_locked(hypothesis)
+    _gate_preregistration(hypothesis, authority)
     _validate_alpha(alpha)
     _validate_finite("observed", observed)
     if not null_distribution:
