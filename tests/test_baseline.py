@@ -242,3 +242,12 @@ def test_cosine_rejects_non_finite_inputs():
         cosine_similarity_matrix([[float("nan"), 0.0]])
     with pytest.raises(ValueError):
         euclidean_distance([float("inf")], [0.0])
+
+
+def test_cosine_matrix_rejects_norm_overflow():
+    # audit N1: finite inputs whose squared norm overflows must raise, not yield inf/inf sims
+    pytest.importorskip("numpy")
+    from assay_engine.baseline.primitives import _cosine_matrix_numpy
+
+    with pytest.raises(ValueError, match="overflow"):
+        _cosine_matrix_numpy([[1e200, 1e200], [1e200, -1e200]])

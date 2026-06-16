@@ -95,6 +95,11 @@ def _cosine_matrix_numpy(rows: Sequence[Vector]) -> list[list[float]]:
     if not np.isfinite(x).all():
         raise ValueError("vector components must be finite")
     norms = np.linalg.norm(x, axis=1)
+    if not np.isfinite(norms).all():
+        # finite inputs can still overflow when squared (||x||) on huge-magnitude vectors;
+        # reject rather than silently produce inf/inf similarities (audit N1; restores parity
+        # with the pure path, which raises on the same input).
+        raise ValueError("vector norm overflow — component magnitudes are too large")
     zero = norms == 0.0
     safe = np.where(zero, 1.0, norms)
     xn = x / safe[:, None]

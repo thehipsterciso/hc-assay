@@ -72,7 +72,9 @@ class QdrantVectorStore:
                 vectors_config=VectorParams(size=self._dim, distance=Distance.COSINE),
             )
 
-    def upsert(self, ids: Sequence[str], vectors: Sequence[Sequence[float]]) -> None:
+    def upsert(
+        self, ids: Sequence[str], vectors: Sequence[Sequence[float]], *, batch_size: int = 256
+    ) -> None:
         from qdrant_client.models import PointStruct
 
         if len(ids) != len(vectors):
@@ -81,7 +83,10 @@ class QdrantVectorStore:
             PointStruct(id=_point_id(i), vector=list(v), payload={"ref": i})
             for i, v in zip(ids, vectors)
         ]
-        self._client.upsert(self._collection, points=points)
+        # Chunk so a large ingest cannot exceed the server's request payload limit (Qdrant
+        # guidance: do not upload points one-by-one, but bound the batch size).
+        for start in range(0, len(points), batch_size):
+            self._client.upsert(self._collection, points=points[start : start + batch_size])
 
     def query(self, vector: Sequence[float], k: int) -> list[tuple[str, float]]:
         res = self._client.query_points(
