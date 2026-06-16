@@ -25,8 +25,19 @@ def test_bootstrap_returns_none_when_disabled(monkeypatch):
 
 
 def test_bootstrap_returns_none_when_extra_absent(monkeypatch):
-    # phoenix is not installed in this env -> graceful degradation, never raises
+    # graceful degradation when the observability extra (phoenix) is not installed.
+    import importlib.util
+
+    if importlib.util.find_spec("phoenix") is not None:
+        pytest.skip("phoenix installed — real bootstrap is exercised in the integration suite")
     monkeypatch.delenv("ASSAY_DISABLE_TRACING", raising=False)
+    monkeypatch.setattr(tr, "_provider", None)
+    assert bootstrap_tracing() is None
+
+
+def test_bootstrap_returns_none_when_disabled_even_with_extra(monkeypatch):
+    # the kill switch must win regardless of whether the extra is installed
+    monkeypatch.setenv("ASSAY_DISABLE_TRACING", "1")
     monkeypatch.setattr(tr, "_provider", None)
     assert bootstrap_tracing() is None
 
@@ -61,6 +72,43 @@ def test_unconfigured_tracer_fails_loud():
     with pytest.raises(NotImplementedError):
         with UnconfiguredTracer().span("x"):
             pass
+
+
+def test_install_flush_on_exit_wires_atexit_and_sigterm(monkeypatch):
+    # span-flush on exit (atexit) and on SIGTERM must be wired and call force_flush/shutdown,
+    # else buffered provenance spans are lost on container stop. No backend needed.
+    import signal as _signal
+
+    calls = {"flush": 0, "shutdown": 0, "atexit": []}
+
+    class _Provider:
+        def force_flush(self):
+            calls["flush"] += 1
+
+        def shutdown(self):
+            calls["shutdown"] += 1
+
+    monkeypatch.setattr(tr.atexit, "register", lambda fn: calls["atexit"].append(fn))
+    captured = {}
+    monkeypatch.setattr(tr.signal, "getsignal", lambda s: _signal.SIG_DFL)
+    monkeypatch.setattr(tr.signal, "signal", lambda sig, handler: captured.__setitem__("h", handler))
+
+    tr._install_flush_on_exit(_Provider())
+
+    assert calls["atexit"], "atexit flush handler not registered"
+    calls["atexit"][0]()  # simulate interpreter exit
+    assert calls["flush"] >= 1
+    if "h" in captured:  # SIGTERM handler installed (main thread)
+        captured["h"](_signal.SIGTERM, None)
+        assert calls["shutdown"] >= 1
+
+
+def test_install_flush_on_exit_noop_without_force_flush(monkeypatch):
+    # a provider lacking force_flush must not register anything (no crash)
+    calls = []
+    monkeypatch.setattr(tr.atexit, "register", lambda fn: calls.append(fn))
+    tr._install_flush_on_exit(object())
+    assert calls == []
 
 
 # ---- experiment tracking ----

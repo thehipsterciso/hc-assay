@@ -171,6 +171,27 @@ def test_with_timeout_raises_on_overrun():
         rc._with_timeout(lambda: _t.sleep(5), 0.1, "slow op")
 
 
+def test_pool_saturation_and_release_under_real_threads(monkeypatch):
+    # genuine concurrency: fill every worker slot with real blocking tasks, confirm the next
+    # submit fails fast (saturation guard), then confirm slots are released after completion.
+    import threading
+    import time as _t
+
+    monkeypatch.setattr(rc, "_inflight", 0)
+    gate = threading.Event()
+    futures = [rc._submit_bounded(lambda: gate.wait(5)) for _ in range(rc._POOL_WORKERS)]
+    with pytest.raises(PermanentReasoningError, match="saturated"):
+        rc._submit_bounded(lambda: 1)
+    gate.set()
+    for f in futures:
+        f.result(timeout=5)
+    for _ in range(200):  # allow done-callbacks to release slots
+        if rc._inflight == 0:
+            break
+        _t.sleep(0.01)
+    assert rc._inflight == 0
+
+
 # ---- kill switch + tier routing ----
 
 def test_kill_switch_disables_reasoning(monkeypatch):

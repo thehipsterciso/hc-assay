@@ -200,7 +200,11 @@ def test_redact_strips_dsn_password():
 
 
 def test_configured_checkpointer_fails_loud_without_extra(monkeypatch):
-    # langgraph absent in this env -> RuntimeError naming the extra (postgres path)
+    # langgraph absent -> RuntimeError naming the extra (postgres path). When langgraph IS
+    # installed the postgres path instead reaches the backend (covered in the integration
+    # suite via the memory path and a live-postgres test), so skip here.
+    if importlib.util.find_spec("langgraph") is not None:
+        pytest.skip("langgraph installed — real checkpointer paths covered by integration tests")
     monkeypatch.setenv("ASSAY_CHECKPOINT_BACKEND", "postgres")
     with pytest.raises(RuntimeError, match="persistence' extra"):
         configured_checkpointer()
