@@ -215,6 +215,23 @@ def test_cosine_matrix_empty():
     assert cosine_similarity_matrix([]) == []
 
 
+def test_cosine_matrix_scale_uses_fast_path():
+    # guards against a regression to the pure O(n²·d) path at corpus scale: a 300x64 matrix
+    # must compute correctly and (with numpy installed) effectively instantly.
+    import importlib.util
+    import time as _t
+
+    if importlib.util.find_spec("numpy") is None:
+        pytest.skip("numpy not installed — vectorized path unavailable")
+    rng = [[float((i * 7 + j * 13) % 97) for j in range(64)] for i in range(300)]
+    start = _t.perf_counter()
+    m = cosine_similarity_matrix(rng)
+    elapsed = _t.perf_counter() - start
+    assert len(m) == 300 and len(m[0]) == 300
+    assert m[0][0] == pytest.approx(1.0)  # non-zero self-similarity exact
+    assert elapsed < 2.0  # numpy path; the pure path would take far longer at this size
+
+
 def test_cosine_rejects_non_finite_inputs():
     # issue #B6: a non-finite component must raise, not be clamped to a false 1.0
     with pytest.raises(ValueError):
