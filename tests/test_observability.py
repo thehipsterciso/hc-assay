@@ -112,6 +112,10 @@ def test_tracker_construction_rejects_remote(monkeypatch):
 
 
 def test_tracker_start_run_fails_loud_without_mlflow(monkeypatch):
+    import importlib.util
+
+    if importlib.util.find_spec("mlflow") is not None:
+        pytest.skip("mlflow installed — this asserts the absent-extra fail-loud path")
     monkeypatch.delenv("ASSAY_TRACKING_URI", raising=False)
     tracker = MlflowExperimentTracker()
     with pytest.raises(RuntimeError, match="observability' extra"):
