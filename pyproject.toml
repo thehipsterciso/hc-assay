@@ -38,6 +38,7 @@ Issues = "https://github.com/thehipsterciso/hc-assay/issues"
 [project.optional-dependencies]
 dev = [
     "pytest>=8",
+    "pytest-cov>=5",  # CI integration lane runs `pytest --cov` (#103)
     "ruff>=0.6",
     "mypy>=1.11",
 ]

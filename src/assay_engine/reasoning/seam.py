@@ -102,6 +102,11 @@ MAX_RETRIES = max(0, int(_env("ASSAY_REASONING_RETRIES", "2")))
 BACKOFF_BASE = max(0.0, float(_env("ASSAY_REASONING_BACKOFF", "1.5")))
 RATE_LIMIT_BACKOFF = max(0.0, float(_env("ASSAY_RATELIMIT_BACKOFF", "30")))
 RATE_LIMIT_MAX_RETRIES = max(0, int(_env("ASSAY_RATELIMIT_RETRIES", "5")))
+# run_json re-rolls on a PARSE failure. This is independent of the transient/rate-limit retry
+# budget above (which applies per generation) so the two do not multiply into a retry storm; an
+# overall wall-clock deadline bounds the total regardless (#102).
+JSON_REROLLS = max(0, int(_env("ASSAY_JSON_REROLLS", "2")))
+RUN_JSON_DEADLINE = max(1.0, float(_env("ASSAY_RUN_JSON_DEADLINE", "600")))
 
 # OAuth subscription token name (external CLI contract — not renamed).
 OAUTH_TOKEN_ENV = "CLAUDE_CODE_OAUTH_TOKEN"
@@ -120,13 +125,53 @@ def is_metered_anthropic_credential(key: str) -> bool:
     return key.startswith("ANTHROPIC_") and ("KEY" in key or "TOKEN" in key)
 
 
-def scrubbed_env() -> dict[str, str]:
-    """The process env with every metered Anthropic credential removed.
+# Env vars that — beyond metered credentials — would redirect the subprocess OFF-BOX or onto a
+# metered provider, defeating ADR-0003 / "no metered API". The claude CLI honours all of these.
+_UNSAFE_SUBPROCESS_VARS = frozenset(
+    {
+        "ANTHROPIC_BASE_URL",
+        "ANTHROPIC_BEDROCK_BASE_URL",
+        "ANTHROPIC_VERTEX_BASE_URL",
+        "CLAUDE_CODE_USE_BEDROCK",
+        "CLAUDE_CODE_USE_VERTEX",
+        "CLAUDE_CODE_API_KEY_HELPER",
+        "GOOGLE_APPLICATION_CREDENTIALS",
+    }
+)
 
-    Execution must run on the fixed subscription via the CLI's OAuth token; a metered key, if
-    present, would silently bill per token — so strip it before the SDK subprocess sees it.
+
+def is_unsafe_subprocess_var(key: str) -> bool:
+    """True for any env var that must not reach the high-stakes subprocess (#101).
+
+    Covers metered credentials, off-box/metered-provider redirects, proxies (which redirect
+    egress), and cloud-provider credentials (AWS_*/GOOGLE_*). The subscription OAuth token is
+    deliberately NOT matched.
     """
-    return {k: v for k, v in os.environ.items() if not is_metered_anthropic_credential(k)}
+    ku = key.upper()
+    return (
+        is_metered_anthropic_credential(key)
+        or ku in _UNSAFE_SUBPROCESS_VARS
+        or ku.endswith("_PROXY")  # HTTP_PROXY/HTTPS_PROXY/ALL_PROXY/NO_PROXY (any case)
+        or ku.startswith("AWS_")
+        or ku.startswith("GOOGLE_")
+    )
+
+
+def scrubbed_env() -> dict[str, str]:
+    """The process env hardened for the high-stakes subprocess (ADR-0003 / no metered API).
+
+    Every unsafe var (:func:`is_unsafe_subprocess_var`) is **overwritten to empty**, not merely
+    omitted. The claude-agent-sdk builds the child env as ``{**os.environ, **options.env}`` — it
+    *merges* over the inherited environment — so a dropped key would silently fall through to its
+    inherited value (the metered key / off-box redirect would survive). Setting it to ``""`` in
+    the dict we hand over guarantees the merge overwrites the inherited value (#101). The
+    subscription OAuth token is preserved so the fixed-cost path still authenticates.
+    """
+    env = dict(os.environ)
+    for k in list(env):
+        if is_unsafe_subprocess_var(k):
+            env[k] = ""
+    return env
 
 
 # --------------------------------------------------------------------------------------
@@ -524,11 +569,14 @@ class TieredReasoningSeam:
             else "Respond with ONLY a single JSON value, no prose."
         )
         last: ReasoningError | None = None
+        deadline = time.monotonic() + RUN_JSON_DEADLINE  # overall bound across all re-rolls (#102)
         with _span(
             "reasoning.run_json",
             {"assay.tier": request.tier.value, "assay.purpose": request.purpose},
         ):
-            for attempt in range(MAX_RETRIES + 1):
+            for attempt in range(JSON_REROLLS + 1):
+                if attempt > 0 and time.monotonic() >= deadline:
+                    raise last or ReasoningError("run_json exceeded its overall deadline")
                 temp = min(1.0, base_temp + 0.2 * attempt)  # monotonic, never decreases (M3)
                 params = dict(request.params)
                 params.update(temperature=temp, system=json_system, _json_mode=True, _seed=attempt)
