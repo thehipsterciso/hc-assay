@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import ipaddress
 import re
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 
 # A libpq keyword/value token: ``key = value`` with optional whitespace around ``=`` (libpq
 # permits it) and an optionally single/double-quoted value (which may contain spaces).
@@ -72,12 +72,26 @@ def require_local_uri(uri: str, *, what: str) -> str:
       form has no ``://`` and would otherwise slip past a URI-only check (audit issue #P1).
     - **bare path** (no URI host, no ``=``): a local file/dir — local.
     """
-    host = (urlparse(uri).hostname or "").strip()
+    parsed = urlparse(uri)
+    host = (parsed.hostname or "").strip()
     if host:
         if not is_loopback_host(host):
             raise NonLocalEndpointError(
                 f"{what} must be a local store (ADR-0003 data sovereignty); got host {host!r}"
             )
+        # A libpq URI lets a query parameter host=/hostaddr= OVERRIDE the authority host —
+        # urlparse only sees the authority, so the query must be checked too or a remote
+        # endpoint slips past while the parser reports "local" (audit #D2). hostaddr is the
+        # literal IP libpq dials and must be checked independently of host.
+        query = parse_qs(parsed.query)
+        for key in ("host", "hostaddr"):
+            for val in query.get(key, []):
+                h = val.strip()
+                if h and not is_loopback_host(h):
+                    raise NonLocalEndpointError(
+                        f"{what} must be a local store (ADR-0003 data sovereignty); URI query "
+                        f"{key}={h!r} points off-box"
+                    )
         return uri
     if "=" in uri:  # libpq keyword/value DSN (no URI host component)
         # Whitespace is permitted around '=' in libpq DSNs (e.g. "host = db.evil.com"), so a

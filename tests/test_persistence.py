@@ -103,6 +103,29 @@ def test_connection_string_accepts_local_dsn_with_spaces(monkeypatch):
     assert get_postgres_connection_string().startswith("host")
 
 
+@pytest.mark.parametrize(
+    "uri",
+    [
+        "postgresql://localhost/x?host=db.evil.com",      # query host overrides authority
+        "postgresql://localhost/x?hostaddr=8.8.8.8",       # libpq dials hostaddr
+        "postgresql://localhost/x?host=evil.com&hostaddr=8.8.8.8",
+        "postgresql://127.0.0.1/x?host=evil.com",
+        "postgresql://[::1]/x?host=evil.com",
+        "postgresql://user:pw@localhost:5432/db?host=db.evil.com",
+    ],
+)
+def test_connection_string_rejects_uri_query_host_override(monkeypatch, uri):
+    # issue #D2: a URI query host=/hostaddr= overrides the authority host in libpq
+    monkeypatch.setenv("ASSAY_POSTGRES_URL", uri)
+    with pytest.raises(NonLocalEndpointError):
+        get_postgres_connection_string()
+
+
+def test_connection_string_accepts_uri_with_loopback_query_host(monkeypatch):
+    monkeypatch.setenv("ASSAY_POSTGRES_URL", "postgresql://localhost/x?host=127.0.0.1")
+    assert get_postgres_connection_string().endswith("?host=127.0.0.1")
+
+
 def test_redact_strips_dsn_password():
     out = redact_creds("OperationalError: host=localhost password=s3cr#t dbname=x failed")
     assert "s3cr#t" not in out and "password=***" in out
