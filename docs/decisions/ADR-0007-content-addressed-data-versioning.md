@@ -25,9 +25,16 @@ The engine ships a **dependency-free, content-addressed local store** as the def
   artifact and concurrent writers of the same digest cannot corrupt each other;
 - it is fully **on-box** (ADR-0003) and requires no external service or network.
 
-`DataVersioner` is a Protocol. A study that genuinely needs an external VCS (e.g. for a
-shared team remote) implements that Protocol in its **adapter** and supplies it — the engine
-contract is unchanged. The engine itself never depends on an external versioning tool.
+`DataVersioner` is a Protocol (`put` → version id, `fingerprint` → hash). A study that
+genuinely needs an external VCS (e.g. for a shared team remote) implements that Protocol in
+its **adapter** and supplies it — the engine contract is unchanged. The engine itself never
+depends on an external versioning tool.
+
+Note: *retrieval by id* is store-implementation-specific and intentionally **not** part of
+the `DataVersioner` Protocol. The default `LocalDataVersioner` exposes `path_for(id)` to
+resolve a stored artifact locally; an adapter over a different store provides its own
+retrieval mechanism. Code that must fetch artifacts by id therefore depends on the concrete
+store, not the Protocol — by design, since retrieval semantics differ across backends.
 
 ## Consequences
 
