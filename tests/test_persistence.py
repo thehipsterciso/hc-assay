@@ -146,11 +146,22 @@ def test_connection_string_accepts_all_loopback_multihost(monkeypatch):
     assert "127.0.0.1" in get_postgres_connection_string()
 
 
-def test_require_local_uri_rejects_unc_path():
+@pytest.mark.parametrize(
+    "path",
+    [r"\\server\share\db.sqlite", "/\\evil\\share", "\\/evil/share", "//evil/share"],
+)
+def test_require_local_uri_rejects_unc_paths(path):
     from assay_engine._local import require_local_uri
 
     with pytest.raises(NonLocalEndpointError):
-        require_local_uri(r"\\server\share\db.sqlite", what="x")
+        require_local_uri(path, what="x")
+
+
+def test_require_local_uri_rejects_backslash_in_authority():
+    from assay_engine._local import require_local_uri
+
+    with pytest.raises(NonLocalEndpointError):
+        require_local_uri("http://evil.com\\@localhost/x", what="x")
 
 
 def test_require_local_uri_fails_closed_on_unparseable():

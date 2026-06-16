@@ -116,6 +116,13 @@ def require_local_uri(uri: str, *, what: str) -> str:
         ) from None
 
     if netloc:
+        # A backslash never legitimately appears in a URI authority; a WHATWG-normalizing
+        # client (e.g. some HTTP stacks) treats '\' as '/', so it could read a different host
+        # than urlparse. Refuse rather than risk that differential (audit #D6, defense-in-depth).
+        if "\\" in netloc:
+            raise NonLocalEndpointError(
+                f"{what}: backslash in URI authority is not permitted (ADR-0003); rejecting"
+            )
         for h in _authority_hosts(netloc):
             # A residual '@' means the authority is ambiguous between this parser and libpq —
             # fail closed (audit #D5).
@@ -145,9 +152,14 @@ def require_local_uri(uri: str, *, what: str) -> str:
                     )
         return uri
 
-    if uri.lstrip().startswith("\\\\"):  # Windows UNC path \\server\share is remote (SMB)
+    stripped = uri.lstrip()
+    # Windows treats ANY two leading separators (in any mix of '\' and '/') as a UNC prefix
+    # to a remote SMB share — \\srv, //srv, /\srv, \/srv all resolve off-box (audit #D6).
+    # (The pure '//host' form is already caught by the authority branch above; covering it
+    # here too keeps the branch self-contained.)
+    if len(stripped) >= 2 and stripped[0] in "\\/" and stripped[1] in "\\/":
         raise NonLocalEndpointError(
-            f"{what} must be a local store (ADR-0003 data sovereignty); UNC path {uri!r} "
-            "is a remote share"
+            f"{what} must be a local store (ADR-0003 data sovereignty); UNC-style path "
+            f"{uri!r} is a remote share"
         )
     return uri  # bare path / dir store
