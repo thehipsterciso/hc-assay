@@ -198,9 +198,23 @@ def test_require_loopback_accepts_local():
     require_loopback_url("http://localhost:11434", what="x")
 
 
-def test_require_loopback_rejects_remote():
+@pytest.mark.parametrize(
+    "url",
+    [
+        "http://192.168.1.50:11434",
+        "http://127.0.0.1.evil.com:11434",  # spoof: starts with 127. but is a public name
+        "http://127.attacker.net/",
+        "http://0.0.0.0:11434",             # not a loopback bind for egress
+        "http://example.com/",
+    ],
+)
+def test_require_loopback_rejects_non_loopback(url):
     with pytest.raises(NonLocalEndpointError):
-        require_loopback_url("http://192.168.1.50:11434", what="x")
+        require_loopback_url(url, what="x")
+
+
+def test_require_loopback_accepts_ipv6_loopback():
+    require_loopback_url("http://[::1]:11434", what="x")
 
 
 def test_bulk_tier_rejects_non_loopback_base_url(monkeypatch):
@@ -226,3 +240,50 @@ def test_is_available_false_when_disabled(monkeypatch):
     monkeypatch.setenv("ASSAY_DISABLE_REASONING", "1")
     assert TieredReasoningSeam.is_available(StakesTier.BULK) is False
     assert TieredReasoningSeam.is_available(StakesTier.HIGH_STAKES) is False
+
+
+def test_run_json_recovers_after_bad_then_good(monkeypatch):
+    # issue #R6: parse failure must regenerate (with varied temperature), not give up.
+    monkeypatch.setattr(rc.time, "sleep", lambda *_: None)
+    seen_temps: list[float] = []
+
+    def attempt(req):
+        seen_temps.append(float(req.params.get("temperature", -1)))
+        return "garbled, not json" if len(seen_temps) == 1 else '{"ok": 1}'
+
+    monkeypatch.setattr(rc, "_attempt", attempt)
+    assert TieredReasoningSeam().run_json(_req()) == {"ok": 1}
+    assert len(seen_temps) >= 2 and seen_temps[0] != seen_temps[1]  # temperature varied
+
+
+def test_run_json_raises_after_exhausting_retries(monkeypatch):
+    monkeypatch.setattr(rc.time, "sleep", lambda *_: None)
+    monkeypatch.setattr(rc, "_attempt", lambda req: "never json")
+    with pytest.raises(ReasoningError):
+        TieredReasoningSeam().run_json(_req())
+
+
+def test_run_json_requests_json_mode_and_system(monkeypatch):
+    captured = {}
+
+    def attempt(req):
+        captured["params"] = dict(req.params)
+        return '{"k": 1}'
+
+    monkeypatch.setattr(rc, "_attempt", attempt)
+    TieredReasoningSeam().run_json(_req(system="be terse"))
+    assert captured["params"]["_json_mode"] is True
+    assert "JSON" in captured["params"]["system"]
+
+
+def test_run_emits_no_error_without_otel(monkeypatch):
+    # issue #R3: tracing is a no-op when opentelemetry is absent (it is, in this env)
+    monkeypatch.setattr(rc, "_attempt", lambda _req: "ok")
+    assert TieredReasoningSeam().run(_req()) == "ok"
+
+
+def test_unconfigured_seam_raises():
+    from assay_engine.reasoning.seam import UnconfiguredReasoningSeam
+
+    with pytest.raises(NotImplementedError):
+        UnconfiguredReasoningSeam().run(_req())

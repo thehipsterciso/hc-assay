@@ -53,5 +53,5 @@ strict = true
 # Optional reasoning/observability backends are not installed in the type-check env; their
 # imports are lazy and guarded at runtime, so treat them as untyped third-party modules.
 [[tool.mypy.overrides]]
-module = ["langchain_ollama.*", "claude_agent_sdk.*", "anyio.*"]
+module = ["langchain_ollama.*", "claude_agent_sdk.*", "anyio.*", "opentelemetry.*"]
 ignore_missing_imports = true

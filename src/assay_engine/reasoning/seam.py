@@ -33,9 +33,11 @@ import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FuturesTimeout
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Callable, Mapping, Protocol, cast, runtime_checkable
+from pathlib import Path
+from typing import Any, Callable, Iterator, Mapping, Protocol, cast, runtime_checkable
 
 from assay_engine._frozen import freeze_mapping
 from assay_engine._local import require_loopback_url
@@ -164,7 +166,9 @@ def _with_timeout(fn: Callable[[], Any], timeout: float, what: str) -> Any:
     try:
         return future.result(timeout=timeout)
     except FuturesTimeout as exc:
-        future.cancel()
+        # No future.cancel(): a ThreadPoolExecutor cannot interrupt a thread already blocked
+        # in a backend call. The worker keeps its slot until the call returns; the bounded
+        # pool's saturation guard is the real protection against leaked/hung slots.
         raise ReasoningError(f"{what} timed out after {timeout:.0f}s") from exc
 
 
@@ -222,7 +226,9 @@ def extract_json(text: str) -> Any:
 # --------------------------------------------------------------------------------------
 # Tier backends (lazy imports — module loads without them)
 # --------------------------------------------------------------------------------------
-def _bulk_complete(prompt: str, system: str | None, temperature: float, model: str) -> str:
+def _bulk_complete(
+    prompt: str, system: str | None, temperature: float, model: str, json_mode: bool = False
+) -> str:
     """Tier: BULK — local model runtime (loopback-enforced)."""
     require_loopback_url(BULK_BASE_URL, what="bulk-tier model base URL")
     try:
@@ -232,10 +238,13 @@ def _bulk_complete(prompt: str, system: str | None, temperature: float, model: s
             "bulk tier requires the 'reasoning' extra (langchain-ollama) — not installed"
         ) from exc
 
-    client = ChatOllama(
+    kwargs: dict[str, Any] = dict(
         model=model, base_url=BULK_BASE_URL, temperature=temperature,
         client_kwargs={"timeout": BULK_TIMEOUT},
     )
+    if json_mode:
+        kwargs["format"] = "json"  # Ollama native constrained JSON decoding
+    client = ChatOllama(**kwargs)
     messages: list[tuple[str, str]] = []
     if system:
         messages.append(("system", system))
@@ -248,23 +257,40 @@ def _bulk_complete(prompt: str, system: str | None, temperature: float, model: s
             raise PermanentReasoningError(f"bulk model {model!r} not available: {exc}") from exc
         raise ReasoningError(f"bulk tier call failed: {exc}") from exc
     content = getattr(reply, "content", reply)
-    if isinstance(content, str):
-        return content
-    return str(content)
+    text = content if isinstance(content, str) else str(content)
+    text = text.strip()
+    if not text:  # an empty reply is not a valid result — retry, don't return "" (issue #5/R5)
+        raise ReasoningError("bulk tier returned an empty reply")
+    return text
+
+
+def _high_stakes_auth_present() -> bool:
+    """Subscription auth available: an exported OAuth token OR a stored CLI credentials file
+    (the normal state after ``claude login`` without exporting a token)."""
+    if os.environ.get(OAUTH_TOKEN_ENV):
+        return True
+    return (Path.home() / ".claude" / ".credentials.json").is_file()
 
 
 def _high_stakes_complete(prompt: str, system: str | None, model: str | None) -> str:
     """Tier: HIGH_STAKES — frontier model via subscription CLI/Agent SDK (no metered key)."""
     try:
         import anyio
-        from claude_agent_sdk import ClaudeAgentOptions, query
+        from claude_agent_sdk import (
+            AssistantMessage,
+            ClaudeAgentOptions,
+            ResultMessage,
+            TextBlock,
+            query,
+        )
     except ImportError as exc:  # pragma: no cover - exercised only without the extra
         raise PermanentReasoningError(
             "high-stakes tier requires the 'reasoning' extra (claude-agent-sdk) — not installed"
         ) from exc
-    if not os.environ.get(OAUTH_TOKEN_ENV):
+    if not _high_stakes_auth_present():
         raise PermanentReasoningError(
-            f"high-stakes tier requires {OAUTH_TOKEN_ENV} (subscription OAuth); none set"
+            f"high-stakes tier requires subscription auth ({OAUTH_TOKEN_ENV} or a stored "
+            "~/.claude/.credentials.json); none found"
         )
 
     options = ClaudeAgentOptions(
@@ -276,24 +302,56 @@ def _high_stakes_complete(prompt: str, system: str | None, model: str | None) ->
         env=scrubbed_env(),  # ADR-0003: never pass a metered Anthropic credential
     )
 
-    async def _drain() -> str:
-        parts: list[str] = []
-        async for message in query(prompt=prompt, options=options):
-            text = getattr(message, "text", None)
-            if isinstance(text, str):
-                parts.append(text)
-        return "".join(parts)
+    parts: list[str] = []
+    result_error: dict[str, Any] | None = None
+
+    async def _drain() -> None:
+        # The CLI/SDK signals rate windows and API failures by COMPLETING the stream
+        # (a RateLimitEvent, or a terminal ResultMessage with is_error) — NOT by raising.
+        # We must inspect the stream, not just catch exceptions (issue #R4).
+        nonlocal result_error
+        async for msg in query(prompt=prompt, options=options):
+            if type(msg).__name__ == "RateLimitEvent":
+                rl = getattr(getattr(msg, "rate_limit_info", None), "status", None)
+                if rl == "rejected":
+                    result_error = {"status": 429, "detail": "RateLimitEvent rejected"}
+                continue
+            if getattr(msg, "status", None) == "rejected":
+                result_error = {"status": 429, "detail": "rejected"}
+                continue
+            if isinstance(msg, AssistantMessage):
+                for block in getattr(msg, "content", []) or []:
+                    if isinstance(block, TextBlock):
+                        parts.append(block.text)
+            elif isinstance(msg, ResultMessage):
+                # Do not let a trailing ResultMessage clobber an already-captured 429.
+                if getattr(msg, "is_error", False) and not (
+                    result_error and result_error.get("status") == 429
+                ):
+                    result_error = {
+                        "status": getattr(msg, "api_error_status", None),
+                        "detail": getattr(msg, "errors", None)
+                        or getattr(msg, "stop_reason", None),
+                    }
 
     try:
-        out = anyio.run(_drain)
-        return out if isinstance(out, str) else str(out)
+        anyio.run(_drain)
     except Exception as exc:
-        status = getattr(exc, "status", None) or getattr(exc, "status_code", None)
-        if status in (429, 529):
-            raise RateLimitError(f"high-stakes tier rate-limited: {exc}") from exc
-        if status in (401, 403):
-            raise PermanentReasoningError(f"high-stakes tier auth failed: {exc}") from exc
         raise ReasoningError(f"high-stakes tier call failed: {exc}") from exc
+
+    if result_error is not None:
+        status = result_error.get("status")
+        detail = result_error.get("detail") or status
+        if status in (429, 529):
+            raise RateLimitError(f"high-stakes tier rate window ({status}): {detail}")
+        if status in (401, 403):
+            raise PermanentReasoningError(f"high-stakes tier auth failed ({status}): {detail}")
+        raise ReasoningError(f"high-stakes tier reported an error (status={status}): {detail}")
+
+    text = "".join(parts).strip()
+    if not text:  # empty frontier reply is not a valid result — retry (issue #R5)
+        raise ReasoningError("high-stakes tier returned an empty reply")
+    return text
 
 
 def _attempt(request: ReasoningRequest) -> str:
@@ -304,11 +362,14 @@ def _attempt(request: ReasoningRequest) -> str:
     system = p.get("system")
     temperature = float(p.get("temperature", 0.0))
     model = p.get("model")
+    json_mode = bool(p.get("_json_mode", False))
     if request.tier is StakesTier.BULK:
         return cast(
             str,
             _with_timeout(
-                lambda: _bulk_complete(request.prompt, system, temperature, model or BULK_MODEL),
+                lambda: _bulk_complete(
+                    request.prompt, system, temperature, model or BULK_MODEL, json_mode
+                ),
                 BULK_TIMEOUT + 10,
                 "bulk tier",
             ),
@@ -356,19 +417,72 @@ class ReasoningSeam(Protocol):
     def run(self, request: ReasoningRequest) -> str: ...
 
 
+@contextmanager
+def _span(name: str, attributes: Mapping[str, Any]) -> Iterator[None]:
+    """Emit an OpenTelemetry span if a provider is registered; a cheap no-op otherwise.
+
+    OpenTelemetry is imported lazily, so the seam traces when the (self-hosted, on-box)
+    observability stack is wired and is a silent no-op in tests / offline (ADR-0003).
+    """
+    try:
+        from opentelemetry import trace
+    except ImportError:
+        yield
+        return
+    tracer = trace.get_tracer("assay_engine.reasoning")
+    with tracer.start_as_current_span(name) as span:
+        for k, v in attributes.items():
+            span.set_attribute(k, v)
+        yield
+
+
 class TieredReasoningSeam:
     """Concrete tiered seam. ``run`` returns text; ``run_json`` parses a JSON reply.
 
     Backends and tracing are resolved lazily, so an instance constructs with no external
     dependencies; calls fail loud (``PermanentReasoningError``) if a tier's backend or its
-    subscription token is absent.
+    subscription auth is absent. When the observability stack is present, each call emits an
+    OpenTelemetry span; otherwise tracing is a no-op.
     """
 
     def run(self, request: ReasoningRequest) -> str:
-        return _run_with_retries(request)
+        attrs = {"assay.tier": request.tier.value, "assay.purpose": request.purpose}
+        with _span("reasoning.run", attrs):
+            return _run_with_retries(request)
 
     def run_json(self, request: ReasoningRequest) -> Any:
-        return extract_json(self.run(request))
+        """Generate and parse JSON, regenerating with a varied temperature on parse failure.
+
+        BULK decoding can be deterministic (fixed seed, temp 0), so re-issuing the identical
+        prompt would yield a byte-identical bad reply; each retry bumps the temperature.
+        ``params`` is frozen, so each attempt builds a fresh request (issue #R6).
+        """
+        base_temp = float(request.params.get("temperature", 0.0))
+        system = request.params.get("system")
+        json_system = (
+            f"{system}\n\nRespond with ONLY a single JSON value, no prose."
+            if system
+            else "Respond with ONLY a single JSON value, no prose."
+        )
+        last: ReasoningError | None = None
+        with _span(
+            "reasoning.run_json",
+            {"assay.tier": request.tier.value, "assay.purpose": request.purpose},
+        ):
+            for attempt in range(MAX_RETRIES + 1):
+                bump = 0.2 * attempt
+                temp = base_temp + bump if base_temp + bump <= 1.0 else max(0.0, base_temp - bump)
+                params = dict(request.params)
+                params.update(temperature=temp, system=json_system, _json_mode=True)
+                attempt_req = ReasoningRequest(
+                    prompt=request.prompt, tier=request.tier, purpose=request.purpose,
+                    params=params,
+                )
+                try:
+                    return extract_json(_run_with_retries(attempt_req))
+                except ReasoningError as exc:
+                    last = exc
+            raise last if last is not None else ReasoningError("run_json failed")
 
     @staticmethod
     def is_available(tier: StakesTier) -> bool:
@@ -385,9 +499,7 @@ class TieredReasoningSeam:
             if tier is StakesTier.HIGH_STAKES:
                 import shutil
 
-                return shutil.which("claude") is not None and bool(
-                    os.environ.get(OAUTH_TOKEN_ENV)
-                )
+                return shutil.which("claude") is not None and _high_stakes_auth_present()
         except Exception:
             return False
         return False

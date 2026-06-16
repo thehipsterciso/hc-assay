@@ -7,9 +7,8 @@ address fails loud rather than silently shipping data off the machine.
 
 from __future__ import annotations
 
+import ipaddress
 from urllib.parse import urlparse
-
-_LOOPBACK_HOSTS = frozenset({"localhost", "127.0.0.1", "::1", "[::1]"})
 
 
 class NonLocalEndpointError(RuntimeError):
@@ -17,13 +16,21 @@ class NonLocalEndpointError(RuntimeError):
 
 
 def is_loopback_host(host: str | None) -> bool:
+    """True only for genuine loopback hosts.
+
+    Parses the host as an IP and tests the loopback network (127.0.0.0/8, ::1), so a public
+    name that merely *starts with* ``127.`` (e.g. ``127.0.0.1.evil.com``) is correctly
+    rejected. The literal ``localhost`` is the only accepted non-IP host.
+    """
     if not host:
         return False
     h = host.strip().lower()
-    if h in _LOOPBACK_HOSTS:
+    if h == "localhost":
         return True
-    # 127.0.0.0/8 is entirely loopback
-    return h.startswith("127.")
+    try:
+        return ipaddress.ip_address(h.strip("[]")).is_loopback
+    except ValueError:
+        return False
 
 
 def require_loopback_url(url: str, *, what: str) -> str:
