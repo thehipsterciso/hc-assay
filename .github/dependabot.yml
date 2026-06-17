@@ -2,6 +2,11 @@
 # vulnerable/outdated dependencies on a weekly cadence so the supply-chain surface is tracked,
 # not just scanned once. Pairs with the pip-audit gate (reproducible scan of requirements.lock)
 # and the CycloneDX SBOM artifact in ci.yml.
+#
+# NOTE (#G-016): Dependabot bumps the ranges in pyproject.toml but does NOT regenerate the
+# hash-pinned uv lockfiles (requirements.lock / requirements-core.lock), so a Dependabot PR will
+# FAIL the CI "requirements.lock is stale" gate until a maintainer regenerates them. On a
+# Dependabot PR, run `scripts/regenerate_lockfiles.sh` and commit the result to make it mergeable.
 version: 2
 updates:
   # Python packages declared in pyproject.toml (and resolved into requirements.lock).
