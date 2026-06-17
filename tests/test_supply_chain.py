@@ -382,8 +382,23 @@ def test_mypy_ignores_httpx_missing_stub_in_core_lane():
 
 def test_coverage_floor_is_enforced():
     # #K-OPS-3: `pytest --cov` without a threshold exits 0 at any coverage, so the gate was vacuous.
+    # Assert the floor is present AND a MEANINGFUL value (#K-OPS-3 confirm-concern): a degenerate
+    # `--cov-fail-under=0` would re-create the vacuous gate while a mere substring check stayed
+    # green. The flag must also sit on a --cov=-instrumented invocation.
+    import re
+
     text = _ci_text()
-    assert "--cov-fail-under=" in text, "coverage measured but not enforced (vacuous gate)"
+    m = re.search(r"--cov-fail-under=(\d+)", text)
+    assert m, "coverage measured but not enforced (vacuous gate)"
+    assert int(m.group(1)) >= 80, f"coverage floor {m.group(1)} is too low to be meaningful"
+    # the floor must be on a coverage-instrumented run, not a bare pytest
+    cov_line = next(ln for ln in text.splitlines() if "--cov-fail-under=" in ln)
+    assert "--cov=assay_engine" in cov_line, "cov-fail-under not attached to a --cov= run"
+    # defense-in-depth: pyproject also carries the floor so a local `pytest --cov` enforces it too
+    import tomllib
+
+    pp = tomllib.loads((_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    assert pp["tool"]["coverage"]["report"]["fail_under"] >= 80
 
 
 def test_lockfile_sync_is_resolution_pinned():

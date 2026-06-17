@@ -102,6 +102,12 @@ filterwarnings = [
     "ignore:confirm primitive called with authority=None:UserWarning",
 ]
 
+[tool.coverage.report]
+# Defense-in-depth coverage floor (#K-OPS-3 confirm-concern): CI passes --cov-fail-under=90
+# explicitly, but carrying the floor here too means a local `pytest --cov` enforces the same
+# threshold, and the value is a committed single source rather than only an inline CI flag.
+fail_under = 90
+
 [tool.ruff]
 line-length = 100
 src = ["src", "tests"]
