@@ -229,12 +229,18 @@ def _resample_stability(
     try:
         import numpy as np
 
-        null_arr = np.asarray(null, dtype=np.float64)
+        # Use searchsorted on a sorted null (O((R+N) log N) time, O(R) memory) rather than the
+        # R×N broadcast boolean matrix (#G-010): the matrix peaks at ~R*N bytes (250MB for
+        # R=5000,N=50000) and can OOM where the pure-Python loop would not. The integer
+        # extreme-counts are IDENTICAL to _empirical_p: for 'greater', count(null >= r) = N -
+        # searchsorted(sorted, r, 'left'); for 'less', count(null <= r) = searchsorted(sorted, r,
+        # 'right'). Then (extreme+1)/(n+1) <= alpha, same as the pure path.
+        sorted_null = np.sort(np.asarray(null, dtype=np.float64))
         res_arr = np.asarray(resamples, dtype=np.float64)
         if tail == "greater":
-            extreme = (null_arr[None, :] >= res_arr[:, None]).sum(axis=1)
+            extreme = n - np.searchsorted(sorted_null, res_arr, side="left")
         else:
-            extreme = (null_arr[None, :] <= res_arr[:, None]).sum(axis=1)
+            extreme = np.searchsorted(sorted_null, res_arr, side="right")
         p = (extreme + 1) / (n + 1)
         return float(int((p <= alpha).sum()) / len(resamples))
     except ImportError:

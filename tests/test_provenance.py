@@ -31,6 +31,17 @@ def test_records_chain_and_verify():
     assert len(t) == 2 and t.entries[0].prev_hash != t.entries[1].prev_hash
 
 
+def test_from_records_raises_typed_error_on_malformed_record():
+    # #G-012: a record missing a required field must raise the typed ProvenanceError (so a caller
+    # catching it to handle a corrupt/incompatible trail covers this), not a raw KeyError.
+    good = ProvenanceTrail()
+    good.record("a", "first", x=1)
+    records = list(good.to_records())
+    del records[0]["summary"]  # corrupt the record
+    with pytest.raises(ProvenanceError, match="missing field"):
+        from_records(records)
+
+
 def test_entries_view_is_immutable_tuple():
     t = ProvenanceTrail()
     t.record("a", "x")
