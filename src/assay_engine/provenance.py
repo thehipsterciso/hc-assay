@@ -50,6 +50,17 @@ class ProvenanceError(RuntimeError):
     """The provenance trail is inconsistent (a broken chain) or an entry cannot be recorded."""
 
 
+def _contains_set(value: Any) -> bool:
+    """True if a frozen payload holds a (frozen)set leaf anywhere (#P10-MO-1)."""
+    if isinstance(value, (set, frozenset)):
+        return True
+    if isinstance(value, Mapping):
+        return any(_contains_set(v) for v in value.values())
+    if isinstance(value, (tuple, list)):
+        return any(_contains_set(v) for v in value)
+    return False
+
+
 @dataclass(frozen=True, slots=True)
 class ProvenanceEntry:
     """One immutable, chained record of a single action."""
@@ -63,7 +74,26 @@ class ProvenanceEntry:
     entry_hash: str
 
     def __post_init__(self) -> None:
-        object.__setattr__(self, "payload", freeze_mapping(self.payload))
+        # #P10-MO-2: a non-mapping payload (a list/str slipped into a trail record) must surface as
+        # the module's typed ProvenanceError, not a raw AttributeError from freeze_mapping calling
+        # .items() on it — a caller catching ProvenanceError to handle a corrupt trail relies on it.
+        if not isinstance(self.payload, Mapping):
+            raise ProvenanceError(
+                f"provenance payload must be a mapping; got {type(self.payload).__name__}"
+            )
+        frozen = freeze_mapping(self.payload)
+        # #P10-MO-1: a set/frozenset payload value is hashable (freeze accepts it) but does NOT
+        # round-trip through to_records→from_records — unfreeze turns it into a sorted list, which
+        # re-freezes to a tuple, so the recomputed digest differs and verify_records SILENTLY fails
+        # on a legitimately-recorded entry. Reject it loudly at record time instead; callers should
+        # pass a sorted list/tuple (which round-trips and digests identically).
+        if _contains_set(frozen):
+            raise ProvenanceError(
+                "provenance payload cannot contain a set/frozenset value (it does not survive the "
+                "to_records/from_records round-trip and would break verification); use a sorted "
+                "list or tuple instead"
+            )
+        object.__setattr__(self, "payload", frozen)
 
 
 def _digest(

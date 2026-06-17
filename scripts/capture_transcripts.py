@@ -55,6 +55,19 @@ _SECRET_PATTERNS = [
     # regardless of length (#H-018) — the bare-token rule below skips short handles to avoid
     # over-redacting common words, but the slug form is unambiguous PII at any length.
     re.compile(r"(-(?:Users|home)-)[^-\s/\"']+"),  # -Users-<name>- → -Users-[REDACTED]-
+    # Private (RFC1918) IPv4 addresses (#P10-PII-1): captured ifconfig/route/lsof output leaks the
+    # operator's LAN subnet/gateway/host IP (e.g. 192.168.50.134, gateway 192.168.50.1) — infra-
+    # identifying topology no other rule covers. Redact 10/8, 172.16/12, 192.168/16. Loopback
+    # (127.0.0.0/8) and 0.0.0.0 are NOT private/identifying and are left (they appear in guard
+    # tests/messages); public IPs (e.g. remote API endpoints) are not the operator's and are left.
+    # Digit/dot lookarounds (not \b): the IP often abuts a JSON-escaped newline ("...\\n192.168...")
+    # where \b fails because the escape's 'n' is a word char; the lookarounds still bound it so it
+    # never matches inside a longer number/IP.
+    re.compile(
+        r"(?<![\d.])(?:10\.\d{1,3}\.\d{1,3}\.\d{1,3}"
+        r"|172\.(?:1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}"
+        r"|192\.168\.\d{1,3}\.\d{1,3})(?![\d.])"
+    ),  # RFC1918 → [REDACTED]
 ]
 
 
@@ -235,7 +248,10 @@ def _hostname_patterns() -> list[re.Pattern[str]]:
         if len(b) < 4 or b.lower() in seen:
             continue
         seen.add(b.lower())
-        pats.append(re.compile(re.escape(b) + r"(?:\.local)?\b", re.IGNORECASE))
+        # Leading \b (#P10-PII-2): without it the bare hostname matches as a SUBSTRING, so a short/
+        # common derived hostname (e.g. "host" on a CI runner) would corrupt legit content — "host"
+        # inside "localhost" → "local[REDACTED]". The boundary requires a token start.
+        pats.append(re.compile(r"\b" + re.escape(b) + r"(?:\.local)?\b", re.IGNORECASE))
     for name in extra:  # supplied namespace hosts → redact ONLY the .local FQDN form
         b = _base(name)
         if len(b) < 4 or ("local:" + b.lower()) in seen:

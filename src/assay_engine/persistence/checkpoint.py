@@ -44,7 +44,12 @@ from typing import Any, cast
 from urllib.parse import urlsplit
 
 from assay_engine._envparse import int_env
-from assay_engine._local import require_local_uri
+from assay_engine._local import (
+    NonLocalEndpointError,
+    is_local_socket_path,
+    is_loopback_host,
+    require_local_uri,
+)
 
 _DEFAULT_PG = "postgresql://localhost:5432/assay"
 
@@ -161,7 +166,36 @@ def get_postgres_connection_string() -> str:
     point of use (ADR-0003 defense-in-depth): graph state must not leave the box.
     """
     url = os.environ.get("ASSAY_POSTGRES_URL") or _DEFAULT_PG
-    return require_local_uri(url, what="checkpointer connection")
+    validated = require_local_uri(url, what="checkpointer connection")
+    _assert_local_libpq_env()
+    return validated
+
+
+def _assert_local_libpq_env() -> None:
+    """Validate the libpq host-override env vars too (#SEC-10-1).
+
+    ``require_local_uri`` only inspects the connection STRING, but libpq also reads ``PGHOST`` /
+    ``PGHOSTADDR`` / ``PGSERVICE`` from the environment, and these OVERRIDE or supply the host even
+    when the DSN looks loopback (notably ``PGHOSTADDR`` wins over an explicit ``host=localhost``,
+    connecting to the IP while ``host`` is used only for TLS/auth). Left unchecked, graph state
+    leaves the box despite the guard passing — defeating ADR-0003. Validate them at the same point.
+    """
+    for var in ("PGHOST", "PGHOSTADDR"):
+        v = os.environ.get(var, "").strip()
+        if not v:
+            continue
+        for h in (p.strip() for p in v.split(",")):  # libpq comma multi-host
+            if h and not is_loopback_host(h) and not is_local_socket_path(h):
+                raise NonLocalEndpointError(
+                    f"checkpointer connection: libpq env {var}={h!r} points off-box "
+                    f"(ADR-0003 data sovereignty); graph state must stay on the box"
+                )
+    for var in ("PGSERVICE", "PGSERVICEFILE"):
+        if os.environ.get(var, "").strip():
+            raise NonLocalEndpointError(
+                f"checkpointer connection: libpq env {var} is set; a service file can redirect the "
+                f"connection off-box and cannot be validated inline (ADR-0003) — unset it"
+            )
 
 
 def _safe_close(pool: Any) -> None:
