@@ -141,8 +141,21 @@ def make_gate_node(
                 current = {"gate_id": gate.name, "proposal": proposal, "error": str(exc)}
                 continue
             if recorder is not None:
-                for rec in update.get("gate_decisions", []):
-                    recorder(rec)  # land the decision in the hash-chained provenance trail
+                # Record to the trail BEFORE returning the state update (#G-020): the validated
+                # decision must land in the hash-chained trail and the graph state atomically. If
+                # the recorder fails, surface a clear GateError INSTEAD of returning the update —
+                # so the decision is neither half-applied (in graph state but absent from the
+                # tamper-evident trail) nor silently lost; the operator/runner sees an explicit
+                # failure to durably record the approval rather than a quietly diverging trail.
+                try:
+                    for rec in update.get("gate_decisions", []):
+                        recorder(rec)
+                except Exception as exc:  # noqa: BLE001 - normalize any recorder backend failure
+                    raise GateError(
+                        f"gate {gate.name!r}: decision validated but could NOT be recorded to the "
+                        f"provenance trail ({type(exc).__name__}: {exc}); not applying the state "
+                        "update so graph state cannot diverge from the trail"
+                    ) from exc
             return update
 
     return node

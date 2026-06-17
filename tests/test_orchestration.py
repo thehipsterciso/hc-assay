@@ -82,6 +82,14 @@ def test_gate_blocks_on_failed_precondition():
         g.evaluate({})
 
 
+def test_gate_rejects_non_gatedecision_precondition():
+    # #G-019: a precondition returning a non-GateDecision (e.g. None — forgot to return) must raise
+    # a typed GateError naming the contract, not an opaque AttributeError on decision.approved.
+    g = Gate("g", Phase.INGEST, Phase.BASELINE, lambda ctx: None)
+    with pytest.raises(GateError, match="expected a GateDecision"):
+        g.evaluate({})
+
+
 def test_requires_human_gate_fails_loud_without_recorder():
     # issue #11: a human-in-the-loop gate cannot pass without a provenance recorder
     g = Gate("g", Phase.INGEST, Phase.BASELINE, _approve, requires_human=True)

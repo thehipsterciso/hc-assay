@@ -137,7 +137,13 @@ def build_baseline_artifact(
         raise ValueError("'corpus' is a reserved input-hash key — rename the extra input (#B7)")
     input_hashes = {"corpus": corpus_hash}
     for name, value in (extra_inputs or {}).items():
-        input_hashes[name] = hash_value(value)
+        # Name the offending key when an extra input is not canonicalizable (#G-021): hash_value
+        # raises a raw ValueError (non-finite) / TypeError (unreproducible repr) with no context,
+        # so a rich config with one bad value gave an opaque error. Re-raise with the key.
+        try:
+            input_hashes[name] = hash_value(value)
+        except (ValueError, TypeError) as exc:
+            raise type(exc)(f"extra_input {name!r} is not canonicalizable: {exc}") from exc
 
     versions = {"engine": _ENGINE_VERSION, "python": sys.version.split()[0]}
     versions.update(component_versions or {})
