@@ -113,12 +113,57 @@ def _display_name_patterns() -> list[re.Pattern[str]]:
         # appears glued to a JSON-escaped newline ("...---\\nThomas Jones") where \b doesn't fire
         # because the escape's 'n' abuts the name (#J-002 follow-up). A trailing \b still prevents
         # matching inside a longer word (e.g. "Joneses"); the >=4-char guard bounds over-redaction.
-        pats.append(re.compile(r"\s+".join(re.escape(t) for t in n.split()) + r"\b"))
+        toks = n.split()
+        pats.append(re.compile(r"\s+".join(re.escape(t) for t in toks) + r"\b"))
+        # Redact each NAME TOKEN standalone too (#J-002 confirm-concern): the full-name pattern
+        # leaves the operator's bare first/last name in cleartext — e.g. "Thomas approves ..." and
+        # "Thomas builds and governs ..." appear in governance prose hundreds of times, uniquely
+        # re-identifying the operator. Per-token redaction (len>=4, trailing \b, no leading \b for
+        # the JSON-\n-glued case) closes it. Over-redaction is bounded: the tokens come only from
+        # the verified operator name and the corpus contains no unrelated bearer of these tokens.
+        for t in toks:
+            if len(t) >= 4 and t not in seen:
+                seen.add(t)
+                pats.append(re.compile(re.escape(t) + r"\b"))
+    return pats
+
+
+def _repo_handle_patterns() -> list[re.Pattern[str]]:
+    """Redactions for the operator's repo owner / GitHub handle (#J-008).
+
+    The handle (the ``<owner>`` in ``github.com/<owner>/<repo>``, e.g. in PR/issue URLs and
+    ``gh --repo <owner>/...`` commands) is operator-identifying PII that NO existing rule covers:
+    it is not an email (the email rule needs an ``@``), and it differs from the home-dir username
+    the bare-username rule derives. Left uncovered it leaked across hundreds of transcript files
+    (#J-008). Derive candidate handles from the git remotes and the ``ASSAY_SCRUB_HANDLES`` env;
+    redact each as a bare token (length-guarded). A handle is a single unambiguous string, so no
+    word-boundary is needed — redact it inside URLs, ``gh`` args, and the ``<handle>@`` email stem.
+    """
+    handles: list[str] = []
+    extra = os.environ.get("ASSAY_SCRUB_HANDLES", "")
+    handles.extend(h.strip() for h in extra.split(",") if h.strip())
+    try:
+        import subprocess
+
+        out = subprocess.run(["git", "remote", "-v"], capture_output=True, text=True, timeout=5)
+        if out.returncode == 0:
+            for m in re.finditer(r"github\.com[:/]([^/\s]+)/", out.stdout):
+                handles.append(m.group(1))
+    except Exception:  # noqa: BLE001 - git absent/misconfigured must never break capture
+        pass
+    pats: list[re.Pattern[str]] = []
+    seen: set[str] = set()
+    for h in handles:
+        if len(h) < 4 or h in seen:
+            continue  # too short → risks over-redacting common words; or already added
+        seen.add(h)
+        pats.append(re.compile(re.escape(h)))
     return pats
 
 
 _USERNAME_RE = _username_pattern()
 _DISPLAY_NAME_RES = _display_name_patterns()
+_REPO_HANDLE_RES = _repo_handle_patterns()
 
 
 def _scrub(text: str) -> str:
@@ -133,9 +178,13 @@ def _scrub(text: str) -> str:
     # don't re-expose it. Done last so it also catches it inside project-dir slugs / git authors.
     if _USERNAME_RE is not None:
         text = _USERNAME_RE.sub("[REDACTED]", text)
-    # Redact the operator's full display name too (#J-002) — distinct PII the username/email rules
-    # leave in cleartext (git author strings, pyproject authors=, prose).
+    # Redact the operator's full display name + bare name tokens too (#J-002) — distinct PII the
+    # username/email rules leave in cleartext (git author strings, pyproject authors=, prose).
     for pat in _DISPLAY_NAME_RES:
+        text = pat.sub("[REDACTED]", text)
+    # Redact the repo owner / GitHub handle (#J-008) — operator-identifying PII in PR/issue URLs
+    # and `gh --repo <handle>/...` commands that no email/username rule covers.
+    for pat in _REPO_HANDLE_RES:
         text = pat.sub("[REDACTED]", text)
     return text
 

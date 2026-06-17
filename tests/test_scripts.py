@@ -156,6 +156,32 @@ def test_scrub_redacts_operator_display_name(monkeypatch):
     assert "a@b.co" not in out  # email still scrubbed
 
 
+def test_scrub_redacts_bare_name_tokens(monkeypatch):
+    # #J-002 confirm-concern: the operator's bare first/last name (not just the full name) is
+    # operator PII — "Thomas approves ..." appears in governance prose hundreds of times. Each
+    # name token (len>=4) is redacted standalone, while a longer word containing it is protected.
+    monkeypatch.setenv("ASSAY_SCRUB_NAMES", "Thomas Jones")
+    cap = _load("scripts/capture_transcripts.py", "capture_transcripts_tokens")
+    out = cap._scrub("Thomas approves the charter; Jones governs. The Joneses are unrelated.")
+    assert "Thomas approves" not in out  # bare first name redacted
+    assert "Jones governs" not in out  # bare last name redacted
+    assert "Joneses" in out  # trailing \b protects the longer word
+
+
+def test_scrub_redacts_github_handle(monkeypatch):
+    # #J-008: the operator's repo owner / GitHub handle leaks in PR/issue URLs and `gh --repo
+    # <handle>/...` commands — operator PII no email/username rule covers. It is redacted while the
+    # repo name is preserved (legitimate provenance).
+    monkeypatch.setenv("ASSAY_SCRUB_HANDLES", "octocat-operator")
+    cap = _load("scripts/capture_transcripts.py", "capture_transcripts_handle")
+    out = cap._scrub(
+        "gh issue list --repo octocat-operator/hc-assay; "
+        "https://github.com/octocat-operator/hc-assay/pull/28"
+    )
+    assert "octocat-operator" not in out  # handle redacted everywhere
+    assert "hc-assay" in out  # repo name (not PII) preserved
+
+
 def test_example_uses_no_hardcoded_hmac_secret():
     # #F-048: the example must not carry a shippable, publicly-known HMAC secret a user could copy
     # into production. It derives a fresh random secret per run instead.
