@@ -22,7 +22,9 @@ import datetime as _dt
 import hashlib
 import json
 import os
+import platform
 import re
+import socket
 import sys
 from pathlib import Path
 
@@ -188,9 +190,65 @@ def _repo_handle_patterns() -> list[re.Pattern[str]]:
     return pats
 
 
+def _hostname_patterns() -> list[re.Pattern[str]]:
+    """Redactions for the operator's machine/infrastructure hostname (#P9-MO/P9-PII-1).
+
+    The scrubber masked email/username/display-name/handle but had NO rule for the host the node
+    runs on, so the production machine's hostname (e.g. ``hc-macmini`` / ``hc-macmini.local``) and
+    internal ``*.local`` mDNS/namespace hosts leaked into committed transcripts — operator/infra
+    identity. Derive the MACHINE hostname from ``socket.gethostname``/``platform.node`` (and, on
+    macOS, ``scutil --get LocalHostName``/``ComputerName``) and redact both its bare and ``.local``
+    forms (a machine name is distinctive). Additional internal hosts (e.g. an RDF-namespace host
+    like ``hc-grc.local``) are supplied via the comma-separated ``ASSAY_SCRUB_HOSTS`` env and have
+    ONLY their ``.local`` form redacted — the bare label (often a project name like ``hc-grc``)
+    appears in legitimate paths/repo refs and must not be over-redacted.
+    """
+    machine: list[str] = []
+    try:
+        machine.append(socket.gethostname())
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        machine.append(platform.node())
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        import subprocess
+
+        for arg in ("LocalHostName", "ComputerName"):
+            out = subprocess.run(["scutil", "--get", arg], capture_output=True, text=True, timeout=5)
+            if out.returncode == 0 and out.stdout.strip():
+                machine.append(out.stdout.strip())
+    except Exception:  # noqa: BLE001 - scutil absent (non-macOS) must never break capture
+        pass
+    extra = [h.strip() for h in os.environ.get("ASSAY_SCRUB_HOSTS", "").split(",") if h.strip()]
+
+    pats: list[re.Pattern[str]] = []
+    seen: set[str] = set()
+
+    def _base(name: str) -> str:
+        n = name.strip()
+        return n[: -len(".local")] if n.lower().endswith(".local") else n
+
+    for name in machine:  # machine hostname → redact BARE + .local (distinctive identity)
+        b = _base(name)
+        if len(b) < 4 or b.lower() in seen:
+            continue
+        seen.add(b.lower())
+        pats.append(re.compile(re.escape(b) + r"(?:\.local)?\b", re.IGNORECASE))
+    for name in extra:  # supplied namespace hosts → redact ONLY the .local FQDN form
+        b = _base(name)
+        if len(b) < 4 or ("local:" + b.lower()) in seen:
+            continue
+        seen.add("local:" + b.lower())
+        pats.append(re.compile(re.escape(b) + r"\.local\b", re.IGNORECASE))
+    return pats
+
+
 _USERNAME_RE = _username_pattern()
 _DISPLAY_NAME_RES = _display_name_patterns()
 _REPO_HANDLE_RES = _repo_handle_patterns()
+_HOSTNAME_RES = _hostname_patterns()
 
 
 def _scrub(text: str) -> str:
@@ -212,6 +270,10 @@ def _scrub(text: str) -> str:
     # Redact the repo owner / GitHub handle (#J-008) — operator-identifying PII in PR/issue URLs
     # and `gh --repo <handle>/...` commands that no email/username rule covers.
     for pat in _REPO_HANDLE_RES:
+        text = pat.sub("[REDACTED]", text)
+    # Redact the machine/infrastructure hostname (#P9-PII-1) — the production node's hostname and
+    # internal *.local hosts that no other rule covers.
+    for pat in _HOSTNAME_RES:
         text = pat.sub("[REDACTED]", text)
     return text
 

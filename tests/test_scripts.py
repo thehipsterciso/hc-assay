@@ -196,6 +196,27 @@ def test_scrub_redacts_github_handle(monkeypatch):
     assert "a normal coder reviews" in out and "the ninja stays" in out
 
 
+def test_scrub_redacts_machine_and_namespace_hostnames(monkeypatch):
+    # #P9-PII-1: the production node's hostname and internal *.local hosts are operator/infra PII
+    # that no email/username/handle rule covered. The machine hostname is redacted bare + .local;
+    # an ASSAY_SCRUB_HOSTS namespace host has its .local form redacted while the bare project token
+    # (which appears in legit paths/repo refs) is preserved, and unrelated "*.local" is untouched.
+    monkeypatch.setenv("ASSAY_SCRUB_HOSTS", "hc-proj")
+    cap = _load("scripts/capture_transcripts.py", "capture_transcripts_host")
+    # force a deterministic machine hostname regardless of the test host
+    monkeypatch.setattr(cap.socket, "gethostname", lambda: "buildbox-7")
+    monkeypatch.setattr(cap.platform, "node", lambda: "buildbox-7")
+    cap._HOSTNAME_RES = cap._hostname_patterns()
+    out = cap._scrub(
+        "ran on buildbox-7.local (bare buildbox-7); ns https://hc-proj.local/prov#; "
+        "repo hc-proj/app and settings.local.json"
+    )
+    assert "buildbox-7" not in out  # machine hostname redacted (bare + .local)
+    assert "hc-proj.local" not in out  # namespace host .local form redacted
+    assert "hc-proj/app" in out  # bare project token preserved (not over-redacted)
+    assert "settings.local.json" in out  # unrelated *.local untouched (no blanket rule)
+
+
 def test_example_uses_no_hardcoded_hmac_secret():
     # #F-048: the example must not carry a shippable, publicly-known HMAC secret a user could copy
     # into production. It derives a fresh random secret per run instead.

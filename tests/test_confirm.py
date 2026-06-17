@@ -129,6 +129,22 @@ def test_verdict_pvalue_boundary_is_inclusive_at_alpha():
     )
 
 
+def test_alpha_none_raises_clear_valueerror_not_opaque_typeerror():
+    # #P9-MO-1: when alpha is locked on NEITHER the hypothesis NOR the call, it resolves to None and
+    # the old `0.0 < None` comparison raised an opaque TypeError. It must raise a ValueError that
+    # NAMES alpha and says how to provide it. (pytest.raises(ValueError) would not catch a TypeError,
+    # so this discriminates the fix.)
+    with pytest.raises(ValueError, match="alpha is required"):
+        verdict_from_pvalue(
+            "h",
+            statistic=1.0,
+            p_value=0.01,
+            alpha=None,  # type: ignore[arg-type]
+            powered=True,
+            direction_supports_claim=True,
+        )
+
+
 @pytest.mark.parametrize(
     "kw",
     [
