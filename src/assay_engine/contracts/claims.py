@@ -16,6 +16,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Iterable, Mapping, Protocol
 
+from assay_engine._canonical import hash_value
 from assay_engine._frozen import freeze_mapping
 
 
@@ -39,6 +40,31 @@ class ClaimRecord:
         object.__setattr__(self, "provenance", freeze_mapping(self.provenance))
 
 
+def claim_set_fingerprint(claims: Iterable[ClaimRecord]) -> str:
+    """The canonical, engine-reproducible content hash of a claim set (pass 3, #F-001).
+
+    This is THE fingerprint scheme the engine uses as authoritative provenance. An
+    :class:`ExternalClaimsSource` must return exactly this from ``claim_fingerprint()`` over the
+    same records ``claims()`` yields — the engine recomputes it over the materialized claims and
+    refuses to adjudicate on a mismatch, so the source's fingerprint is a real content
+    commitment (a source cannot attest to one claim set and adjudicate another) rather than an
+    unverifiable self-report in an arbitrary scheme. The hash is order-sensitive and covers
+    every field of every record.
+    """
+    return hash_value(
+        [
+            {
+                "claim_id": c.claim_id,
+                "subject": c.subject,
+                "referents": list(c.referents),
+                "assertion": c.assertion,
+                "provenance": c.provenance,
+            }
+            for c in claims
+        ]
+    )
+
+
 class ExternalClaimsSource(Protocol):
     """Adapter-provided access to a dataset's external claims (adjudication mode only)."""
 
@@ -47,5 +73,12 @@ class ExternalClaimsSource(Protocol):
         ...
 
     def claim_fingerprint(self) -> str:
-        """Stable content hash of the claim set, for provenance and pre-registration."""
+        """Content commitment to the claim set, for provenance and pre-registration.
+
+        Must equal :func:`claim_set_fingerprint` computed over the records ``claims()`` yields.
+        The engine recomputes this canonical fingerprint over the materialized claims and
+        raises ``FirewallViolation`` if the source's self-report disagrees (pass 3, #F-001), so
+        ``claim_fingerprint()`` is an enforced commitment, not an unverified label. Use
+        :func:`claim_set_fingerprint` to implement it.
+        """
         ...

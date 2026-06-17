@@ -171,12 +171,12 @@ _STABLE_LO = [-100.0] * 20  # far below -> stable for "less"
 
 
 def test_whole_corpus_rejects_invalid_predicted_direction():
-    # #128: an unrecognized direction must RAISE, not silently fall through to the 'less' tail
-    # (which would flip supported<->contradicted). Both the locked-direction and the
-    # confirm-time-argument paths must validate.
-    bad = _locked(HypothesisKind.WHOLE_CORPUS, predicted_direction="up")
-    with pytest.raises(ValueError, match="predicted_direction must be one of"):
-        confirm_whole_corpus(bad, observed=10.0, null_distribution=[0.0] * 100, alpha=0.05)
+    # #128 + #F-002: an unrecognized direction must RAISE, not silently fall through to the
+    # 'less' tail (which would flip supported<->contradicted). A locked invalid direction is now
+    # rejected at the EARLIEST point — hypothesis construction — so it can never be bound into a
+    # pre-registration proof; the confirm-time-argument path still validates too.
+    with pytest.raises(ValueError, match="predicted_direction must be 'greater' or 'less'"):
+        _locked(HypothesisKind.WHOLE_CORPUS, predicted_direction="up")
     ok = _locked(HypothesisKind.WHOLE_CORPUS)  # no locked direction
     with pytest.raises(ValueError, match="predicted_direction must be one of"):
         confirm_whole_corpus(
@@ -493,6 +493,45 @@ def test_unit_level_rejects_empty_evaluated_ids():
             _locked(HypothesisKind.UNIT_LEVEL),
             split=_split(),
             evaluated_ids=set(),
+            statistic=2.0,
+            p_value=0.01,
+            alpha=0.05,
+            powered=True,
+            direction_supports_claim=True,
+        )
+
+
+# ---- predicted_direction validation at the earliest point (#F-002) ----
+
+
+def test_hypothesis_rejects_invalid_predicted_direction_at_construction():
+    # #F-002: an invalid direction must be rejected at hypothesis construction — the earliest
+    # point — so it can never be cryptographically bound into a pre-registration proof, nor reach
+    # confirm_unit_level (which takes direction as a trusted caller flag and otherwise never
+    # checks the locked direction at all). Pre-fix: construction accepted "UP" silently.
+    with pytest.raises(ValueError, match="predicted_direction must be 'greater' or 'less'"):
+        Hypothesis(
+            hypothesis_id="h",
+            statement="s",
+            kind=HypothesisKind.UNIT_LEVEL,
+            origin=HypothesisOrigin.DISCOVERY,
+            test_name="t",
+            decision_rule="r",
+            predicted_direction="UP",
+        )
+
+
+def test_confirm_unit_level_revalidates_locked_direction_defensively():
+    # #F-002 defense-in-depth: even if an invalid predicted_direction is smuggled onto a
+    # hypothesis past __post_init__, confirm_unit_level re-validates rather than confirming
+    # against an unrecognized tail. Pre-fix: confirm_unit_level never read predicted_direction.
+    h = _locked(HypothesisKind.UNIT_LEVEL, predicted_direction="greater")
+    object.__setattr__(h, "predicted_direction", "UP")  # bypass construction-time validation
+    with pytest.raises(ValueError, match="predicted_direction must be one of"):
+        confirm_unit_level(
+            h,
+            split=_split(),
+            evaluated_ids={"c", "d"},
             statistic=2.0,
             p_value=0.01,
             alpha=0.05,

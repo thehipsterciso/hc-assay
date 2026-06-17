@@ -158,9 +158,20 @@ def adjudicate(
     with guard.sealed():
         baseline = baseline_builder.build(corpus, claim_guard=guard)
 
+    # Materialize and guard empty here (pass 3, #F-010): the pipeline runner rejects an empty
+    # claim set as a misconfiguration, but the standalone entry point silently returned a vacuous
+    # total=0 scorecard — an inconsistent contract where one caller errors and the other does
+    # not. Fail loud uniformly: adjudicating zero claims scores nothing and is never intended.
+    materialized = list(claims_source.claims())
+    if not materialized:
+        raise ValueError(
+            "adjudication requires at least one claim; the claims source yielded none "
+            "(nothing to adjudicate)"
+        )
+
     scorecard = adjudicate_with_baseline(
         baseline,
-        claims_source.claims(),
+        materialized,
         hypothesis_for=hypothesis_for,
         confirm=confirm,
         authority=authority,
@@ -206,8 +217,21 @@ def adjudicate_with_baseline(
                 "must be unique (a repeat would inflate the scorecard denominator)"
             )
         seen_claim_ids.add(c.claim_id)
+    # within-run hypothesis uniqueness (pass 3, #F-019): two *distinct* claims whose
+    # ``hypothesis_for`` maps to the same hypothesis_id would each contribute a verdict for that
+    # one hypothesis, double-counting it in the scorecard denominator and biasing alignment_rate.
+    # The claim_id guard above cannot catch this (the claim_ids differ); guard the hypothesis_id
+    # separately so one hypothesis decides the source's alignment exactly once.
+    seen_hypothesis_ids: set[str] = set()
     for claim in materialized:
         hypothesis = hypothesis_for(claim)
+        if hypothesis.hypothesis_id in seen_hypothesis_ids:
+            raise FirewallViolation(
+                f"duplicate hypothesis_id {hypothesis.hypothesis_id!r} produced for claim "
+                f"{claim.claim_id!r} — two claims map to one hypothesis, which would "
+                "double-count it in the scorecard"
+            )
+        seen_hypothesis_ids.add(hypothesis.hypothesis_id)
         if hypothesis.origin is not HypothesisOrigin.EXTERNAL_CLAIM:
             raise FirewallViolation(
                 f"claim {claim.claim_id!r} produced a {hypothesis.origin.value!r} hypothesis; "
@@ -223,6 +247,14 @@ def adjudicate_with_baseline(
         # hypothesis cannot have been tuned to the baseline).
         require_preregistered(hypothesis, authority=authority, not_after=not_after)
         verdict = confirm(hypothesis, baseline, claim)
+        # A confirmer that forgets to `return` yields None; accessing verdict.hypothesis_id
+        # would raise an opaque AttributeError instead of a typed firewall error (pass 3,
+        # #F-021). Guard the contract explicitly.
+        if not isinstance(verdict, Verdict):
+            raise FirewallViolation(
+                f"confirm returned {type(verdict).__name__} for hypothesis "
+                f"{hypothesis.hypothesis_id!r} — expected a Verdict"
+            )
         if verdict.hypothesis_id != hypothesis.hypothesis_id:
             raise FirewallViolation(
                 f"verdict for hypothesis {hypothesis.hypothesis_id!r} reports hypothesis_id "

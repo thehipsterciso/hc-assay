@@ -80,4 +80,18 @@ class Hypothesis:
     def __post_init__(self) -> None:
         if self.origin is HypothesisOrigin.EXTERNAL_CLAIM and not self.source_claim_id:
             raise ValueError("EXTERNAL_CLAIM hypotheses must carry a source_claim_id")
+        # Validate predicted_direction at the earliest possible point (pass 3, #F-002): an
+        # invalid tail ("up", "UP", "") must never reach lock_hypothesis (which would
+        # cryptographically bind garbage into the proof) nor confirm_unit_level (which does not
+        # otherwise re-validate it). Only the two recognized tails — or None (deferred to
+        # confirm time on the whole-corpus path) — are admissible.
+        if self.predicted_direction is not None and self.predicted_direction not in (
+            "greater",
+            "less",
+        ):
+            raise ValueError(
+                "predicted_direction must be 'greater' or 'less' (or None); got "
+                f"{self.predicted_direction!r} — an unrecognized tail would silently flip the "
+                "supported/contradicted verdict"
+            )
         object.__setattr__(self, "params", freeze_mapping(self.params))
