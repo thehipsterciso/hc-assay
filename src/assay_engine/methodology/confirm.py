@@ -333,7 +333,7 @@ def confirm_whole_corpus(
     null_distribution: Sequence[float],
     alpha: float,
     resample_statistics: Sequence[float] | None = None,
-    stability_threshold: float = 0.9,
+    stability_threshold: float | None = None,
     predicted_direction: Direction | None = None,
     authority: TimestampAuthority | None = None,
 ) -> Verdict:
@@ -360,12 +360,15 @@ def confirm_whole_corpus(
     # Cross-check the confirm-time thresholds against any pre-registered ones (#H-001): a locked
     # alpha / stability bar cannot be overridden post-hoc.
     alpha = cast(float, _resolve_locked_param(hypothesis.alpha, alpha, "alpha"))
-    stability_threshold = cast(
-        float,
-        _resolve_locked_param(
-            hypothesis.stability_threshold, stability_threshold, "stability_threshold"
-        ),
+    # stability_threshold's confirm-time default is None (a sentinel), NOT 0.9 (#CV-M-1): a fixed
+    # 0.9 default was indistinguishable from a caller explicitly passing 0.9, so a hypothesis that
+    # locked a threshold != 0.9 ALWAYS raised a spurious "contradicts pre-registered" error unless
+    # the caller restated it. Resolve locked-wins-else-supplied, then fall back to 0.9 only when
+    # neither was given.
+    resolved_stability = _resolve_locked_param(
+        hypothesis.stability_threshold, stability_threshold, "stability_threshold"
     )
+    stability_threshold = 0.9 if resolved_stability is None else resolved_stability
     _validate_alpha(alpha)
     _validate_finite("observed", observed)
     if not null_distribution:

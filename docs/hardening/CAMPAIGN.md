@@ -36,12 +36,16 @@ All passes, findings, verdicts, fixes, confirmations, and retrospectives are doc
 | 2 | harden/pass-2 | 33 confirmed (#124-#156) | 33/33 (2-agent) | 33/33 fixed; 21 CONFIRMED + 6 CONCERN→remediated, 0 rejected | #157 | merged |
 | 3 | harden/pass-3 | 54 deduped; 49 confirmed (F-001..F-054), 5 rejected | 49/49 (2-agent) | 43 code/test fixed + 1 reclassified-FP (F-005) + 2 scoped-declines (F-035, F-016 sub) + 1 deferred-by-mandate-and-mitigated (F-024); confirm 40/46 + 6 CONCERN→remediated | #161 | merged |
 | 4 | harden/pass-4 | 33 raw → 7 self-refuted → 24 deduped; 23 confirmed (G-001..G-024), 1 rejected | 23/23 (2-agent) | 23 fixed; confirm 22/23 + 1 CONCERN (G-004 test) → remediated | #162 | merged |
-| 5 | harden/pass-5 | 30 raw → 4 self-refuted → 24 deduped; 19 confirmed (H-001..H-024), 1 rejected, 4 split | 19/19 (2-agent) | 19 fixed; confirm 19/19, 0 CONCERN | — | in progress |
+| 5 | harden/pass-5 | 30 raw → 4 self-refuted → 24 deduped; 19 confirmed (H-001..H-024), 1 rejected, 4 split | 19/19 (2-agent) | 19 fixed; confirm 19/19, 0 CONCERN | #166 | merged |
+| 6 | harden/pass-6 | 4 split re-verified (all rejected) + 3 fresh confirmed (CV-O-1 high, CV-M-1, CV-S-1) | 3/3 (2-agent) | 3 fixed; confirm 3/3, 0 CONCERN | — | in progress |
 
-**CONVERGENCE REACHED (pass 5):** confirmed-finding count 22→33→49→23→19; pass-5 had a single
-high (H-001, a refinement of the #G-001 firewall, not a new class), ~half doc-honesty/test polish,
-and 0 confirmation concerns. See PASS-5.md §6. The campaign continues to the deadline per mandate,
-but the codebase is hardened-stable; further passes are expected to confirm convergence.
+**CONVERGENCE — CORRECTED (pass 6).** The pass-5 convergence call was PREMATURE: the four split
+findings did re-verify as elective (confirming behavioral-methodology convergence), but pass-6's
+fresh sweep found a HIGH the count-trend missed — CV-O-1, transcript redaction bypassed for every
+non-.jsonl file (PII/secrets in committed .json transcripts). Two of three pass-6 findings were
+follow-on regressions of pass-5's OWN fixes (#H-001→#CV-M-1, #H-022→#CV-S-1). Lesson: convergence
+is per-dimension, and fixes create new surface. See PASS-6.md §5. Convergence is NOT re-declared;
+pass 7 adds a per-dimension coverage matrix + a fix-regression audit (PASS-6.md §6).
 
 ## Pass-3 added assessment dimensions (from pass-2 retrospective)
 
@@ -80,3 +84,12 @@ but the codebase is hardened-stable; further passes are expected to confirm conv
   REINSTATE each refuted/rejected finding, to catch over-eager refutations.
 - **Convergence check** — if pass 5's confirmed-high count is ~0, state explicitly that the
   campaign is converging rather than manufacturing low-value findings.
+
+## Pass-7 added assessment dimensions (from pass-6 correction)
+
+- **Per-dimension coverage matrix** — before any convergence claim, enumerate the hardening
+  dimensions (methodology, concurrency, security/PII, supply-chain, observability, error-contracts,
+  docs, tests) and confirm each was the EXPLICIT primary target of a recent assessor — a falling
+  count can mask a never-probed dimension (the CV-O-1 class: redaction file-type coverage).
+- **Fix-regression audit** — one assessor dedicated to the immediately-prior pass's diff: every
+  fix is new code; does it introduce a follow-on defect (the #H-001→#CV-M-1, #H-022→#CV-S-1 class)?

@@ -101,10 +101,16 @@ def _copy_scrubbed(srcf: Path, dstf: Path) -> dict | None:
     try:
         dstf.parent.mkdir(parents=True, exist_ok=True)
         raw = srcf.read_bytes()
-        if srcf.suffix == ".jsonl":
-            data = _scrub(raw.decode("utf-8", errors="replace")).encode("utf-8")
+        # Scrub EVERY text file, not only .jsonl (#CV-O-1): the session subtree also holds .json
+        # workflow/subagent transcripts that carry the same operator PII + credential-shaped
+        # secrets — the old suffix==".jsonl" gate copied those RAW, bypassing redaction entirely.
+        # Decode strictly to classify: text → scrub; genuinely binary (rare here) → copy verbatim.
+        try:
+            text = raw.decode("utf-8")
+        except UnicodeDecodeError:
+            data = raw  # binary blob — nothing to scrub
         else:
-            data = raw
+            data = _scrub(text).encode("utf-8")
         if dstf.exists() and dstf.read_bytes() == data:
             pass  # unchanged — still report it in the manifest
         else:
