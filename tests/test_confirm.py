@@ -188,6 +188,26 @@ def test_whole_corpus_rejects_invalid_predicted_direction():
         )
 
 
+def test_resample_stability_numpy_path_matches_pure_python():
+    # #F-017: the numpy-vectorized stability computation must return EXACTLY the pure-Python
+    # value (identical integer counts + (extreme+1)/(n+1) <= alpha test) — it is a speed
+    # optimization, never a semantic change.
+    import random
+
+    from assay_engine.methodology.confirm import _empirical_p, _resample_stability
+
+    def _pure(resamples, null, tail, alpha):
+        return sum(1 for r in resamples if _empirical_p(null, r, tail) <= alpha) / len(resamples)
+
+    rng = random.Random(7)
+    for _ in range(50):
+        null = [rng.gauss(0, 1) for _ in range(40)]
+        res = [rng.gauss(0.4, 1) for _ in range(25)]
+        for tail in ("greater", "less"):
+            for alpha in (0.01, 0.05, 0.2):
+                assert _resample_stability(res, null, tail, alpha) == _pure(res, null, tail, alpha)
+
+
 def test_whole_corpus_stability_requires_reproducing_the_observed_effect():
     # #139: resamples that clear the null median by an epsilon (reproducing only the effect SIGN,
     # not its magnitude) must NOT earn stability=1.0 / SUPPORTED. Stability must measure that each

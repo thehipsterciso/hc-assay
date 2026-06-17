@@ -269,6 +269,7 @@ def run_study(
     clock: Clock | None = None,
     secret: bytes | None = None,
     trail: ProvenanceTrail | None = None,
+    verify_trail: bool = True,
 ) -> StudyResult:
     """Run one study end-to-end through its governed phase sequence. See module docstring.
 
@@ -698,7 +699,15 @@ def run_study(
                 f"visited phase sequence {[p.name for p in visited]} != required "
                 f"{[p.name for p in required]}"
             )
-        trail.verify()  # the provenance chain must be intact before we hand back the result
+        if verify_trail:
+            # Re-verify the whole chain before handing back the result. This re-hashes every
+            # entry — O(N) — which is redundant for an in-memory trail this call built and never
+            # mutated (each entry was hashed correctly when appended). It is a cheap safety net in
+            # the common case but a real cost for very large trails, so a perf-sensitive caller
+            # that trusts the in-process trail may pass verify_trail=False (pass 3, #F-036). The
+            # important re-verification — of a trail deserialized from an external store — is the
+            # caller's verify_records() on from_records(), which this flag does not affect.
+            trail.verify()  # the provenance chain must be intact before we hand back the result
         # Terminal success entry (pass 3, #F-006): a phase 'report' record is not a run-level
         # terminus, so a trail truncated mid-run is otherwise indistinguishable from one that
         # completed. Record run_end ONLY after verify() passes, so its presence as the last
