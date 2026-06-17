@@ -217,6 +217,17 @@ def test_scrub_redacts_machine_and_namespace_hostnames(monkeypatch):
     assert "settings.local.json" in out  # unrelated *.local untouched (no blanket rule)
 
 
+def test_precommit_hook_wires_namespace_host_into_capture():
+    # #P9-PII-1 confirm-concern: the namespace host (hc-grc.local) only redacts when ASSAY_SCRUB_HOSTS
+    # names it; the machine hostname auto-derives but this does not. The pre-commit hook must set
+    # ASSAY_SCRUB_HOSTS before running capture, else every commit re-introduces hc-grc.local.
+    hook = (_ROOT / ".githooks" / "pre-commit").read_text(encoding="utf-8")
+    assert "ASSAY_SCRUB_HOSTS" in hook, "pre-commit hook does not wire the namespace host scrub"
+    # it must be exported BEFORE the capture invocation
+    pre = hook.split("capture_transcripts.py")[0]
+    assert "ASSAY_SCRUB_HOSTS" in pre, "ASSAY_SCRUB_HOSTS set after capture (too late)"
+
+
 def test_example_uses_no_hardcoded_hmac_secret():
     # #F-048: the example must not carry a shippable, publicly-known HMAC secret a user could copy
     # into production. It derives a fresh random secret per run instead.
