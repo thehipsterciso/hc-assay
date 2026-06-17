@@ -94,7 +94,11 @@ jobs:
         with:
           python-version: "3.12"
       - name: Install pip-audit
-        run: python -m pip install --upgrade pip pip-audit
+        # Pin the audit tooling to exact versions (#G-022): an unpinned pip-audit can change
+        # advisory results / exit behavior between releases, making the supply-chain gate
+        # non-reproducible (a green commit could fail tomorrow on a tooling bump) — the analogue
+        # of the uv pin (#F-031).
+        run: python -m pip install --upgrade pip && python -m pip install pip-audit==2.10.1
       - name: Lockfiles are in sync with pyproject (reproducibility guard)
         run: |
           # Pin uv to the exact version the lockfiles were generated with (#F-031): an unpinned
@@ -132,7 +136,19 @@ jobs:
           # downstream license/transitive monitoring has a stable artifact to track (#147). No
           # `|| true` mask (#F-012): a pip-audit failure must fail the step, and the SBOM must be
           # non-empty, so a broken/absent SBOM cannot pass CI green.
-          pip-audit --progress-spinner off -r requirements.lock --format cyclonedx-json -o sbom.cyclonedx.json
+          # Apply the SAME allowlist as the gate (#G-015): pip-audit exits non-zero on ANY finding
+          # regardless of output format, so without the allowlist an ACCEPTED advisory would fail
+          # SBOM generation here even though the gate step passed — coupling SBOM emission to vuln
+          # status and making the allowlist ineffective. The gate step already ran first, so a
+          # NON-allowlisted advisory has failed the job before we reach here.
+          IGNORES=()
+          if [ -f .pip-audit-ignore ]; then
+            while IFS= read -r id || [ -n "$id" ]; do
+              case "$id" in ''|\#*) continue ;; esac
+              IGNORES+=(--ignore-vuln "$id")
+            done < .pip-audit-ignore
+          fi
+          pip-audit --progress-spinner off -r requirements.lock --format cyclonedx-json -o sbom.cyclonedx.json "${IGNORES[@]}"
           test -s sbom.cyclonedx.json
           echo "SBOM emitted ($(wc -c < sbom.cyclonedx.json) bytes)"
       - name: Upload SBOM artifact
@@ -151,7 +167,7 @@ jobs:
           # lockfile pins (#F-013). Advisory monitoring of the rest is handled by Dependabot.
           pip install --require-hashes -r requirements.lock
           pip install --no-deps -e .
-          python -m pip install pip-licenses
+          python -m pip install pip-licenses==5.5.5  # pinned for reproducible license output (#G-022)
           pip-licenses --format=json --with-system > licenses.json
           python scripts/license_gate.py licenses.json
       - name: Upload license report

@@ -263,17 +263,26 @@ def from_records(
     secret: bytes | None = None,
 ) -> tuple[ProvenanceEntry, ...]:
     """Rebuild entries from :meth:`ProvenanceTrail.to_records` output and verify the chain."""
-    entries = tuple(
-        ProvenanceEntry(
-            seq=r["seq"],
-            kind=r["kind"],
-            summary=r["summary"],
-            payload=r["payload"],
-            timestamp=r["timestamp"],
-            prev_hash=r["prev_hash"],
-            entry_hash=r["entry_hash"],
+    _required = ("seq", "kind", "summary", "payload", "timestamp", "prev_hash", "entry_hash")
+    rebuilt: list[ProvenanceEntry] = []
+    for i, r in enumerate(records):
+        missing = [k for k in _required if k not in r]
+        if missing:
+            # A malformed/incompatible trail record must surface as the module's typed error, not a
+            # raw KeyError, so a caller catching ProvenanceError to handle a corrupt trail file
+            # covers this case too (pass 4, #G-012).
+            raise ProvenanceError(f"provenance record {i} is missing field(s) {missing}")
+        rebuilt.append(
+            ProvenanceEntry(
+                seq=r["seq"],
+                kind=r["kind"],
+                summary=r["summary"],
+                payload=r["payload"],
+                timestamp=r["timestamp"],
+                prev_hash=r["prev_hash"],
+                entry_hash=r["entry_hash"],
+            )
         )
-        for r in records
-    )
+    entries = tuple(rebuilt)
     verify_records(entries, secret=secret)
     return entries

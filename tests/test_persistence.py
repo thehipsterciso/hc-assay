@@ -362,6 +362,7 @@ def fake_pg(monkeypatch):
         "lock_on": [],
         "unlock_on": [],
         "lock_timeout_on": [],
+        "lock_timeout_reset_on": [],
         "pools": [],
         "pool_kwargs": [],
         "atexit_registered": 0,
@@ -369,7 +370,9 @@ def fake_pg(monkeypatch):
 
     class FakeConn:
         def execute(self, sql, params=None):
-            if "lock_timeout" in sql:
+            if "RESET lock_timeout" in sql:
+                state["lock_timeout_reset_on"].append(id(self))  # #G-002 GUC reset
+            elif "lock_timeout" in sql:
                 state["lock_timeout_on"].append(params)
             # pg_advisory_unlock contains the substring "pg_advisory_lock", so test unlock FIRST
             # (#F-047): the explicit best-effort unlock in the finally was previously untested.
@@ -675,6 +678,18 @@ def test_migration_lock_timeout_is_read_fresh_from_env(fake_pg, monkeypatch):
     monkeypatch.setenv("ASSAY_MIGRATION_LOCK_TIMEOUT_MS", "12345")
     cp.get_checkpointer()
     assert state["lock_timeout_on"] and int(state["lock_timeout_on"][0][0]) == 12345
+
+
+def test_migration_lock_timeout_is_reset_on_the_bootstrap_connection(fake_pg):
+    # #G-002: the session-scoped lock_timeout GUC set for bootstrap must be RESET before the
+    # connection returns to the pool, so later checkpoint ops on that pooled connection don't
+    # silently inherit a non-default lock_timeout the operator never configured.
+    cp, state = fake_pg
+    cp.get_checkpointer()
+    assert state["lock_timeout_on"], "lock_timeout was set for bootstrap"
+    assert state["lock_timeout_reset_on"], "lock_timeout was not RESET after bootstrap (#G-002)"
+    # the reset ran on the SAME connection that set it (the bootstrap connection)
+    assert state["lock_timeout_reset_on"] == state["lock_on"]
 
 
 def test_migration_lock_timeout_zero_skips_set_config(fake_pg, monkeypatch):

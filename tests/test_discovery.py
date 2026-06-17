@@ -73,6 +73,19 @@ def test_discover_and_confirm_rejects_duplicate_hypothesis_ids():
         )
 
 
+def test_discover_and_confirm_rejects_non_verdict_confirmer():
+    # #G-011: a confirmer returning a non-Verdict (e.g. None — forgot to return) must raise a typed
+    # FirewallViolation, not an opaque AttributeError at verdict.hypothesis_id (mirrors #F-021).
+    with pytest.raises(FirewallViolation, match="expected a Verdict"):
+        discover_and_confirm(
+            _corpus(),
+            _split(),
+            discover=lambda c: [_locked_discovery("H1")],
+            confirm=lambda h, held_out: None,
+            authority=_AUTH,
+        )
+
+
 def test_discover_and_confirm_rejects_empty_discovery():
     # #F-042: discover() returning nothing is a vacuous run indistinguishable from a broken
     # callable that forgot to return — fail loud rather than complete with zero verdicts.

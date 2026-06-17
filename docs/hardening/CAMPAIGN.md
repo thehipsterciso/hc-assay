@@ -34,7 +34,8 @@ All passes, findings, verdicts, fixes, confirmations, and retrospectives are doc
 |------|--------|----------|-----------|-------|----|--------|
 | 1 | harden/pass-1 | 22 confirmed (#101-#122) | 22/22 (2-agent) | 22/22 fixed+confirmed | #123 | merged |
 | 2 | harden/pass-2 | 33 confirmed (#124-#156) | 33/33 (2-agent) | 33/33 fixed; 21 CONFIRMED + 6 CONCERN→remediated, 0 rejected | #157 | merged |
-| 3 | harden/pass-3 | 54 deduped; 49 confirmed (F-001..F-054), 5 rejected | 49/49 (2-agent) | 43 code/test fixed + 1 reclassified-FP (F-005) + 2 scoped-declines (F-035, F-016 sub) + 1 deferred-by-mandate-and-mitigated (F-024); confirm 40/46 + 6 CONCERN→remediated | — | in progress |
+| 3 | harden/pass-3 | 54 deduped; 49 confirmed (F-001..F-054), 5 rejected | 49/49 (2-agent) | 43 code/test fixed + 1 reclassified-FP (F-005) + 2 scoped-declines (F-035, F-016 sub) + 1 deferred-by-mandate-and-mitigated (F-024); confirm 40/46 + 6 CONCERN→remediated | #161 | merged |
+| 4 | harden/pass-4 | 33 raw → 7 self-refuted → 24 deduped; 23 confirmed (G-001..G-024), 1 rejected | 23/23 (2-agent) | 23 fixed; confirm 22/23 + 1 CONCERN (G-004 test) → remediated | — | in progress |
 
 ## Pass-3 added assessment dimensions (from pass-2 retrospective)
 
@@ -60,3 +61,16 @@ All passes, findings, verdicts, fixes, confirmations, and retrospectives are doc
   the F-005 class (a false positive that survived 2-agent verification).
 - **Decline/deferral scrutiny** — for every decline or deferral, an agent enumerates the PARTIAL
   mitigations a binary decline skips (the F-024 class).
+
+## Pass-5 added assessment dimensions (from pass-4 retrospective)
+
+- **Probabilistic-test detection** — flag any test whose pass/fail depends on uncontrolled
+  nondeterminism (hash seed, wall-clock, dict/set order, timing thresholds); it must pin or assert
+  the property directly (the G-004 class — a guard that passed only ~68% of the time).
+- **Cross-tier symmetry** — for every pair of parallel mechanisms (e.g. bootstrap vs pooled
+  connection, BULK vs HIGH_STAKES bounding), diff their hardening and flag what one has that the
+  other lacks (the G-002/G-003 class).
+- **Refutation-of-refutations** — keep self-refutation, but add a step where one agent argues to
+  REINSTATE each refuted/rejected finding, to catch over-eager refutations.
+- **Convergence check** — if pass 5's confirmed-high count is ~0, state explicitly that the
+  campaign is converging rather than manufacturing low-value findings.

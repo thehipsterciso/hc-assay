@@ -52,6 +52,26 @@ _SECRET_PATTERNS = [
 ]
 
 
+def _username_pattern() -> re.Pattern[str] | None:
+    """A redaction for the bare operator username wherever it appears (#G-007).
+
+    The /Users|/home path rule only masks the username inside a path; the same handle leaks via
+    git author strings, prose, and the Claude project-dir slug (``-Users-<name>-...``). Derive the
+    handle from the home directory and redact it as a standalone token too. Skipped for trivially
+    short/None handles (e.g. a CI 'root') to avoid over-redacting common words.
+    """
+    try:
+        name = Path.home().name
+    except Exception:  # noqa: BLE001 - never break capture over a missing home
+        return None
+    if not name or len(name) < 4:
+        return None
+    return re.compile(re.escape(name))
+
+
+_USERNAME_RE = _username_pattern()
+
+
 def _scrub(text: str) -> str:
     for pat in _SECRET_PATTERNS:
         if pat.groups == 2:
@@ -60,6 +80,10 @@ def _scrub(text: str) -> str:
             text = pat.sub(r"\1[REDACTED]", text)
         else:
             text = pat.sub("[REDACTED]", text)
+    # Redact the bare operator username everywhere (#G-007), after the path rule so masked paths
+    # don't re-expose it. Done last so it also catches it inside project-dir slugs / git authors.
+    if _USERNAME_RE is not None:
+        text = _USERNAME_RE.sub("[REDACTED]", text)
     return text
 
 

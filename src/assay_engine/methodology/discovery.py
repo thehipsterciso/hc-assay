@@ -148,6 +148,14 @@ def discover_and_confirm(
             hypothesis, authority=authority, not_after=_dt.datetime.now(tz=_dt.timezone.utc)
         )
         verdict = confirm(hypothesis, held_out)
+        # A confirmer that forgets to `return` yields None; accessing verdict.hypothesis_id would
+        # raise an opaque AttributeError instead of a typed firewall error (pass 4, #G-011 —
+        # mirrors the pipeline/adjudication guards from #F-021).
+        if not isinstance(verdict, Verdict):
+            raise FirewallViolation(
+                f"confirm returned {type(verdict).__name__} for hypothesis "
+                f"{hypothesis.hypothesis_id!r} — expected a Verdict"
+            )
         if verdict.hypothesis_id != hypothesis.hypothesis_id:
             raise FirewallViolation(
                 f"verdict reports hypothesis_id {verdict.hypothesis_id!r} for hypothesis "

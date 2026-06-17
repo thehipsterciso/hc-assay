@@ -182,12 +182,20 @@ def test_install_flush_on_exit_wires_atexit_and_sigterm(monkeypatch):
 
     tr._install_flush_on_exit(_Provider())
 
+    import threading
+
     assert calls["atexit"], "atexit flush handler not registered"
     calls["atexit"][0]()  # simulate interpreter exit
     assert calls["flush"] >= 1
-    if "h" in captured:  # SIGTERM handler installed (main thread)
+    # #G-014: the SIGTERM assertion was gated on `if "h" in captured`, so removing the SIGTERM
+    # wiring silently skipped it. pytest runs on the main thread, where the handler MUST be
+    # installed — assert it unconditionally there so a regression that drops the wiring fails.
+    if threading.current_thread() is threading.main_thread():
+        assert "h" in captured, "SIGTERM flush handler not installed on the main thread (#G-014)"
         captured["h"](_signal.SIGTERM, None)
         assert calls["shutdown"] >= 1
+    else:  # pragma: no cover - the suite runs on the main thread
+        pass
 
 
 def test_install_flush_on_exit_noop_without_force_flush(monkeypatch):

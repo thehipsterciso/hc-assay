@@ -429,11 +429,15 @@ def run_study(
             # #F-029). Best-effort via track() (no-ops if no tracker/run_id).
             track(_count_logger("n_units", float(len(corpus.units))))
             track(_count_logger("n_relations", float(len(corpus.relations))))
+            # Compute the corpus unit-id set ONCE and reuse it for both the split-id and feature-id
+            # validations (pass 4, #G-023 — was built twice on the same corpus).
+            corpus_unit_ids = {u.unit_id for u in corpus.units}
             # split ids must reference real corpus units (no silent partition drift, audit H4)
             if StudyMode.DISCOVERY in modes:
                 assert plan.split is not None
-                unit_ids = {u.unit_id for u in corpus.units}
-                unknown = (set(plan.split.discovery_ids) | set(plan.split.confirm_ids)) - unit_ids
+                unknown = (
+                    set(plan.split.discovery_ids) | set(plan.split.confirm_ids)
+                ) - corpus_unit_ids
                 if unknown:
                     raise FirewallViolation(
                         f"split references {len(unknown)} id(s) absent from the corpus "
@@ -442,7 +446,6 @@ def run_study(
             # optional dataset features (recorded + returned; the baseline builder is blind-built
             # from the corpus, so features are provenance/output, not a baseline input here)
             feature_matrices: list[FeatureMatrix] = []
-            corpus_unit_ids = {u.unit_id for u in corpus.units}
             for fb in defn.feature_builders:
                 fm = fb.build(corpus)
                 # features must describe THIS corpus's units — no fictional or duplicate ids
@@ -722,6 +725,25 @@ def run_study(
             n_provenance_entries=len(trail.entries) + 1,  # +1 counts this terminal entry itself
         )
         track(_count_logger("run_duration_s", time.monotonic() - started_at))  # SLO metric (#F-029)
+        # Correlate the hash-chained trail to the experiment run (#G-009): persist it as a JSON
+        # artifact on the tracker so an auditor opening the run can retrieve the provenance that
+        # produced its metrics. Best-effort, like the other tracker calls — never aborts the run.
+        if tracker is not None and run_id is not None:
+
+            def _log_trail(t: ExperimentTracker, rid: str) -> None:
+                import json
+                import tempfile
+
+                from assay_engine.provenance import entries_to_records
+
+                with tempfile.NamedTemporaryFile(
+                    "w", suffix="_provenance.json", delete=False, encoding="utf-8"
+                ) as fh:
+                    json.dump(list(entries_to_records(list(trail.entries))), fh, indent=2)
+                    path = fh.name
+                t.log_artifact(rid, path)
+
+            track(_log_trail)
         ok = True
     except Exception as exc:
         # Record a terminal failure entry BEFORE re-raising so the abort reason is recoverable

@@ -177,10 +177,13 @@ def test_whole_corpus_rejects_invalid_predicted_direction():
     # pre-registration proof; the confirm-time-argument path still validates too.
     with pytest.raises(ValueError, match="predicted_direction must be 'greater' or 'less'"):
         _locked(HypothesisKind.WHOLE_CORPUS, predicted_direction="up")
-    ok = _locked(HypothesisKind.WHOLE_CORPUS)  # no locked direction
-    with pytest.raises(ValueError, match="predicted_direction must be one of"):
+    # a confirm-time direction is a cross-check against the LOCKED tail (#G-001); one that does not
+    # match the pre-registered direction is refused (here an invalid 'sideways' against locked
+    # 'greater').
+    locked_greater = _locked(HypothesisKind.WHOLE_CORPUS, predicted_direction="greater")
+    with pytest.raises(ValueError, match="contradicts the hypothesis's pre-registered"):
         confirm_whole_corpus(
-            ok,
+            locked_greater,
             observed=10.0,
             null_distribution=[0.0] * 100,
             alpha=0.05,
@@ -215,7 +218,7 @@ def test_whole_corpus_stability_requires_reproducing_the_observed_effect():
     null = list(range(0, 21))  # median 10
     barely = [10.0001] * 100  # just above the null median, far below the observed effect of 100
     v = confirm_whole_corpus(
-        _locked(HypothesisKind.WHOLE_CORPUS),
+        _locked(HypothesisKind.WHOLE_CORPUS, predicted_direction="greater"),
         observed=100.0,
         null_distribution=null,
         alpha=0.05,
@@ -227,7 +230,7 @@ def test_whole_corpus_stability_requires_reproducing_the_observed_effect():
     # a genuinely reproducing resample distribution (each significant vs the null) is still stable
     strong = [100.0] * 100
     v2 = confirm_whole_corpus(
-        _locked(HypothesisKind.WHOLE_CORPUS),
+        _locked(HypothesisKind.WHOLE_CORPUS, predicted_direction="greater"),
         observed=100.0,
         null_distribution=null,
         alpha=0.05,
@@ -237,9 +240,55 @@ def test_whole_corpus_stability_requires_reproducing_the_observed_effect():
     assert v2.label is VerdictLabel.SUPPORTED and v2.evidence["stability"] == 1.0
 
 
+def test_whole_corpus_records_contradiction_stability_in_evidence():
+    # #G-005: a contradiction is reportable without a stability gate (intentional asymmetry — it is
+    # evidence OF the opposite, not absence of evidence), but the opposite-tail stability must be
+    # RECORDED in evidence (when resamples were supplied) so an auditor sees whether it reproduces.
+    v = confirm_whole_corpus(
+        _locked(HypothesisKind.WHOLE_CORPUS, predicted_direction="greater"),
+        observed=0.0,
+        null_distribution=[10.0] * 100,
+        alpha=0.05,
+        resample_statistics=_STABLE_LO,  # reproduce the opposite (low) tail
+    )
+    assert v.label is VerdictLabel.CONTRADICTED
+    assert v.evidence["contradiction_stability"] == 1.0  # surfaced, even though not gated on
+
+
+def test_confirm_primitive_warns_on_presence_only_gate():
+    # #G-006: calling a confirm primitive with authority=None verifies pre-registration by PRESENCE
+    # only (no cryptographic check); the insecure fallback must warn, not pass silently.
+    with pytest.warns(UserWarning, match="authority=None"):
+        confirm_whole_corpus(
+            _locked(HypothesisKind.WHOLE_CORPUS, predicted_direction="greater"),
+            observed=10.0,
+            null_distribution=[0.0] * 100,
+            alpha=0.05,
+            resample_statistics=_STABLE_HI,
+            authority=None,
+        )
+
+
+def test_unit_level_verdict_is_governed_by_caller_flag_not_locked_direction():
+    # #G-017: at unit level the verdict polarity is decided by direction_supports_claim, NOT the
+    # locked predicted_direction (which is advisory). A hypothesis locked 'greater' with the flag
+    # False yields CONTRADICTED — the locked tail does not override the flag.
+    v = confirm_unit_level(
+        _locked(HypothesisKind.UNIT_LEVEL, predicted_direction="greater"),
+        split=_split(),
+        evaluated_ids={"c", "d"},
+        statistic=2.0,
+        p_value=0.01,
+        alpha=0.05,
+        powered=True,
+        direction_supports_claim=False,
+    )
+    assert v.label is VerdictLabel.CONTRADICTED
+
+
 def test_whole_corpus_supported_upper_tail():
     v = confirm_whole_corpus(
-        _locked(HypothesisKind.WHOLE_CORPUS),
+        _locked(HypothesisKind.WHOLE_CORPUS, predicted_direction="greater"),
         observed=10.0,
         null_distribution=[0.0] * 100,
         alpha=0.05,
@@ -254,12 +303,11 @@ def test_whole_corpus_supported_lower_tail():
     # A claim predicting a LOW statistic, observed far below the null, must be SUPPORTED
     # (previously returned INDETERMINATE under direction-blind upper-tail-only logic).
     v = confirm_whole_corpus(
-        _locked(HypothesisKind.WHOLE_CORPUS),
+        _locked(HypothesisKind.WHOLE_CORPUS, predicted_direction="less"),
         observed=0.0,
         null_distribution=[10.0] * 100,
         alpha=0.05,
         resample_statistics=_STABLE_LO,
-        predicted_direction="less",
     )
     assert v.label is VerdictLabel.SUPPORTED
 
@@ -268,7 +316,7 @@ def test_whole_corpus_contradicted_when_significant_in_opposite_tail():
     # Claim predicts HIGH, but observed is far below the null -> a real contradiction
     # (reportable without resamples; a contradiction does not need stability).
     v = confirm_whole_corpus(
-        _locked(HypothesisKind.WHOLE_CORPUS),
+        _locked(HypothesisKind.WHOLE_CORPUS, predicted_direction="greater"),
         observed=0.0,
         null_distribution=[10.0] * 100,
         alpha=0.05,
@@ -280,7 +328,7 @@ def test_whole_corpus_contradicted_when_significant_in_opposite_tail():
 def test_whole_corpus_stability_not_assessed_without_resamples():
     # issue #21: SUPPORTED is unavailable if stability was never measured.
     v = confirm_whole_corpus(
-        _locked(HypothesisKind.WHOLE_CORPUS),
+        _locked(HypothesisKind.WHOLE_CORPUS, predicted_direction="greater"),
         observed=10.0,
         null_distribution=[0.0] * 100,
         alpha=0.05,
@@ -293,7 +341,7 @@ def test_whole_corpus_stability_not_assessed_without_resamples():
 def test_whole_corpus_unstable_resamples_is_indeterminate_even_if_beats_null():
     # issue #21: resamples that don't reproduce the direction -> not stable -> indeterminate.
     v = confirm_whole_corpus(
-        _locked(HypothesisKind.WHOLE_CORPUS),
+        _locked(HypothesisKind.WHOLE_CORPUS, predicted_direction="greater"),
         observed=10.0,
         null_distribution=[0.0] * 100,
         alpha=0.05,
@@ -306,7 +354,7 @@ def test_whole_corpus_unstable_resamples_is_indeterminate_even_if_beats_null():
 
 def test_whole_corpus_not_significant_is_indeterminate():
     v = confirm_whole_corpus(
-        _locked(HypothesisKind.WHOLE_CORPUS),
+        _locked(HypothesisKind.WHOLE_CORPUS, predicted_direction="greater"),
         observed=5.0,
         null_distribution=list(range(100)),
         alpha=0.01,
@@ -343,21 +391,35 @@ def test_whole_corpus_rejects_direction_conflict_with_lock():
         )
 
 
-def test_whole_corpus_requires_some_direction():
-    with pytest.raises(ValueError):
+def test_whole_corpus_rejects_directionless_locked_hypothesis():
+    # #G-001: a LOCKED whole-corpus hypothesis with predicted_direction=None pre-registered "no
+    # direction"; confirming it (even with a confirm-time direction) would select the tail
+    # post-hoc (HARKing). The tail must be pre-registered, so a directionless locked hypothesis is
+    # refused — supplying the direction at confirm time no longer rescues it.
+    with pytest.raises(ValueError, match="not pre-registered"):
+        confirm_whole_corpus(
+            _locked(HypothesisKind.WHOLE_CORPUS),  # locked WITHOUT a direction
+            observed=0.0,
+            null_distribution=[10.0] * 100,
+            alpha=0.05,
+            resample_statistics=_STABLE_LO,
+        )
+    # and supplying a confirm-time direction does NOT rescue the directionless lock (HARKing path)
+    with pytest.raises(ValueError, match="not pre-registered"):
         confirm_whole_corpus(
             _locked(HypothesisKind.WHOLE_CORPUS),
             observed=0.0,
             null_distribution=[10.0] * 100,
             alpha=0.05,
             resample_statistics=_STABLE_LO,
+            predicted_direction="less",  # chosen after seeing observed=0.0 lands low
         )
 
 
 def test_whole_corpus_rejects_bad_stability_threshold():
     with pytest.raises(ValueError):
         confirm_whole_corpus(
-            _locked(HypothesisKind.WHOLE_CORPUS),
+            _locked(HypothesisKind.WHOLE_CORPUS, predicted_direction="greater"),
             observed=1.0,
             null_distribution=[0.0],
             alpha=0.05,
@@ -369,7 +431,7 @@ def test_whole_corpus_rejects_bad_stability_threshold():
 def test_whole_corpus_rejects_empty_resamples():
     with pytest.raises(ValueError):
         confirm_whole_corpus(
-            _locked(HypothesisKind.WHOLE_CORPUS),
+            _locked(HypothesisKind.WHOLE_CORPUS, predicted_direction="greater"),
             observed=1.0,
             null_distribution=[0.0],
             alpha=0.05,
@@ -381,7 +443,7 @@ def test_whole_corpus_rejects_empty_resamples():
 def test_whole_corpus_rejects_nonfinite_resample():
     with pytest.raises(ValueError):
         confirm_whole_corpus(
-            _locked(HypothesisKind.WHOLE_CORPUS),
+            _locked(HypothesisKind.WHOLE_CORPUS, predicted_direction="greater"),
             observed=1.0,
             null_distribution=[0.0],
             alpha=0.05,
@@ -393,7 +455,7 @@ def test_whole_corpus_rejects_nonfinite_resample():
 def test_whole_corpus_requires_null_distribution():
     with pytest.raises(ValueError):
         confirm_whole_corpus(
-            _locked(HypothesisKind.WHOLE_CORPUS),
+            _locked(HypothesisKind.WHOLE_CORPUS, predicted_direction="greater"),
             observed=1.0,
             null_distribution=[],
             alpha=0.05,
@@ -404,7 +466,7 @@ def test_whole_corpus_requires_null_distribution():
 def test_whole_corpus_rejects_non_finite():
     with pytest.raises(ValueError):
         confirm_whole_corpus(
-            _locked(HypothesisKind.WHOLE_CORPUS),
+            _locked(HypothesisKind.WHOLE_CORPUS, predicted_direction="greater"),
             observed=float("nan"),
             null_distribution=[1.0, 2.0],
             alpha=0.05,
@@ -412,7 +474,7 @@ def test_whole_corpus_rejects_non_finite():
         )
     with pytest.raises(ValueError):
         confirm_whole_corpus(
-            _locked(HypothesisKind.WHOLE_CORPUS),
+            _locked(HypothesisKind.WHOLE_CORPUS, predicted_direction="greater"),
             observed=1.0,
             null_distribution=[1.0, float("inf")],
             alpha=0.05,
@@ -468,7 +530,7 @@ def test_unit_level_clean_verdict():
 def test_unit_level_wrong_kind_rejected():
     with pytest.raises(ValueError):
         confirm_unit_level(
-            _locked(HypothesisKind.WHOLE_CORPUS),
+            _locked(HypothesisKind.WHOLE_CORPUS, predicted_direction="greater"),
             split=_split(),
             evaluated_ids={"c"},
             statistic=2.0,

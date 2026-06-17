@@ -74,6 +74,22 @@ def test_transcript_scrub_redacts_operator_pii():
     assert "/home/[REDACTED]/y" in out
 
 
+def test_transcript_scrub_redacts_bare_operator_username():
+    # #G-007: the operator username must be redacted wherever it appears (git author strings,
+    # project-dir slugs like -Users-<name>-..., prose), not only inside /Users|/home paths.
+    from pathlib import Path
+
+    cap = _load("scripts/capture_transcripts.py", "capture_transcripts_user")
+    name = Path.home().name
+    if not name or len(name) < 4:
+        import pytest
+
+        pytest.skip("home username too short to redact safely")
+    text = f"git author: {name} <x@y.z>; project dir -Users-{name}-hc-grc"
+    out = cap._scrub(text)
+    assert name not in out  # bare handle masked everywhere, not only in a /Users path
+
+
 def test_example_uses_no_hardcoded_hmac_secret():
     # #F-048: the example must not carry a shippable, publicly-known HMAC secret a user could copy
     # into production. It derives a fresh random secret per run instead.
