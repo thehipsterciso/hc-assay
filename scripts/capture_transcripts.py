@@ -73,7 +73,124 @@ def _username_pattern() -> re.Pattern[str] | None:
     return re.compile(re.escape(name))
 
 
+def _display_name_patterns() -> list[re.Pattern[str]]:
+    """Redactions for the operator's full DISPLAY NAME (#J-002).
+
+    The username/email rules leave the real name (e.g. a git ``user.name`` like "Thomas Jones")
+    in cleartext — distinct operator PII that appears in git author strings, ``pyproject``
+    ``authors=``, and prose, often right beside an already-redacted email. Derive candidate names
+    from ``git config user.name`` and the ``ASSAY_SCRUB_NAMES`` env (comma-separated), redact each
+    (and, for a multi-word name, its whitespace-flexible form). Length-guarded to avoid
+    over-redacting common words.
+    """
+    names: list[str] = []
+    extra = os.environ.get("ASSAY_SCRUB_NAMES", "")
+    names.extend(n.strip() for n in extra.split(",") if n.strip())
+    # Derive the operator name from SEVERAL sources — any one may be empty in a given context
+    # (#J-002 follow-up): on this node local `git config user.name` is unset yet commits still
+    # carry an author via global config / env, so a single-source lookup scrubbed nothing. Cover
+    # the env author vars, git config, AND the actual last-commit author.
+    for env_name in ("GIT_AUTHOR_NAME", "GIT_COMMITTER_NAME"):
+        v = os.environ.get(env_name, "").strip()
+        if v:
+            names.append(v)
+    try:
+        import subprocess
+
+        for cmd in (["git", "config", "user.name"], ["git", "log", "-1", "--format=%an"]):
+            out = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
+            if out.returncode == 0 and out.stdout.strip():
+                names.append(out.stdout.strip())
+    except Exception:  # noqa: BLE001 - git absent/misconfigured must never break capture
+        pass
+    pats: list[re.Pattern[str]] = []
+    seen: set[str] = set()
+    for n in names:
+        if len(n) < 4 or n in seen:
+            continue  # too short → risks over-redacting common words; or already added
+        seen.add(n)
+        # Flexible inter-token whitespace (e.g. "Thomas   Jones"). NO leading \b: the name often
+        # appears glued to a JSON-escaped newline ("...---\\nThomas Jones") where \b doesn't fire
+        # because the escape's 'n' abuts the name (#J-002 follow-up). A trailing \b still prevents
+        # matching inside a longer word (e.g. "Joneses"); the >=4-char guard bounds over-redaction.
+        # CASE-INSENSITIVE (#J-002 confirm-concern round 2): the operator's name also appears
+        # lowercased as actor/handle tokens — "thomas@hcgrc" (an initiated_by field), "thomas-jones
+        # (human)" in actor tables — which a case-sensitive pattern misses. re.IGNORECASE covers all
+        # casings; "Joneses"/"joneses" stays protected by the trailing \b either way.
+        toks = n.split()
+        pats.append(re.compile(r"\s+".join(re.escape(t) for t in toks) + r"\b", re.IGNORECASE))
+        # Redact each NAME TOKEN standalone too (#J-002 confirm-concern): the full-name pattern
+        # leaves the operator's bare first/last name in cleartext — e.g. "Thomas approves ..." and
+        # "Thomas builds and governs ..." appear in governance prose hundreds of times, uniquely
+        # re-identifying the operator. Per-token redaction (len>=4, trailing \b, no leading \b for
+        # the JSON-\n-glued case) closes it. Over-redaction is bounded: the tokens come only from
+        # the verified operator name and the corpus contains no unrelated bearer of these tokens
+        # (all 256 "Thomas" contexts were sampled — every one is an operator governance reference).
+        for t in toks:
+            if len(t) >= 4 and t.lower() not in seen:
+                seen.add(t.lower())
+                pats.append(re.compile(re.escape(t) + r"\b", re.IGNORECASE))
+    return pats
+
+
+def _repo_handle_patterns() -> list[re.Pattern[str]]:
+    """Redactions for the operator's repo owner / GitHub handle (#J-008).
+
+    The handle (the ``<owner>`` in ``github.com/<owner>/<repo>``, e.g. in PR/issue URLs and
+    ``gh --repo <owner>/...`` commands) is operator-identifying PII that NO existing rule covers:
+    it is not an email (the email rule needs an ``@``), and it differs from the home-dir username
+    the bare-username rule derives. Left uncovered it leaked across hundreds of transcript files
+    (#J-008). Derive candidate handles from the git remotes and the ``ASSAY_SCRUB_HANDLES`` env;
+    redact each as a bare token (length-guarded). A handle is a single unambiguous string, so no
+    word-boundary is needed — redact it inside URLs, ``gh`` args, and the ``<handle>@`` email stem.
+    Matched case-insensitively, and the distinctive STEM (handle minus a generic ``the`` prefix) is
+    also redacted, because the handle leaks via derived names — e.g. ``hipsterciso-audience-profiles``
+    (a skill name) embeds the handle minus ``the`` (#J-008 confirm-concern).
+    """
+    handles: list[str] = []
+    extra = os.environ.get("ASSAY_SCRUB_HANDLES", "")
+    handles.extend(h.strip() for h in extra.split(",") if h.strip())
+    try:
+        import subprocess
+
+        out = subprocess.run(["git", "remote", "-v"], capture_output=True, text=True, timeout=5)
+        if out.returncode == 0:
+            for m in re.finditer(r"github\.com[:/]([^/\s]+)/", out.stdout):
+                handles.append(m.group(1))
+    except Exception:  # noqa: BLE001 - git absent/misconfigured must never break capture
+        pass
+    # Expand each handle with its distinctive stem (drop a leading generic "the") so handle-derived
+    # names/slugs are covered too (#J-008 confirm-concern).
+    expanded: list[str] = []
+    for h in handles:
+        expanded.append(h)
+        if h.lower().startswith("the") and len(h) - 3 >= 4:
+            expanded.append(h[3:])
+    pats: list[re.Pattern[str]] = []
+    seen: set[str] = set()
+    for h in expanded:
+        key = h.lower()
+        if len(h) < 4 or key in seen:
+            continue  # too short → risks over-redacting common words; or already added
+        seen.add(key)
+        if len(h) >= 8:
+            # SEPARATOR-FLEXIBLE (#J-008 confirm-concern round 3): a GitHub handle is usually a
+            # de-spaced brand ("thehipsterciso" = "The Hipster CISO"); the SPACED source brand
+            # appears in prose/links and lets a reader reconstruct the redacted handle/email by
+            # concatenation. Allow punctuation/whitespace between each character so the spaced,
+            # hyphenated, and dotted forms all redact — while the de-spaced form (empty separators)
+            # still matches. The separator class is space/._- ONLY, so unrelated prose cannot
+            # accidentally spell out the handle, and common single tokens (e.g. "CISO") are NOT
+            # redacted because the WHOLE letter sequence (…hipsterciso) must be present in order.
+            pats.append(re.compile(r"[\s._-]*".join(re.escape(c) for c in h), re.IGNORECASE))
+        else:
+            pats.append(re.compile(re.escape(h), re.IGNORECASE))
+    return pats
+
+
 _USERNAME_RE = _username_pattern()
+_DISPLAY_NAME_RES = _display_name_patterns()
+_REPO_HANDLE_RES = _repo_handle_patterns()
 
 
 def _scrub(text: str) -> str:
@@ -88,6 +205,14 @@ def _scrub(text: str) -> str:
     # don't re-expose it. Done last so it also catches it inside project-dir slugs / git authors.
     if _USERNAME_RE is not None:
         text = _USERNAME_RE.sub("[REDACTED]", text)
+    # Redact the operator's full display name + bare name tokens too (#J-002) — distinct PII the
+    # username/email rules leave in cleartext (git author strings, pyproject authors=, prose).
+    for pat in _DISPLAY_NAME_RES:
+        text = pat.sub("[REDACTED]", text)
+    # Redact the repo owner / GitHub handle (#J-008) — operator-identifying PII in PR/issue URLs
+    # and `gh --repo <handle>/...` commands that no email/username rule covers.
+    for pat in _REPO_HANDLE_RES:
+        text = pat.sub("[REDACTED]", text)
     return text
 
 
@@ -104,13 +229,18 @@ def _copy_scrubbed(srcf: Path, dstf: Path) -> dict | None:
         # Scrub EVERY text file, not only .jsonl (#CV-O-1): the session subtree also holds .json
         # workflow/subagent transcripts that carry the same operator PII + credential-shaped
         # secrets — the old suffix==".jsonl" gate copied those RAW, bypassing redaction entirely.
-        # Decode strictly to classify: text → scrub; genuinely binary (rare here) → copy verbatim.
-        try:
-            text = raw.decode("utf-8")
-        except UnicodeDecodeError:
-            data = raw  # binary blob — nothing to scrub
+        #
+        # FAIL CLOSED on redaction (#J-001): classify binary by an actual binary SIGNAL (a NUL
+        # byte), NOT by UTF-8 validity. A transcript routinely embeds arbitrary subprocess stdout
+        # (latin-1 dumps, truncated multibyte) inside JSONL strings; gating on strict decode meant
+        # a single stray byte routed the WHOLE file to the verbatim branch and re-leaked it (the
+        # CV-O-1 fix had turned an always-redact path into a fail-open one). Decode with
+        # errors="replace" so redaction ALWAYS runs on text; only a genuinely binary blob (NUL
+        # present) is copied verbatim.
+        if b"\x00" in raw:
+            data = raw  # genuinely binary — nothing to scrub
         else:
-            data = _scrub(text).encode("utf-8")
+            data = _scrub(raw.decode("utf-8", errors="replace")).encode("utf-8")
         if dstf.exists() and dstf.read_bytes() == data:
             pass  # unchanged — still report it in the manifest
         else:

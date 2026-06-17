@@ -37,7 +37,8 @@ All passes, findings, verdicts, fixes, confirmations, and retrospectives are doc
 | 3 | harden/pass-3 | 54 deduped; 49 confirmed (F-001..F-054), 5 rejected | 49/49 (2-agent) | 43 code/test fixed + 1 reclassified-FP (F-005) + 2 scoped-declines (F-035, F-016 sub) + 1 deferred-by-mandate-and-mitigated (F-024); confirm 40/46 + 6 CONCERN→remediated | #161 | merged |
 | 4 | harden/pass-4 | 33 raw → 7 self-refuted → 24 deduped; 23 confirmed (G-001..G-024), 1 rejected | 23/23 (2-agent) | 23 fixed; confirm 22/23 + 1 CONCERN (G-004 test) → remediated | #162 | merged |
 | 5 | harden/pass-5 | 30 raw → 4 self-refuted → 24 deduped; 19 confirmed (H-001..H-024), 1 rejected, 4 split | 19/19 (2-agent) | 19 fixed; confirm 19/19, 0 CONCERN | #166 | merged |
-| 6 | harden/pass-6 | 4 split re-verified (all rejected) + 3 fresh confirmed (CV-O-1 high, CV-M-1, CV-S-1) | 3/3 (2-agent) | 3 fixed; confirm 3/3, 0 CONCERN | — | in progress |
+| 6 | harden/pass-6 | 4 split re-verified (all rejected) + 3 fresh confirmed (CV-O-1 high, CV-M-1, CV-S-1) | 3/3 (2-agent) | 3 fixed; confirm 3/3, 0 CONCERN | #167 | merged |
+| 7 | harden/pass-7 | 7 confirmed (J-001..J-006 + J-008; J-007 self-refuted). J-001 high = fix-regression of pass-6's CV-O-1; J-008 high (operator GitHub handle, 193 files) caught by the privacy coverage matrix | 7/7 (2-agent) | 7 fixed; J-001/J-003/J-004/J-005/J-006 confirm 2/2 first pass; J-002+J-008 privacy remediation took 3 confirm rounds (name→token→case→spaced brand) → both CONFIRMED | (local merge) | merged |
 
 **CONVERGENCE — CORRECTED (pass 6).** The pass-5 convergence call was PREMATURE: the four split
 findings did re-verify as elective (confirming behavioral-methodology convergence), but pass-6's
@@ -46,6 +47,16 @@ non-.jsonl file (PII/secrets in committed .json transcripts). Two of three pass-
 follow-on regressions of pass-5's OWN fixes (#H-001→#CV-M-1, #H-022→#CV-S-1). Lesson: convergence
 is per-dimension, and fixes create new surface. See PASS-6.md §5. Convergence is NOT re-declared;
 pass 7 adds a per-dimension coverage matrix + a fix-regression audit (PASS-6.md §6).
+
+**PASS 7 — both new dimensions earned their keep, privacy still open.** The fix-regression audit
+caught **J-001** (a HIGH fail-open regression of pass-6's OWN CV-O-1 fix: strict UTF-8 decode routed
+any file with one stray byte to the verbatim branch); the coverage matrix caught **J-008** (HIGH:
+the operator GitHub handle leaked in 193 files — PII no email/username rule structurally covers).
+The privacy/PII dimension has now produced confirmed findings **three passes running** (CV-O-1;
+J-001/J-002/J-008), and the J-002+J-008 remediation needed **three confirm rounds** before both
+agents confirmed — each round the adversarial confirm reconstructed the operator identity a new way
+(bare token → lowercase → spaced brand). Convergence is again NOT declared; pass 8 re-runs the
+coverage matrix + fix-regression audit with privacy as a named priority dimension. See PASS-7.md.
 
 ## Pass-3 added assessment dimensions (from pass-2 retrospective)
 
