@@ -341,12 +341,27 @@ def _bulk_complete(
             "bulk tier requires the 'reasoning' extra (langchain-ollama) — not installed"
         ) from exc
 
+    # BULK's INNER bound (#G-003): the sync-tier counterpart to HIGH_STAKES's anyio.fail_after.
+    # A ThreadPoolExecutor worker blocked in client.invoke() cannot be interrupted by the outer
+    # _with_timeout, so the HTTP client timeout is what actually frees the slot on a hung backend.
+    # A bare float sets EVERY httpx phase (connect/read/write/pool) to BULK_TIMEOUT, so a slow
+    # connect THEN a slow read could total ~2*BULK_TIMEOUT — past the outer BULK_TIMEOUT+10 bound,
+    # leaking the slot. Use an explicit Timeout so the TOTAL stays ~BULK_TIMEOUT (+ a small connect)
+    # and aligns with the outer headroom. Fall back to the float if httpx is absent.
+    try:
+        import httpx
+
+        _bulk_timeout: Any = httpx.Timeout(
+            BULK_TIMEOUT, connect=min(10.0, BULK_TIMEOUT), pool=min(10.0, BULK_TIMEOUT)
+        )
+    except ImportError:  # pragma: no cover - httpx ships with the reasoning extra
+        _bulk_timeout = BULK_TIMEOUT
     kwargs: dict[str, Any] = dict(
         model=model,
         base_url=BULK_BASE_URL,
         temperature=temperature,
         num_predict=BULK_NUM_PREDICT,  # bound generation length (H1)
-        client_kwargs={"timeout": BULK_TIMEOUT},
+        client_kwargs={"timeout": _bulk_timeout},
     )
     if seed is not None:
         kwargs["seed"] = seed
