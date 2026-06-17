@@ -17,12 +17,25 @@ def _read(rel: str) -> str:
 
 
 def test_data_sovereignty_is_qualified_for_high_stakes_tier():
-    # #136: the absolute "nothing leaves the machine" over-claim must be qualified — the optional
-    # high-stakes tier sends prompt content off-box.
+    # #136 + #F-038: the absolute "nothing leaves the machine" over-claim must be qualified — the
+    # optional high-stakes tier sends prompt content off-box. Pin the SPECIFIC high-stakes caveat
+    # phrase ("not metered, but off-box"), not a loose "off-box" substring: GOVERNANCE has a
+    # second, unrelated "off-box" occurrence (the SaaS-observability disqualification), so the loose
+    # check passed even if the high-stakes-tier caveat itself were deleted.
     for rel in ("README.md", "docs/CHARTER.md", "docs/GOVERNANCE.md"):
         text = _read(rel)
         assert "nothing leaves the machine" not in text, f"{rel}: unconditional over-claim (#136)"
-        assert "off-box" in text, f"{rel}: high-stakes off-box caveat missing (#136)"
+        # each file must tie the off-box caveat to the metered/subscription distinction
+        assert "off-box" in text and "metered" in text, (
+            f"{rel}: high-stakes off-box / metered caveat missing (#136)"
+        )
+    # GOVERNANCE has a SECOND, unrelated "off-box" (the SaaS-observability disqualification), so a
+    # loose substring passed even if the high-stakes-tier caveat were deleted. Pin its exact
+    # localized phrase so deleting it fails (#F-038).
+    gov = _read("docs/GOVERNANCE.md")
+    assert "not metered, but off-box" in gov, (
+        "GOVERNANCE high-stakes off-box caveat removed (#F-038)"
+    )
     adr = _read("docs/decisions/ADR-0003-local-first-data-sovereign.md")
     assert "off-box" in adr and "the same as" in adr  # billing vs residency separated
 
@@ -35,14 +48,17 @@ def test_charter_status_is_not_stale():
 
 
 def test_baseline_toolkit_scope_is_honest():
-    # #151: the engine ships primitives + a determinism harness, NOT embedding/clustering/graph
-    # builders — those are adapter-supplied. Docs/package docstring must say so.
+    # #151 + #F-038: the engine ships primitives + a determinism harness, NOT embedding/clustering/
+    # graph builders — those are adapter-supplied. Two-sided: assert the POSITIVE attribution
+    # (the choice-bearing builders come from the adapter's BaselineBuilder, not the engine), so a
+    # regression re-introducing an "engine ships builders" claim — which leaves "BaselineBuilder"
+    # in the text and so passed the old single-substring check — now fails.
     arch = _read("docs/ARCHITECTURE.md")
     init = _read("src/assay_engine/__init__.py")
     for text in (arch, init):
-        # the corrected text names the adapter's BaselineBuilder as the source of choice-bearing
-        # builders rather than claiming the engine ships them
         assert "BaselineBuilder" in text
+    assert "not shipped by the engine" in arch, "ARCHITECTURE missing the explicit non-ship caveat"
+    assert "supplied per study by" in init, "__init__ missing the adapter-attribution caveat"
 
 
 def test_preregistration_timestamp_wording_matches_shipped_default():
@@ -73,6 +89,16 @@ def test_readme_install_notes_not_on_pypi():
 
 
 def test_adr0006_lists_the_baseline_extra():
-    # #154: ADR-0006's extras enumeration must include `baseline` (pyproject has five extras).
+    # #154 + #F-038: ADR-0006's extras enumeration must include `baseline` AND must not understate
+    # the count. Two-sided: assert every current extra name is present (so dropping any one fails)
+    # and that no stale "four extras" undercount survives alongside.
     adr = _read("docs/decisions/ADR-0006-optional-backends-lazy-imports.md")
-    assert "`baseline`" in adr
+    for extra in (
+        "`reasoning`",
+        "`observability`",
+        "`persistence`",
+        "`orchestration`",
+        "`baseline`",
+    ):
+        assert extra in adr, f"ADR-0006 extras enumeration missing {extra} (#F-038)"
+    assert "four extras" not in adr, "ADR-0006 understates the extras count (stale 'four extras')"
