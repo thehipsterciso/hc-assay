@@ -194,6 +194,40 @@ def test_require_local_uri_rejects_multihost_socket_bypass(dsn):
         require_local_uri(dsn, what="x")
 
 
+@pytest.mark.parametrize(
+    "var,val",
+    [
+        ("PGHOSTADDR", "203.0.113.66"),  # overrides even an explicit host=localhost DSN
+        ("PGHOST", "evil.example.com"),
+        ("PGHOSTADDR", "127.0.0.1,203.0.113.66"),  # multi-host with an off-box element
+        ("PGSERVICE", "prod"),  # service file can redirect off-box; can't validate inline
+        ("PGSERVICEFILE", "/tmp/svc.conf"),
+    ],
+)
+def test_postgres_connection_rejects_offbox_libpq_env(monkeypatch, var, val):
+    # #SEC-10-1: require_local_uri only inspects the DSN string, but libpq ALSO reads PGHOST/
+    # PGHOSTADDR/PGSERVICE from the env and they override/supply the host — so a loopback-looking
+    # DSN could still connect off-box. get_postgres_connection_string must validate those too.
+    from assay_engine.persistence.checkpoint import get_postgres_connection_string
+
+    monkeypatch.setenv("ASSAY_POSTGRES_URL", "postgresql://localhost:5432/assay")
+    monkeypatch.setenv(var, val)
+    with pytest.raises(NonLocalEndpointError):
+        get_postgres_connection_string()
+
+
+def test_postgres_connection_accepts_loopback_libpq_env(monkeypatch):
+    # the local forms of the libpq env vars are fine
+    from assay_engine.persistence.checkpoint import get_postgres_connection_string
+
+    monkeypatch.setenv("ASSAY_POSTGRES_URL", "postgresql://localhost:5432/assay")
+    monkeypatch.setenv("PGHOSTADDR", "127.0.0.1")
+    monkeypatch.setenv("PGHOST", "localhost")
+    for var in ("PGSERVICE", "PGSERVICEFILE"):
+        monkeypatch.delenv(var, raising=False)
+    assert get_postgres_connection_string()  # does not raise
+
+
 @pytest.mark.parametrize("dsn", ["host=//evil/share", "host=/\\evil/share"])
 def test_require_local_uri_still_rejects_unc_socket_lookalikes(dsn):
     # #K-SEC-1 guard: a UNC double-separator prefix (//server, /\server) resolves to a remote SMB
