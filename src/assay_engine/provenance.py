@@ -35,10 +35,10 @@ import hashlib
 import hmac
 import threading
 from dataclasses import dataclass
-from typing import Any, Callable, Mapping
+from typing import Any, Callable, Mapping, cast
 
 from assay_engine._canonical import canonical_json
-from assay_engine._frozen import freeze_mapping
+from assay_engine._frozen import freeze_mapping, unfreeze
 
 _UTC = _dt.timezone.utc
 _GENESIS = "assay-provenance:v1:genesis"
@@ -205,18 +205,32 @@ class ProvenanceTrail:
 
     def to_records(self) -> tuple[dict[str, Any], ...]:
         """Serialize to plain dicts (for a persistent store); re-checkable via :func:`verify_records`."""
-        return tuple(
-            {
-                "seq": e.seq,
-                "kind": e.kind,
-                "summary": e.summary,
-                "payload": dict(e.payload),
-                "timestamp": e.timestamp,
-                "prev_hash": e.prev_hash,
-                "entry_hash": e.entry_hash,
-            }
-            for e in self._entries
-        )
+        return entries_to_records(self._entries)
+
+
+def entries_to_records(
+    entries: "list[ProvenanceEntry] | tuple[ProvenanceEntry, ...]",
+) -> tuple[dict[str, Any], ...]:
+    """Serialize loose entries (e.g. ``StudyResult.provenance``) to plain dicts (#F-045).
+
+    The same shape :meth:`ProvenanceTrail.to_records` produces, so a caller holding only the
+    returned entries — not the trail object — can still persist a re-checkable trail.
+    """
+    return tuple(
+        {
+            "seq": e.seq,
+            "kind": e.kind,
+            "summary": e.summary,
+            # deep-thaw nested FrozenDict/tuple values so the record is plain + JSON-serializable
+            # (#F-045): dict(e.payload) only shallow-converts and leaves nested FrozenDicts (e.g.
+            # the baseline 'determinism' map) which json.dumps cannot encode.
+            "payload": cast("dict[str, Any]", unfreeze(e.payload)),
+            "timestamp": e.timestamp,
+            "prev_hash": e.prev_hash,
+            "entry_hash": e.entry_hash,
+        }
+        for e in entries
+    )
 
 
 def verify_records(

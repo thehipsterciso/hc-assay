@@ -121,8 +121,13 @@ def is_metered_anthropic_credential(key: str) -> bool:
     Matches the *shape* — any ``ANTHROPIC_*`` var naming a ``KEY`` or ``TOKEN`` — rather than
     a static list, so a newly-added metered var cannot silently slip through. The subscription
     ``CLAUDE_CODE_OAUTH_TOKEN`` does not start with ``ANTHROPIC_`` and is deliberately kept.
+
+    The match is case-insensitive (pass 3, #F-003): a metered key set under a non-uppercase name
+    (``anthropic_api_key``) must scrub too — the AWS_/GOOGLE_ checks already uppercase, so this
+    closes the one credential path that did not.
     """
-    return key.startswith("ANTHROPIC_") and ("KEY" in key or "TOKEN" in key)
+    ku = key.upper()
+    return ku.startswith("ANTHROPIC_") and ("KEY" in ku or "TOKEN" in ku)
 
 
 # Env vars that — beyond metered credentials — would redirect the subprocess OFF-BOX or onto a
@@ -565,6 +570,8 @@ def _span(name: str, attributes: Mapping[str, Any], *, kind: str = "AGENT") -> I
         yield
         return
     tracer = trace.get_tracer("assay_engine.reasoning")
+    # start_as_current_span auto-records exceptions + sets ERROR status by default (#F-005 was a
+    # false positive — see assay_engine.observability.tracing for the verification note).
     with tracer.start_as_current_span(name) as span:
         span.set_attribute("openinference.span.kind", kind)
         for k, v in attributes.items():

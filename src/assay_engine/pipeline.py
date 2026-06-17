@@ -32,6 +32,7 @@ import datetime as _dt
 import logging
 import time
 import uuid
+import warnings
 from contextlib import ExitStack
 from dataclasses import dataclass
 from pathlib import Path
@@ -222,6 +223,26 @@ class StudyResult:
     feature_matrices: tuple[FeatureMatrix, ...] = ()
     experiment_run_id: str | None = None
 
+    def persist_trail(self, path: str | Path) -> Path:
+        """Write the hash-chained provenance trail to ``path`` as JSON and return it (#F-045).
+
+        ``run_study`` keeps the trail only in memory (``self.provenance``); a caller that needs a
+        durable, re-verifiable audit trail across process exit must persist it. The written
+        records round-trip through :func:`~assay_engine.provenance.from_records` and re-check via
+        :func:`~assay_engine.provenance.verify_records`. Call ``tracker.log_artifact`` on the
+        returned path to attach it to the experiment run.
+        """
+        import json
+
+        from assay_engine.provenance import entries_to_records
+
+        out = Path(path)
+        out.write_text(
+            json.dumps(list(entries_to_records(list(self.provenance))), indent=2),
+            encoding="utf-8",
+        )
+        return out
+
 
 def _count_logger(key: str, n: float) -> Callable[[ExperimentTracker, str], None]:
     """A typed metric-logging callback for :func:`run_study`'s best-effort tracker."""
@@ -268,6 +289,19 @@ def run_study(
     tracer = tracer or OtelTracer()
     if trail is not None and secret is not None:
         raise ValueError("pass either a caller-owned trail OR a secret to key a new one, not both")
+    if secret is None and trail is None:
+        # An engine-created unkeyed trail is tamper-evident (a naive edit breaks the SHA-256
+        # chain) but NOT forgery-resistant: an adversary with write access can edit an entry and
+        # recompute the whole genesis-rooted chain. That is fine for local reproducibility but
+        # insufficient for an audit trail that crosses a trust boundary. Flag the insecure
+        # default rather than letting it pass silently (pass 3, #F-049); pass a `secret` to key
+        # the trail with HMAC, or `clock=`-driven deterministic repro if forgery is out of scope.
+        warnings.warn(
+            "run_study provenance trail is UNKEYED (secret=None) — tamper-evident but not "
+            "forgery-resistant. Pass secret=<bytes> to HMAC-key the trail for audit trails that "
+            "cross a trust boundary.",
+            stacklevel=2,
+        )
     defn = plan.definition
     modes = defn.modes
     required = required_phases(modes)

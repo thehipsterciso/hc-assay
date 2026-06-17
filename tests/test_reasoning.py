@@ -36,8 +36,11 @@ def _req(tier=StakesTier.BULK, **params) -> ReasoningRequest:
         ("ANTHROPIC_AUTH_TOKEN", True),
         ("ANTHROPIC_FOUNDRY_API_KEY", True),
         ("ANTHROPIC_FUTURE_TOKEN", True),  # forward-proofing
+        ("anthropic_api_key", True),  # #F-003: lowercase must still match
+        ("Anthropic_Auth_Token", True),  # #F-003: mixed case must still match
         ("ANTHROPIC_BASE_URL", False),  # not a credential
         ("CLAUDE_CODE_OAUTH_TOKEN", False),  # subscription auth — keep
+        ("claude_code_oauth_token", False),  # #F-003: lowercase subscription auth still kept
         ("PATH", False),
     ],
 )

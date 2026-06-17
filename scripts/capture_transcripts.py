@@ -36,7 +36,9 @@ _SECRET_PATTERNS = [
     re.compile(r"sk-ant-[A-Za-z0-9_-]{2,}"),  # any sk-ant- token incl. oat01 OAuth + placeholders
     re.compile(r"\bgh[posru]_[A-Za-z0-9]{20,}\b"),  # GitHub tokens
     re.compile(r"\bAKIA[0-9A-Z]{16}\b"),  # AWS access key id
-    re.compile(r"(?i)bearer\s+[A-Za-z0-9._\-]{20,}"),
+    # bearer tokens incl. base64url/base64 JWTs — must cover + / = or the token is split at the
+    # first such char and only the leading fragment is redacted (pass 3, #F-051).
+    re.compile(r"(?i)bearer\s+[A-Za-z0-9._\-+/=]{20,}"),
     # explicit OAuth/token env values: "...OAUTH_TOKEN":"<value>" / ...KEY=<value>
     re.compile(r'((?:OAUTH_TOKEN|_TOKEN|_KEY|_SECRET)"\s*:\s*")[^"]{8,}(")'),
     re.compile(r"((?:OAUTH_TOKEN|_TOKEN|_KEY|_SECRET)=)[^\s\"']{8,}"),

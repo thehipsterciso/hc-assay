@@ -676,6 +676,33 @@ def test_secret_keys_the_provenance_trail(tmp_path):
         verify_records(res.provenance)  # and not without it
 
 
+def test_run_study_warns_when_trail_is_unkeyed(tmp_path):
+    # #F-049: an engine-created unkeyed trail is tamper-evident but not forgery-resistant; the
+    # insecure default must be flagged, not silent. (Other tests suppress this via filterwarnings.)
+    import warnings
+
+    src = ref.write_source(tmp_path / "c.json")
+    with warnings.catch_warnings():
+        warnings.simplefilter("always")
+        with pytest.warns(UserWarning, match="UNKEYED"):
+            run_study(ref.make_plan(src, modes=DISCOVERY), gate_handler=auto_approve)
+
+
+def test_persist_trail_writes_a_reverifiable_chain(tmp_path):
+    # #F-045: the in-memory trail must be persistable to a durable, re-verifiable artifact.
+    import json
+
+    from assay_engine.provenance import from_records, verify_records
+
+    res = _run(tmp_path, DISCOVERY)
+    out = res.persist_trail(tmp_path / "trail.json")
+    assert out.exists()
+    records = json.loads(out.read_text())
+    entries = from_records(records)
+    verify_records(entries)  # the persisted chain re-verifies intact
+    assert [e.kind for e in entries] == [e.kind for e in res.provenance]
+
+
 def test_secret_and_trail_are_mutually_exclusive(tmp_path):
     src = ref.write_source(tmp_path / "c.json")
     with pytest.raises(ValueError, match="either a caller-owned trail OR a secret"):

@@ -99,6 +99,19 @@ def fake_langgraph(monkeypatch):
 # ---- make_gate_node ----
 
 
+def test_make_gate_node_warns_when_no_recorder():
+    # #F-007: building a gate node without a recorder is a GOVERNANCE §3 audit gap (decisions
+    # live only in non-tamper-evident graph state). The insecure config must warn, not pass
+    # silently.
+    with pytest.warns(UserWarning, match="audit gap"):
+        make_gate_node(_gate(), lambda state: {})
+
+
+def test_make_gate_node_with_recorder_does_not_warn(recwarn):
+    make_gate_node(_gate(), lambda state: {}, recorder=lambda r: None)
+    assert not [w for w in recwarn.list if "audit gap" in str(w.message)]
+
+
 def test_gate_node_interrupts_with_proposal_and_records(fake_langgraph):
     fake_langgraph["resumes"] = [{"gate_id": "gate_2", "decision": "approved", "rationale": "ok"}]
     node = make_gate_node(_gate(), lambda state: {"hypotheses": state.get("n", 0)})
