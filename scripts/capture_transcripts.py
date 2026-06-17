@@ -104,11 +104,16 @@ def _display_name_patterns() -> list[re.Pattern[str]]:
     except Exception:  # noqa: BLE001 - git absent/misconfigured must never break capture
         pass
     pats: list[re.Pattern[str]] = []
+    seen: set[str] = set()
     for n in names:
-        if len(n) < 4:
-            continue  # too short → risks over-redacting common words
-        # match the name with flexible inter-token whitespace (e.g. "Thomas   Jones")
-        pats.append(re.compile(r"\b" + r"\s+".join(re.escape(t) for t in n.split()) + r"\b"))
+        if len(n) < 4 or n in seen:
+            continue  # too short → risks over-redacting common words; or already added
+        seen.add(n)
+        # Flexible inter-token whitespace (e.g. "Thomas   Jones"). NO leading \b: the name often
+        # appears glued to a JSON-escaped newline ("...---\\nThomas Jones") where \b doesn't fire
+        # because the escape's 'n' abuts the name (#J-002 follow-up). A trailing \b still prevents
+        # matching inside a longer word (e.g. "Joneses"); the >=4-char guard bounds over-redaction.
+        pats.append(re.compile(r"\s+".join(re.escape(t) for t in n.split()) + r"\b"))
     return pats
 
 
