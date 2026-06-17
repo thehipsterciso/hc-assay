@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import datetime as _dt
 import math
+import warnings
 from typing import Iterable, Sequence
 
 from assay_engine.methodology.firewalls import DiscoverConfirmSplit, FirewallViolation
@@ -50,6 +51,15 @@ def _gate_preregistration(hypothesis: Hypothesis, authority: TimestampAuthority 
             hypothesis, authority=authority, not_after=_dt.datetime.now(tz=_dt.timezone.utc)
         )
     else:
+        # Falling back to the cheap presence gate means a hand-set timestamp_proof string passes
+        # WITHOUT any cryptographic verification. Warn so a direct caller cannot silently skip real
+        # pre-registration (#G-006); the runners always supply an authority and never hit this.
+        warnings.warn(
+            "confirm primitive called with authority=None: pre-registration is verified by a "
+            "PRESENCE check only (lock fields populated), NOT cryptographically. Pass a "
+            "TimestampAuthority to verify the proof binds the hypothesis and precedes confirmation.",
+            stacklevel=3,
+        )
         require_locked(hypothesis)
 
 
@@ -149,6 +159,14 @@ def confirm_unit_level(
 
     Pass ``authority`` to verify pre-registration in full (content binding + timestamp +
     lock-before-now); omit it to fall back to the presence gate (see :func:`require_locked`).
+
+    Direction (pass 4, #G-017): unlike :func:`confirm_whole_corpus` — where the verdict polarity
+    is derived from the pre-registered ``predicted_direction`` tail — the unit-level verdict is
+    governed SOLELY by the caller-supplied ``direction_supports_claim`` flag (the engine sees only
+    an opaque held-out ``statistic``/``p_value`` and cannot itself infer the tail). The
+    hypothesis's ``predicted_direction`` is therefore advisory at unit level: it is shape-validated
+    below for safety but does NOT decide the verdict. A study that wants the locked tail to bind the
+    unit-level decision must derive ``direction_supports_claim`` from it in its own confirmer.
     """
     if hypothesis.kind is not HypothesisKind.UNIT_LEVEL:
         raise ValueError("confirm_unit_level requires a UNIT_LEVEL hypothesis")
@@ -228,28 +246,35 @@ _VALID_DIRECTIONS = ("greater", "less")
 
 
 def _resolve_direction(hypothesis: Hypothesis, predicted_direction: Direction | None) -> Direction:
-    """Direction is fixed at lock time on the hypothesis (issue #24); the confirm-time
-    argument is optional and, if given, must match the pre-registered one.
+    """Direction is fixed at lock time on the hypothesis (issue #24); the confirm-time argument is
+    optional and, if given, must MATCH the pre-registered one — it can cross-check, never supply.
 
-    The resolved direction is validated against ``{"greater", "less"}`` and any other value is
-    rejected: an unrecognized direction would otherwise fall through to the 'less' tail in
-    :func:`_empirical_p`, silently flipping supported↔contradicted (audit pass 2, #128).
+    A hypothesis reaching here has already passed the confirm gate, so it is locked and its
+    ``predicted_direction`` is part of the cryptographic binding. A ``None`` locked direction
+    therefore means the tail was *not* pre-registered; accepting a confirm-time direction in that
+    case would let the analyst pick the tail AFTER seeing the data (HARKing), flipping
+    supported↔contradicted on a hypothesis whose lock attests "no direction" (audit pass 4,
+    #G-001). The tail must be committed before confirmation, so a directionless locked hypothesis
+    is refused outright rather than completed with a post-hoc direction.
+
+    The resolved direction is validated against ``{"greater", "less"}``; any other value is
+    rejected (an unrecognized tail would silently fall through to 'less' in :func:`_empirical_p`,
+    flipping the verdict — audit pass 2, #128).
     """
     locked_dir = hypothesis.predicted_direction
-    if locked_dir is not None:
-        if predicted_direction is not None and predicted_direction != locked_dir:
-            raise ValueError(
-                "predicted_direction argument contradicts the hypothesis's pre-registered "
-                f"direction ({predicted_direction!r} != {locked_dir!r})"
-            )
-        resolved = locked_dir
-    elif predicted_direction is None:
+    if locked_dir is None:
         raise ValueError(
-            "no predicted_direction: set it on the hypothesis at pre-registration "
-            "(preferred) or pass it explicitly"
+            "predicted_direction was not pre-registered: a whole-corpus confirmatory hypothesis "
+            "must lock its tail ('greater' or 'less') BEFORE confirmation. Supplying a confirm-time "
+            "direction for a directionless locked hypothesis selects the tail after seeing the data "
+            "(HARKing) and is refused (#G-001)."
         )
-    else:
-        resolved = predicted_direction
+    if predicted_direction is not None and predicted_direction != locked_dir:
+        raise ValueError(
+            "predicted_direction argument contradicts the hypothesis's pre-registered "
+            f"direction ({predicted_direction!r} != {locked_dir!r})"
+        )
+    resolved = locked_dir
     if resolved not in _VALID_DIRECTIONS:
         raise ValueError(
             f"predicted_direction must be one of {_VALID_DIRECTIONS}; got {resolved!r} — an "
@@ -307,12 +332,19 @@ def confirm_whole_corpus(
     n = len(null_distribution)
 
     stability: float | None = None
+    contra_stability: float | None = None
     if resample_statistics is not None:
         if not resample_statistics:
             raise ValueError("resample_statistics, if given, must be non-empty")
         for r in resample_statistics:
             _validate_finite("resample statistic", r)
         stability = _resample_stability(resample_statistics, null_distribution, direction, alpha)
+        # Also measure how consistently the resamples reproduce the OPPOSITE-tail significance, so a
+        # contradiction's robustness is recorded in evidence even though (by design) a contradiction
+        # is reportable without it (#G-005).
+        contra_stability = _resample_stability(
+            resample_statistics, null_distribution, opposite, alpha
+        )
     stable = stability is not None and stability >= stability_threshold
 
     rule = (
@@ -325,12 +357,18 @@ def confirm_whole_corpus(
         "null_n": n,
         "predicted_direction": direction,
         "stability": stability,
+        "contradiction_stability": contra_stability,
         "stability_threshold": stability_threshold,
         "n_resamples": len(resample_statistics) if resample_statistics is not None else 0,
     }
     common = dict(statistic=observed, threshold=alpha, evidence=evidence)
 
-    # A contradiction (significant in the opposite tail) is reportable without stability.
+    # A contradiction (significant in the OPPOSITE tail) is reportable without a stability gate, and
+    # this asymmetry with `supported` is INTENTIONAL (#G-005): support is a positive claim that must
+    # reproduce to be decisive, whereas a statistic landing significantly in the wrong tail is
+    # evidence OF the opposite — not absence of evidence — so it stands on the observed effect.
+    # `contradiction_stability` is recorded in evidence (when resamples were supplied) so an auditor
+    # can see whether the contradiction also reproduces, even though it is not gated on it.
     if p_contra <= alpha:
         return Verdict.contradicted(
             hypothesis.hypothesis_id, rule, notes="significant in the opposite tail", **common

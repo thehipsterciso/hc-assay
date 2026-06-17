@@ -91,6 +91,10 @@ filterwarnings = [
     # gate node without a provenance recorder; test_make_gate_node_warns_when_no_recorder asserts
     # it explicitly.
     "ignore:make_gate_node:UserWarning",
+    # The presence-only pre-registration advisory (#G-006) fires whenever a confirm primitive is
+    # called with authority=None — most confirm unit tests do exactly that; one explicit test
+    # (test_confirm_primitive_warns_on_presence_only_gate) asserts it fires.
+    "ignore:confirm primitive called with authority=None:UserWarning",
 ]
 
 [tool.ruff]
