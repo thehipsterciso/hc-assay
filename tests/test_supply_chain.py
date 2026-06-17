@@ -274,6 +274,46 @@ def test_dependabot_lockfile_regen_is_documented():
     assert "regenerate_lockfiles.sh" in db, "dependabot.yml does not point at the regen script"
 
 
+def test_license_gate_surfaces_unknown_licenses(tmp_path):
+    # #H-007: an UNKNOWN/empty-license package must not pass SILENTLY (it could hide a copyleft) —
+    # it is surfaced as a ::warning::; the gate still only FAILS on explicit deny matches.
+    import json
+
+    gate = _load_license_gate()
+    report = [
+        {"Name": "mystery", "Version": "1", "License": "UNKNOWN"},
+        {"Name": "blank", "Version": "1", "License": ""},
+        {"Name": "ok", "Version": "1", "License": "MIT"},
+    ]
+    p = tmp_path / "licenses.json"
+    p.write_text(json.dumps(report), encoding="utf-8")
+    import io
+    from contextlib import redirect_stdout
+
+    buf = io.StringIO()
+    with redirect_stdout(buf):
+        rc = gate.main(str(p))
+    out = buf.getvalue()
+    assert rc == 0  # unknown licenses do not FAIL the gate (would be too brittle)
+    assert "::warning::" in out and "mystery" in out and "blank" in out  # but are surfaced
+
+
+def test_ci_has_least_privilege_permissions():
+    # #H-008: the workflow must pin the GITHUB_TOKEN to read-only at the top level.
+    text = _ci_text()
+    assert "permissions:" in text and "contents: read" in text, "no least-privilege token (#H-008)"
+
+
+def test_ci_integration_verifies_services_are_reachable():
+    # #H-009: the integration job must fail loudly if the service containers aren't reachable, so
+    # the live tests can't silently SKIP and let the gate pass vacuously.
+    text = _ci_text()
+    assert "service containers are reachable" in text or "never became ready" in text, (
+        "integration job has no service-readiness gate (#H-009)"
+    )
+    assert "pg_isready" in text and "/readyz" in text
+
+
 def test_github_actions_are_sha_pinned():
     # #F-037: every `uses:` third-party action must be pinned to a 40-char commit SHA (a mutable
     # tag can be force-pushed to malicious code). A version tag is allowed only as a comment.

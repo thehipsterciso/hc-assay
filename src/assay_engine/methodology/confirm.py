@@ -26,7 +26,7 @@ from __future__ import annotations
 import datetime as _dt
 import math
 import warnings
-from typing import Iterable, Sequence
+from typing import Iterable, Sequence, cast
 
 from assay_engine.methodology.firewalls import DiscoverConfirmSplit, FirewallViolation
 from assay_engine.methodology.hypothesis import Direction, Hypothesis, HypothesisKind
@@ -123,6 +123,11 @@ def verdict_from_pvalue(
     verdict), and the deciding flag is recorded in ``evidence`` so the verdict is re-derivable
     (audit pass 2, issue #20). Inputs are validated (issue #4) and the recorded decision rule
     reflects the caller's ``test_description``, not a hard-coded sidedness label (issue #2).
+
+    ``powered`` is likewise a TRUSTED CALLER OBLIGATION (pass 5, #H-002): the engine cannot
+    compute statistical power from an opaque statistic/p-value, so the caller asserts whether the
+    test was adequately powered (``powered=False`` forces ``indeterminate``). The engine cannot
+    verify it but records it in ``evidence`` so the verdict's dependence on the flag is auditable.
     """
     _validate_pvalue(p_value)
     _validate_alpha(alpha)
@@ -132,7 +137,11 @@ def verdict_from_pvalue(
     common = dict(
         statistic=statistic,
         threshold=alpha,
-        evidence={"p_value": p_value, "direction_supports_claim": direction_supports_claim},
+        evidence={
+            "p_value": p_value,
+            "direction_supports_claim": direction_supports_claim,
+            "powered": powered,  # trusted caller flag, recorded for audit (#H-002)
+        },
     )
     if not powered:
         return Verdict.indeterminate(hypothesis_id, rule, notes="underpowered", **common)
@@ -167,6 +176,15 @@ def confirm_unit_level(
     hypothesis's ``predicted_direction`` is therefore advisory at unit level: it is shape-validated
     below for safety but does NOT decide the verdict. A study that wants the locked tail to bind the
     unit-level decision must derive ``direction_supports_claim`` from it in its own confirmer.
+
+    Consequently (pass 5, #H-015) the unit-level path deliberately does NOT mirror
+    :func:`confirm_whole_corpus`'s directionless-lock REFUSAL: because the locked direction never
+    drives the unit-level verdict, a directionless lock here is harmless, not a HARKing vector —
+    the asymmetry is intentional, not a missing guard.
+
+    Test identity (pass 5, #H-003): ``test_name`` is bound into the pre-registration proof for
+    audit, but the engine receives only an opaque ``statistic``/``p_value`` and CANNOT verify that
+    the test actually executed matches the locked ``test_name`` — that remains a caller obligation.
     """
     if hypothesis.kind is not HypothesisKind.UNIT_LEVEL:
         raise ValueError("confirm_unit_level requires a UNIT_LEVEL hypothesis")
@@ -186,6 +204,7 @@ def confirm_unit_level(
         )
     _gate_preregistration(hypothesis, authority)
     split.assert_confirm_only(evaluated_ids)  # Firewall B (rejects empty / discovery ids)
+    alpha = cast(float, _resolve_locked_param(hypothesis.alpha, alpha, "alpha"))  # #H-001
     return verdict_from_pvalue(
         hypothesis.hypothesis_id,
         statistic=statistic,
@@ -246,6 +265,24 @@ def _resample_stability(
     except ImportError:
         significant = sum(1 for r in resamples if _empirical_p(null, r, tail) <= alpha)
         return significant / len(resamples)
+
+
+def _resolve_locked_param(locked: float | None, supplied: float | None, name: str) -> float | None:
+    """Cross-check a confirm-time threshold against the pre-registered one (pass 5, #H-001).
+
+    If the hypothesis locked the value, the confirm-time argument may only AGREE with it (a
+    mismatch raises) — the analyst cannot pick alpha / the stability bar after seeing the data
+    (threshold HARKing). The locked value wins. If nothing was locked, the supplied value stands
+    (exploratory / opted-out use), mirroring how direction worked before it could be locked.
+    """
+    if locked is not None:
+        if supplied is not None and supplied != locked:
+            raise ValueError(
+                f"{name} argument {supplied!r} contradicts the hypothesis's pre-registered "
+                f"{name} {locked!r} — the threshold is fixed at lock time (no post-hoc choice)"
+            )
+        return locked
+    return supplied
 
 
 _VALID_DIRECTIONS = ("greater", "less")
@@ -320,6 +357,15 @@ def confirm_whole_corpus(
     if hypothesis.kind is not HypothesisKind.WHOLE_CORPUS:
         raise ValueError("confirm_whole_corpus requires a WHOLE_CORPUS hypothesis")
     _gate_preregistration(hypothesis, authority)
+    # Cross-check the confirm-time thresholds against any pre-registered ones (#H-001): a locked
+    # alpha / stability bar cannot be overridden post-hoc.
+    alpha = cast(float, _resolve_locked_param(hypothesis.alpha, alpha, "alpha"))
+    stability_threshold = cast(
+        float,
+        _resolve_locked_param(
+            hypothesis.stability_threshold, stability_threshold, "stability_threshold"
+        ),
+    )
     _validate_alpha(alpha)
     _validate_finite("observed", observed)
     if not null_distribution:

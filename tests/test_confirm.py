@@ -240,6 +240,53 @@ def test_whole_corpus_stability_requires_reproducing_the_observed_effect():
     assert v2.label is VerdictLabel.SUPPORTED and v2.evidence["stability"] == 1.0
 
 
+def test_locked_alpha_cannot_be_overridden_at_confirm_time():
+    # #H-001: alpha is decision-bearing; if pre-registered on the hypothesis, a confirm-time alpha
+    # may only AGREE with it. A different alpha (chosen after seeing the data) is refused — closing
+    # the threshold-HARKing path the direction guard (#G-001) closed for the tail.
+    h = Hypothesis(
+        hypothesis_id="h-a",
+        statement="x",
+        kind=HypothesisKind.WHOLE_CORPUS,
+        origin=HypothesisOrigin.DISCOVERY,
+        test_name="t",
+        decision_rule="r",
+        locked_at="2026-06-15T00:00:00Z",
+        timestamp_proof="rfc3161:deadbeef",
+        predicted_direction="greater",
+        alpha=0.05,
+    )
+    with pytest.raises(ValueError, match="contradicts the hypothesis's pre-registered alpha"):
+        confirm_whole_corpus(
+            h,
+            observed=10.0,
+            null_distribution=[0.0] * 100,
+            alpha=0.10,
+            resample_statistics=_STABLE_HI,
+        )
+    # the matching alpha is accepted and the locked value governs
+    v = confirm_whole_corpus(
+        h, observed=10.0, null_distribution=[0.0] * 100, alpha=0.05, resample_statistics=_STABLE_HI
+    )
+    assert v.label is VerdictLabel.SUPPORTED
+
+
+def test_locked_stability_threshold_cannot_be_overridden_at_confirm_time():
+    # #H-001: the stability bar is decision-bearing too — a pre-registered stability_threshold
+    # cannot be lowered post-hoc to flip indeterminate->supported.
+    h = _locked(HypothesisKind.WHOLE_CORPUS, predicted_direction="greater")
+    object.__setattr__(h, "stability_threshold", 0.9)  # simulate a locked stability bar
+    with pytest.raises(ValueError, match="contradicts the hypothesis's pre-registered stability"):
+        confirm_whole_corpus(
+            h,
+            observed=10.0,
+            null_distribution=[0.0] * 100,
+            alpha=0.05,
+            resample_statistics=_STABLE_HI,
+            stability_threshold=0.6,
+        )
+
+
 def test_whole_corpus_records_contradiction_stability_in_evidence():
     # #G-005: a contradiction is reportable without a stability gate (intentional asymmetry — it is
     # evidence OF the opposite, not absence of evidence), but the opposite-tail stability must be
@@ -509,6 +556,19 @@ def test_whole_corpus_unlocked_rejected():
 
 def _split() -> DiscoverConfirmSplit:
     return DiscoverConfirmSplit.from_partition({"a", "b"}, {"c", "d"})
+
+
+def test_powered_flag_is_recorded_in_evidence():
+    # #H-002: `powered` is a trusted caller flag that gates indeterminate↔decisive; the engine
+    # can't verify it but must record it in evidence so the verdict's dependence on it is auditable.
+    v = verdict_from_pvalue(
+        "h", statistic=2.0, p_value=0.01, alpha=0.05, powered=True, direction_supports_claim=True
+    )
+    assert v.evidence["powered"] is True
+    v2 = verdict_from_pvalue(
+        "h", statistic=2.0, p_value=0.01, alpha=0.05, powered=False, direction_supports_claim=True
+    )
+    assert v2.evidence["powered"] is False and v2.label is VerdictLabel.INDETERMINATE
 
 
 def test_unit_level_clean_verdict():

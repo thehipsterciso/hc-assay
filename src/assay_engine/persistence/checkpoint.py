@@ -137,7 +137,15 @@ def redact_creds(text: str, conn_str: str = "") -> str:
     3. a libpq DSN ``password=``/``pgpassword=`` strip for the keyword/value form.
 
     Layers 2–3 are best-effort for *secondary* endpoints (e.g. a replica DSN) the caller did
-    not pass as ``conn_str``; the primary connection string is always scrubbed precisely.
+    not pass as ``conn_str``.
+
+    Precision caveat (pass 5, #H-023): layer 1 is an EXACT-substring replacement, so it scrubs the
+    primary connection string precisely only when that string appears verbatim in ``text``. If a
+    backend reformats it (re-quoting, reordering DSN keywords, percent-encoding the password) the
+    verbatim match misses and only the layers-2–3 regex backstops apply — which still strip
+    ``://user:pass@`` userinfo and ``password=`` tokens, but are not guaranteed exhaustive for
+    every backend message shape. It is "precise when the conn string appears verbatim", not
+    "always precise".
     """
     if conn_str:
         text = text.replace(conn_str, _sanitize_conn_str(conn_str))
