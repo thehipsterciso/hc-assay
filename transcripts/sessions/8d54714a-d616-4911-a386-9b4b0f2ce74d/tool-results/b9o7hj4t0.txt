@@ -488,7 +488,7 @@ Follow the same two-condition model as Tier 1, adapted to their scope:
 
 ### Single-Operator Independence Model
 
-This is a single-operator program. Thomas Jones is the researcher, operator, and Charter approver. There is no independent co-reviewer.
+This is a single-operator program. [REDACTED] is the researcher, operator, and Charter approver. There is no independent co-reviewer.
 
 Independence from researcher bias is achieved through structural transparency, not co-reviewer availability. This was an explicit design decision (see issue #89) — evaluated alternatives included OSF pre-registration and an independent Gate 2 co-reviewer; both were declined as incompatible with the autonomous iterative model.
 

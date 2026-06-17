@@ -1,5 +1,5 @@
 commit 13892422db7e1396504535913befd96a0771cb61
-Author: Thomas Jones <[REDACTED]>
+Author: [REDACTED] <[REDACTED]>
 Date:   Tue Jun 16 17:31:29 2026 -0400
 
     harden/pass-1: 22 production-readiness fixes (assess→2-agent verify→fix→2-agent confirm) (#123)
@@ -124,7 +124,7 @@ Date:   Tue Jun 16 17:31:29 2026 -0400
     
     ---------
     
-    Co-authored-by: Thomas Jones <[REDACTED]>
+    Co-authored-by: [REDACTED] <[REDACTED]>
     Co-authored-by: Claude Opus 4.8 (1M context) <[REDACTED]>
 
  .githooks/pre-commit                               |   12 +

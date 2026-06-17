@@ -86,14 +86,21 @@ def _display_name_patterns() -> list[re.Pattern[str]]:
     names: list[str] = []
     extra = os.environ.get("ASSAY_SCRUB_NAMES", "")
     names.extend(n.strip() for n in extra.split(",") if n.strip())
+    # Derive the operator name from SEVERAL sources — any one may be empty in a given context
+    # (#J-002 follow-up): on this node local `git config user.name` is unset yet commits still
+    # carry an author via global config / env, so a single-source lookup scrubbed nothing. Cover
+    # the env author vars, git config, AND the actual last-commit author.
+    for env_name in ("GIT_AUTHOR_NAME", "GIT_COMMITTER_NAME"):
+        v = os.environ.get(env_name, "").strip()
+        if v:
+            names.append(v)
     try:
         import subprocess
 
-        out = subprocess.run(
-            ["git", "config", "user.name"], capture_output=True, text=True, timeout=5
-        )
-        if out.returncode == 0 and out.stdout.strip():
-            names.append(out.stdout.strip())
+        for cmd in (["git", "config", "user.name"], ["git", "log", "-1", "--format=%an"]):
+            out = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
+            if out.returncode == 0 and out.stdout.strip():
+                names.append(out.stdout.strip())
     except Exception:  # noqa: BLE001 - git absent/misconfigured must never break capture
         pass
     pats: list[re.Pattern[str]] = []
