@@ -38,6 +38,7 @@ All passes, findings, verdicts, fixes, confirmations, and retrospectives are doc
 | 4 | harden/pass-4 | 33 raw → 7 self-refuted → 24 deduped; 23 confirmed (G-001..G-024), 1 rejected | 23/23 (2-agent) | 23 fixed; confirm 22/23 + 1 CONCERN (G-004 test) → remediated | #162 | merged |
 | 5 | harden/pass-5 | 30 raw → 4 self-refuted → 24 deduped; 19 confirmed (H-001..H-024), 1 rejected, 4 split | 19/19 (2-agent) | 19 fixed; confirm 19/19, 0 CONCERN | #166 | merged |
 | 6 | harden/pass-6 | 4 split re-verified (all rejected) + 3 fresh confirmed (CV-O-1 high, CV-M-1, CV-S-1) | 3/3 (2-agent) | 3 fixed; confirm 3/3, 0 CONCERN | #167 | merged |
+| 8 | harden/pass-8 | 18 raw → 7 stood (self-refute) → 6 distinct, all 2-agent TRUE_POSITIVE; + 2 CI-red findings (K-CI-1/2) found by inspecting actual CI. **Main CI had been RED since ~pass 6, bypassed by --admin.** | 8/8 | 8 fixed; confirm 7/8 first round + K-OPS-3 CONCERN → remediated | (pending) | (pending) |
 | 7 | harden/pass-7 | 7 confirmed (J-001..J-006 + J-008; J-007 self-refuted). J-001 high = fix-regression of pass-6's CV-O-1; J-008 high (operator GitHub handle, 193 files) caught by the privacy coverage matrix | 7/7 (2-agent) | 7 fixed; J-001/J-003/J-004/J-005/J-006 confirm 2/2 first pass; J-002+J-008 privacy remediation took 3 confirm rounds (name→token→case→spaced brand) → both CONFIRMED | #168 | merged |
 
 **CONVERGENCE — CORRECTED (pass 6).** The pass-5 convergence call was PREMATURE: the four split
@@ -47,6 +48,15 @@ non-.jsonl file (PII/secrets in committed .json transcripts). Two of three pass-
 follow-on regressions of pass-5's OWN fixes (#H-001→#CV-M-1, #H-022→#CV-S-1). Lesson: convergence
 is per-dimension, and fixes create new surface. See PASS-6.md §5. Convergence is NOT re-declared;
 pass 7 adds a per-dimension coverage matrix + a fix-regression audit (PASS-6.md §6).
+
+**PASS 8 — the merge gate itself was red and the assessment never saw it.** Main CI had been
+failing on every merge since ~pass 6 (silently bypassed by `--admin`), on three counts a code-only
+lens cannot see: bare `pytest` couldn't import the `tests` package (suite never ran in CI), the
+no-extras `core` lane's mypy failed on a guarded `httpx` import, and the lockfile gate re-resolved
+against live PyPI. These surfaced only from `gh run list`/`gh run view`, not from reading code or
+running `python -m pytest` locally. Lesson: **a green local gate is not the gate** — pass 9 adds an
+"actual CI execution" dimension (reproduce each lane's exact command; treat a red required check as a
+finding) and the process rule: do NOT `--admin` past a red CI without reading why. See PASS-8.md §5.
 
 **PASS 7 — both new dimensions earned their keep, privacy still open.** The fix-regression audit
 caught **J-001** (a HIGH fail-open regression of pass-6's OWN CV-O-1 fix: strict UTF-8 decode routed
