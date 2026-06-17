@@ -157,6 +157,33 @@ def test_require_local_uri_rejects_unc_paths(path):
         require_local_uri(path, what="x")
 
 
+@pytest.mark.parametrize(
+    "dsn",
+    [
+        "host=/var/run/postgresql",
+        "host=/tmp dbname=assay",
+        "postgresql:///assay?host=/var/run/postgresql",
+    ],
+)
+def test_require_local_uri_accepts_unix_domain_socket(dsn):
+    # #K-SEC-1: a libpq Unix-domain-socket host (leading "/") never touches the network and is
+    # strictly MORE data-sovereign than the TCP loopback the guard already accepts. It must be
+    # accepted, not rejected as "non-loopback".
+    from assay_engine._local import require_local_uri
+
+    assert require_local_uri(dsn, what="x") == dsn
+
+
+@pytest.mark.parametrize("dsn", ["host=//evil/share", "host=/\\evil/share"])
+def test_require_local_uri_still_rejects_unc_socket_lookalikes(dsn):
+    # #K-SEC-1 guard: a UNC double-separator prefix (//server, /\server) resolves to a remote SMB
+    # share and must still fail closed — only a SINGLE leading "/" is a local socket.
+    from assay_engine._local import require_local_uri
+
+    with pytest.raises(NonLocalEndpointError):
+        require_local_uri(dsn, what="x")
+
+
 def test_require_local_uri_rejects_backslash_in_authority():
     from assay_engine._local import require_local_uri
 

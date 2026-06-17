@@ -81,7 +81,12 @@ packages = ["src/assay_engine"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-pythonpath = ["src"]
+# "src" puts the package on the path; "." (the rootdir) puts the repo root on sys.path so the
+# `tests` package itself is importable (several suites do `from tests import reference_study` and
+# `from tests.integration.conftest import ...`). Without it, the bare `pytest` console script CI
+# runs — unlike `python -m pytest`, which prepends CWD — fails with `ModuleNotFoundError: No
+# module named 'tests'`, so the whole CI test step errored at collection (#K-CI-2).
+pythonpath = ["src", "."]
 filterwarnings = [
     # The unkeyed-trail advisory (#F-049) is intentional and fires whenever run_study is called
     # without a secret — most tests deliberately use the unkeyed reproducible path. Suppress the
@@ -123,5 +128,8 @@ module = [
     "psycopg.*",
     "psycopg_pool.*",
     "numpy.*",
+    # httpx ships with the reasoning extra; seam.py imports it lazily/guarded for the BULK-tier
+    # HTTP timeout, so the no-extras core lane has no stub and mypy --strict failed there (#K-CI-1).
+    "httpx.*",
 ]
 ignore_missing_imports = true

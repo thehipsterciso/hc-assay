@@ -355,6 +355,59 @@ def test_sbom_is_emitted():
     assert "cyclonedx-json" in text and "sbom" in text.lower()
 
 
+def test_pytest_path_includes_repo_root_so_tests_package_imports():
+    # #K-CI-2: CI runs the bare `pytest` console script which (unlike `python -m pytest`) does NOT
+    # prepend CWD to sys.path, so `from tests import ...` failed at collection with
+    # ModuleNotFoundError and the whole CI test step errored. The pytest pythonpath must include
+    # the repo root (".") so the `tests` package imports regardless of invocation.
+    import tomllib
+
+    pp = tomllib.loads((_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    paths = pp["tool"]["pytest"]["ini_options"]["pythonpath"]
+    assert "." in paths, "repo root not on pytest pythonpath — bare `pytest` cannot import `tests`"
+
+
+def test_mypy_ignores_httpx_missing_stub_in_core_lane():
+    # #K-CI-1: seam.py imports httpx lazily (guarded) for the BULK-tier HTTP timeout; httpx ships
+    # only with the reasoning extra, so the dependency-free core lane has no stub and mypy --strict
+    # failed there. httpx must be in the ignore-missing-imports override list like the other
+    # optional backends.
+    import tomllib
+
+    pp = tomllib.loads((_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    overrides = pp["tool"]["mypy"]["overrides"]
+    modules = {m for o in overrides if o.get("ignore_missing_imports") for m in o.get("module", [])}
+    assert "httpx.*" in modules, "httpx not in mypy ignore_missing_imports — core lane breaks"
+
+
+def test_coverage_floor_is_enforced():
+    # #K-OPS-3: `pytest --cov` without a threshold exits 0 at any coverage, so the gate was vacuous.
+    text = _ci_text()
+    assert "--cov-fail-under=" in text, "coverage measured but not enforced (vacuous gate)"
+
+
+def test_lockfile_sync_is_resolution_pinned():
+    # #K-OPS-1: the lockfile "reproducibility" gate re-resolved against live PyPI, so it went red
+    # whenever any in-range transitive release landed (it was failing on a clean checkout). The
+    # resolution must be pinned to a fixed point-in-time index via --exclude-newer, sourced from a
+    # single committed date file so CI and the regen script agree.
+    text = _ci_text()
+    assert "--exclude-newer" in text, "lockfile sync re-resolves against live PyPI (#K-OPS-1)"
+    assert (_ROOT / ".uv-exclude-newer").exists(), "missing .uv-exclude-newer date source"
+    date = (_ROOT / ".uv-exclude-newer").read_text(encoding="utf-8").strip()
+    assert date and date[0].isdigit(), "exclude-newer date is empty/malformed"
+
+
+def test_regenerate_script_covers_all_gated_lockfiles():
+    # #K-OPS-2: the one documented remediation (regenerate_lockfiles.sh, referenced by CI errors +
+    # dependabot.yml) must regenerate EVERY lockfile CI gates — including requirements-build.lock,
+    # which it previously omitted, leaving a maintainer red with no scripted fix on a build bump.
+    sh = (_ROOT / "scripts" / "regenerate_lockfiles.sh").read_text(encoding="utf-8")
+    for lock in ("requirements.lock", "requirements-core.lock", "requirements-build.lock"):
+        assert lock in sh, f"regenerate_lockfiles.sh does not regenerate {lock} (#K-OPS-2)"
+    assert "--exclude-newer" in sh, "regen script not resolution-pinned (#K-OPS-1)"
+
+
 @pytest.mark.skipif(shutil.which("bash") is None, reason="bash required")
 def test_allowlist_parse_is_newline_agnostic_and_comment_tolerant(tmp_path):
     # #131/#145: the last advisory id must be honored even with no trailing newline, comments and

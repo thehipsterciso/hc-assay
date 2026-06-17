@@ -103,7 +103,11 @@ jobs:
       # via the service containers — the live Postgres checkpointer + Qdrant vector store.
       # Ollama and the metered frontier tier are not in CI and skip honestly.
       - name: Integration + unit tests with coverage
-        run: pytest -q --cov=assay_engine --cov-report=term-missing
+        # --cov-fail-under ENFORCES a floor (#K-OPS-3): without it `pytest --cov` prints coverage
+        # but exits 0 at any level, so the coverage "gate" was vacuous — a refactor deleting tests
+        # or adding a large untested module would still pass green. The floor (90) sits below the
+        # current ~97% with headroom for environment-dependent skips; ratchet it up over time.
+        run: pytest -q --cov=assay_engine --cov-report=term-missing --cov-fail-under=90
 
   # Supply-chain: fail on known-vulnerable dependencies (a security/privacy engine must not ship
   # with advisories). The scan runs against the committed, fully-pinned, hashed lockfile
@@ -129,21 +133,28 @@ jobs:
           # `uv` upgrade can change output format/ordering/annotations and produce spurious diffs
           # that fail this gate on every PR even when the lockfiles are current.
           python -m pip install uv==0.11.21
-          uv pip compile pyproject.toml --all-extras --universal --generate-hashes -o /tmp/requirements.regen.lock
+          # Pin the RESOLUTION to a fixed point-in-time index (#K-OPS-1). Without --exclude-newer,
+          # uv resolves the newest in-range version of every (largely unconstrained, transitive)
+          # dep at CI wall-clock time, so this "reproducibility" gate goes red the instant ANY
+          # upstream publishes an in-range release — on PRs that touch no dependency. The date is
+          # the single source of truth in .uv-exclude-newer (regenerate_lockfiles.sh reads the same
+          # file), so the regen here matches the committed lock exactly. Bump that file to update.
+          EXCLUDE_NEWER="$(tr -d '[:space:]' < .uv-exclude-newer)"
+          uv pip compile pyproject.toml --all-extras --universal --generate-hashes --exclude-newer "$EXCLUDE_NEWER" -o /tmp/requirements.regen.lock
           # ignore the auto-generated header (timestamp/command line) when diffing
           diff <(grep -v '^#' requirements.lock) <(grep -v '^#' /tmp/requirements.regen.lock) \
-            || { echo "::error::requirements.lock is stale — run: uv pip compile pyproject.toml --all-extras --universal --generate-hashes -o requirements.lock"; exit 1; }
+            || { echo "::error::requirements.lock is stale — run: scripts/regenerate_lockfiles.sh"; exit 1; }
           # the core lockfile (dev extra only) backs the hash-pinned core lane (#F-004) and must
           # stay in sync too.
-          uv pip compile pyproject.toml --extra dev --universal --generate-hashes -o /tmp/requirements-core.regen.lock
+          uv pip compile pyproject.toml --extra dev --universal --generate-hashes --exclude-newer "$EXCLUDE_NEWER" -o /tmp/requirements-core.regen.lock
           diff <(grep -v '^#' requirements-core.lock) <(grep -v '^#' /tmp/requirements-core.regen.lock) \
-            || { echo "::error::requirements-core.lock is stale — run: uv pip compile pyproject.toml --extra dev --universal --generate-hashes -o requirements-core.lock"; exit 1; }
+            || { echo "::error::requirements-core.lock is stale — run: scripts/regenerate_lockfiles.sh"; exit 1; }
           # the build-backend lockfile (hatchling etc.) backs the hash-pinned --no-build-isolation
           # editable install (#J-003) and must stay in sync.
           printf 'hatchling\neditables\n' > /tmp/build-reqs.in
-          uv pip compile /tmp/build-reqs.in --universal --generate-hashes -o /tmp/requirements-build.regen.lock
+          uv pip compile /tmp/build-reqs.in --universal --generate-hashes --exclude-newer "$EXCLUDE_NEWER" -o /tmp/requirements-build.regen.lock
           diff <(grep -v '^#' requirements-build.lock) <(grep -v '^#' /tmp/requirements-build.regen.lock) \
-            || { echo "::error::requirements-build.lock is stale — run: uv pip compile <(printf 'hatchling\\neditables\\n') --universal --generate-hashes -o requirements-build.lock"; exit 1; }
+            || { echo "::error::requirements-build.lock is stale — run: scripts/regenerate_lockfiles.sh"; exit 1; }
       - name: pip-audit (reproducible known-vulnerability scan)
         run: |
           set -euo pipefail
