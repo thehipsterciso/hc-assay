@@ -193,9 +193,21 @@ _inflight = 0
 _inflight_lock = threading.Lock()
 
 
-def _release(_future: Any) -> None:
+def _release(future: Any) -> None:
+    # Idempotent per future (#F-032 follow-up): decrement _inflight AT MOST ONCE for a given
+    # future. The done-callback path and the interrupt-window fallback in _submit_bounded can BOTH
+    # reach _release for the same future when add_done_callback appended the callback and then was
+    # interrupted before returning — without this guard that double-decrements and over-releases a
+    # slot (the inverse of the leak being fixed). A per-future flag set under the lock makes the
+    # "_release runs at most once" claim true rather than aspirational.
     global _inflight
     with _inflight_lock:
+        if getattr(future, "_assay_released", False):
+            return
+        try:
+            future._assay_released = True
+        except (AttributeError, TypeError):  # pragma: no cover - Future allows attrs; defensive
+            pass
         _inflight -= 1
 
 
@@ -226,7 +238,10 @@ def _submit_bounded(fn: Callable[[], Any]) -> Any:
     # Register the slot-release callback under its own guard (#F-032): if a BaseException
     # (KeyboardInterrupt/SystemExit) fires while attaching the callback, release the slot
     # explicitly so a permanent leak can't accumulate and brick the pool with spurious
-    # RateLimitErrors. _release is idempotent for a given future (the callback runs at most once).
+    # RateLimitErrors. If the interrupt landed AFTER add_done_callback already appended the
+    # callback (so it will still fire on completion), the explicit _release here and the later
+    # callback both target this future — _release is per-future idempotent, so the slot is
+    # released exactly once either way.
     try:
         future.add_done_callback(_release)
     except BaseException:

@@ -688,15 +688,26 @@ def test_run_study_warns_when_trail_is_unkeyed(tmp_path):
             run_study(ref.make_plan(src, modes=DISCOVERY), gate_handler=auto_approve)
 
 
-def test_verify_trail_can_be_opted_out(tmp_path):
+def test_verify_trail_can_be_opted_out(monkeypatch, tmp_path):
     # #F-036: end-of-run re-verification is O(N) and redundant for an in-memory trail the run
-    # built and never mutated; a perf-sensitive caller may skip it. The produced trail is still a
-    # valid chain (the entries were hashed correctly when appended) — verify_trail only controls
-    # whether run_study re-walks it before returning.
+    # built and never mutated; a perf-sensitive caller may skip it. Discriminating: spy on
+    # ProvenanceTrail.verify and assert it is NOT called when verify_trail=False (a no-op opt-out
+    # that still verified would pass a chain-validity-only check, so we pin the SKIP directly).
+    from assay_engine.provenance import ProvenanceTrail
+
+    calls = {"n": 0}
+    orig = ProvenanceTrail.verify
+
+    def counting_verify(self):
+        calls["n"] += 1
+        return orig(self)
+
+    monkeypatch.setattr(ProvenanceTrail, "verify", counting_verify)
     src = ref.write_source(tmp_path / "c.json")
     res = run_study(
         ref.make_plan(src, modes=DISCOVERY), gate_handler=auto_approve, verify_trail=False
     )
+    assert calls["n"] == 0  # run_study skipped the redundant re-walk
     verify_records(
         res.provenance
     )  # still an intact chain even though run_study skipped the re-walk

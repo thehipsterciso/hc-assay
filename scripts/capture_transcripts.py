@@ -30,8 +30,11 @@ DEFAULT_SRC = Path.home() / ".claude" / "projects" / "-Users-thomasjones-hc-grc"
 DEST = Path(__file__).resolve().parent.parent / "transcripts" / "sessions"
 MANIFEST = Path(__file__).resolve().parent.parent / "transcripts" / "MANIFEST.json"
 
-# Credential-shaped secrets to redact (defense; does not touch paths/email/reasoning, which are
-# legitimate provenance — see README caveat for the public-release consideration).
+# Credential-shaped secrets to redact (defense). Pass 3 (#F-024) extends this to operator PII —
+# email addresses and the home-directory username embedded in filesystem paths — so committing
+# transcripts as provenance (the campaign mandate) does not also publish the operator's identity.
+# Reasoning content and the path STRUCTURE remain (legitimate provenance); see the README caveat
+# for the full public-release consideration.
 _SECRET_PATTERNS = [
     re.compile(r"sk-ant-[A-Za-z0-9_-]{2,}"),  # any sk-ant- token incl. oat01 OAuth + placeholders
     re.compile(r"\bgh[posru]_[A-Za-z0-9]{20,}\b"),  # GitHub tokens
@@ -42,6 +45,10 @@ _SECRET_PATTERNS = [
     # explicit OAuth/token env values: "...OAUTH_TOKEN":"<value>" / ...KEY=<value>
     re.compile(r'((?:OAUTH_TOKEN|_TOKEN|_KEY|_SECRET)"\s*:\s*")[^"]{8,}(")'),
     re.compile(r"((?:OAUTH_TOKEN|_TOKEN|_KEY|_SECRET)=)[^\s\"']{8,}"),
+    # operator PII (#F-024): email addresses, and the username segment of a home path
+    # (/Users/<name>, /home/<name>) — the path STRUCTURE is kept, only the identity is masked.
+    re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b"),  # email → [REDACTED]
+    re.compile(r"(/(?:Users|home)/)[^/\s\"']+"),  # /Users/<name> → /Users/[REDACTED]
 ]
 
 

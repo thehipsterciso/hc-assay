@@ -34,6 +34,46 @@ def test_bearer_token_scrub_covers_base64_chars():
         assert frag not in scrubbed, f"token fragment {frag!r} leaked past redaction"
 
 
+def test_license_gate_closes_the_report_file(tmp_path):
+    # #F-050: the report must be opened via a context manager so the fd is closed deterministically.
+    # Discriminating: intercept the module's open() and capture the file handle; after main()
+    # returns, assert it is .closed. A bare json.load(open(...)) leaves the handle open (closed
+    # only later by GC), so this fails when the context-manager fix is reverted.
+    import builtins
+    import json
+
+    gate = _load("scripts/license_gate.py", "license_gate_fd")
+    p = tmp_path / "licenses.json"
+    p.write_text(json.dumps([{"Name": "ok", "Version": "1", "License": "MIT"}]), encoding="utf-8")
+
+    handles = []
+    real_open = builtins.open
+
+    def tracking_open(*a, **k):
+        fh = real_open(*a, **k)
+        handles.append(fh)
+        return fh
+
+    gate.open = tracking_open  # module globals win over builtins for the bare open() call
+    rc = gate.main(str(p))
+    assert rc == 0
+    assert handles and all(h.closed for h in handles), (
+        "license_gate left the report file open (#F-050)"
+    )
+
+
+def test_transcript_scrub_redacts_operator_pii():
+    # #F-024 (mandate-compatible mitigation): transcripts are committed as provenance per the
+    # campaign mandate, but the capture scrubber must mask operator PII — email addresses and the
+    # home-path username — so identity is not published. The path STRUCTURE is preserved.
+    cap = _load("scripts/capture_transcripts.py", "capture_transcripts_pii")
+    out = cap._scrub("user me@example.com at /Users/somebody/hc-assay/x.py and /home/somebody/y")
+    assert "me@example.com" not in out
+    assert "somebody" not in out
+    assert "/Users/[REDACTED]/hc-assay/x.py" in out  # structure kept, username masked
+    assert "/home/[REDACTED]/y" in out
+
+
 def test_example_uses_no_hardcoded_hmac_secret():
     # #F-048: the example must not carry a shippable, publicly-known HMAC secret a user could copy
     # into production. It derives a fresh random secret per run instead.
