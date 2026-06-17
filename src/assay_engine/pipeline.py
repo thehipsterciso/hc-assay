@@ -322,6 +322,14 @@ def run_study(
             fn(tracker, run_id)
         except Exception as exc:  # noqa: BLE001 — tracker is an external, optional backend
             trail.record("tracking_error", f"experiment tracker call failed: {exc}")
+            # Emit a structured warning too (#K-OBS-2): a tracker call failing used to be recorded
+            # ONLY to the trail, so e.g. a provenance-artifact serialization failure dropped the
+            # #G-009 artifact silently — an operator auditing the run saw no artifact and no reason.
+            _log.warning(
+                "experiment tracker call failed (%s: %s); this metric/artifact was not logged",
+                type(exc).__name__,
+                exc,
+            )
 
     def run_gate(review: GateReview) -> None:
         # Record the decision once (snapshot approved/reason) and block on rejection (#94).
@@ -737,19 +745,31 @@ def run_study(
 
                 from assay_engine.provenance import entries_to_records
 
-                with tempfile.NamedTemporaryFile(
+                # Serialize FIRST, with a JSON-safe fallback (#K-OBS-2). freeze() accepts any
+                # HASHABLE leaf, so a payload may carry a hashable-but-non-JSON value (bytes,
+                # datetime, Enum) — e.g. in gate evidence. The old code called json.dump INSIDE the
+                # NamedTemporaryFile(delete=False) block BEFORE `path = fh.name`, so a TypeError
+                # there (a) orphaned the temp file (cleanup unreachable — path never assigned) AND
+                # (b) was swallowed by track() so the #G-009 artifact silently never attached.
+                # Building the string up front with default=str means serialization can't leak a
+                # file and the artifact still attaches even with such values.
+                payload = json.dumps(
+                    list(entries_to_records(list(trail.entries))), indent=2, default=str
+                )
+                fh = tempfile.NamedTemporaryFile(
                     "w", suffix="_provenance.json", delete=False, encoding="utf-8"
-                ) as fh:
-                    json.dump(list(entries_to_records(list(trail.entries))), fh, indent=2)
-                    path = fh.name
+                )
                 # Clean up the scratch file after the tracker has copied it into its store, so a
                 # tracked run does not leak a temp file (with provenance contents) on every call
-                # (#H-013). The tracker reads/copies synchronously in log_artifact.
+                # (#H-013). `fh.name` is always assigned (the file exists once created), so the
+                # finally cleanup is always reachable. The tracker copies synchronously.
                 try:
-                    t.log_artifact(rid, path)
+                    fh.write(payload)
+                    fh.close()
+                    t.log_artifact(rid, fh.name)
                 finally:
                     try:
-                        os.unlink(path)
+                        os.unlink(fh.name)
                     except OSError:
                         pass
 

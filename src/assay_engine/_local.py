@@ -38,6 +38,21 @@ def is_loopback_host(host: str | None) -> bool:
         return False
 
 
+def is_local_socket_path(host: str | None) -> bool:
+    """True for a libpq Unix-domain-socket host — a leading-'/' absolute directory (#K-SEC-1).
+
+    libpq accepts ``host=/var/run/postgresql`` (or the query form ``?host=/tmp``) to connect over
+    a local Unix-domain socket — a connection that NEVER touches the network, so it is strictly
+    more data-sovereign than the TCP loopback the guard already permits. A single leading '/' is a
+    local path; a Windows UNC prefix (two leading separators, e.g. ``//server`` or ``/\\server``)
+    resolves to a remote SMB share and must still be rejected.
+    """
+    if not host:
+        return False
+    h = host.strip()
+    return h.startswith("/") and not h.startswith("//") and not h.startswith("/\\")
+
+
 def require_loopback_url(url: str, *, what: str) -> str:
     """Return ``url`` if its host is loopback; else raise :class:`NonLocalEndpointError`."""
     host = urlparse(url).hostname
@@ -134,7 +149,8 @@ def require_local_uri(uri: str, *, what: str) -> str:
         for key in ("host", "hostaddr"):
             for val in parse_qs(query).get(key, []):
                 h = val.strip()
-                if h and not is_loopback_host(h):
+                # A Unix-domain-socket directory (leading '/') is local and accepted (#K-SEC-1).
+                if h and not is_loopback_host(h) and not is_local_socket_path(h):
                     raise NonLocalEndpointError(
                         f"{what} must be a local store (ADR-0003 data sovereignty); URI query "
                         f"{key}={h!r} points off-box"
@@ -145,7 +161,8 @@ def require_local_uri(uri: str, *, what: str) -> str:
         for match in _DSN_TOKEN_RE.finditer(uri):
             if match.group(1).strip().lower() in {"host", "hostaddr"}:
                 h = match.group(2).strip().strip("'\"")
-                if h and not is_loopback_host(h):
+                # A Unix-domain-socket directory (leading '/') is local and accepted (#K-SEC-1).
+                if h and not is_loopback_host(h) and not is_local_socket_path(h):
                     raise NonLocalEndpointError(
                         f"{what} must be a local store (ADR-0003 data sovereignty); DSN names "
                         f"non-loopback host {h!r}"
