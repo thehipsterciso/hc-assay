@@ -80,7 +80,15 @@ def require_locked(hypothesis: Hypothesis) -> None:
         )
 
 
-def _validate_alpha(alpha: float) -> None:
+def _validate_alpha(alpha: float | None) -> None:
+    # alpha is REQUIRED — locked on the hypothesis or supplied at the call. When neither is given,
+    # _resolve_locked_param returns None; reject it here with a clear ValueError naming alpha rather
+    # than letting the `0.0 < None` comparison below raise an opaque TypeError (#P9-MO-1).
+    if alpha is None:
+        raise ValueError(
+            "alpha is required: lock it on the hypothesis (Hypothesis(alpha=...)) or pass alpha= "
+            "to the confirm primitive"
+        )
     # A significance threshold of 0.5 or more is not a meaningful one-sided level, and
     # admitting it lets both tails register "significant" at once (alpha < 0.5 guarantees
     # p_support + p_contra >= 1 cannot both fall below alpha) — fix-review nit on issue #2.

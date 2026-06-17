@@ -43,6 +43,7 @@ import threading
 from typing import Any, cast
 from urllib.parse import urlsplit
 
+from assay_engine._envparse import int_env
 from assay_engine._local import require_local_uri
 
 _DEFAULT_PG = "postgresql://localhost:5432/assay"
@@ -58,7 +59,7 @@ _MIGRATION_LOCK_KEY = 0x4153_5359
 # the bound (block indefinitely, the pre-#129 behavior). Read fresh on each bootstrap (#F-033) so
 # an env var set after import still takes effect; the module constant is the default + the value
 # tests monkeypatch.
-_MIGRATION_LOCK_TIMEOUT_MS = max(0, int(os.environ.get("ASSAY_MIGRATION_LOCK_TIMEOUT_MS", "30000")))
+_MIGRATION_LOCK_TIMEOUT_MS = max(0, int_env("ASSAY_MIGRATION_LOCK_TIMEOUT_MS", "30000"))
 
 
 def _migration_lock_timeout_ms() -> int:
@@ -68,9 +69,9 @@ def _migration_lock_timeout_ms() -> int:
     monkeypatches ``_MIGRATION_LOCK_TIMEOUT_MS`` still drives the value.
     """
     raw = os.environ.get("ASSAY_MIGRATION_LOCK_TIMEOUT_MS")
-    if raw is None:
+    if raw is None or raw == "":
         return _MIGRATION_LOCK_TIMEOUT_MS
-    return max(0, int(raw))
+    return max(0, int_env("ASSAY_MIGRATION_LOCK_TIMEOUT_MS", "30000"))  # names the var on error
 
 
 # Brief meta-lock guarding the process-local registries below (atexit registration, the open-pool
@@ -268,9 +269,9 @@ def get_checkpointer(use_memory: bool = False) -> Any:
             # threads, so a fixed max_size=8 can be saturated under concurrent reasoning+checkpoint
             # load on larger hardware. connect_timeout bounds an individual TCP connect so a
             # black-holed host fails fast instead of hanging bootstrap for the OS default.
-            min_size = max(0, int(os.environ.get("ASSAY_POOL_MIN_SIZE", "1")))
-            max_size = max(min_size or 1, int(os.environ.get("ASSAY_POOL_MAX_SIZE", "8")))
-            connect_timeout = max(1, int(os.environ.get("ASSAY_POOL_CONNECT_TIMEOUT", "10")))
+            min_size = max(0, int_env("ASSAY_POOL_MIN_SIZE", "1"))
+            max_size = max(min_size or 1, int_env("ASSAY_POOL_MAX_SIZE", "8"))
+            connect_timeout = max(1, int_env("ASSAY_POOL_CONNECT_TIMEOUT", "10"))
             pool = ConnectionPool(
                 conn_str,
                 min_size=min_size,

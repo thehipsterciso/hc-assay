@@ -50,6 +50,11 @@ def is_local_socket_path(host: str | None) -> bool:
     if not host:
         return False
     h = host.strip()
+    # A comma means libpq MULTI-HOST (e.g. "/tmp,evil.com") — never a single socket dir. Reject so
+    # the leading-'/' check can't wave through an off-box host hidden after the comma (#K-SEC-9-1).
+    # Callers split multi-host and validate each element; a leaf reaching here must be one host.
+    if "," in h:
+        return False
     return h.startswith("/") and not h.startswith("//") and not h.startswith("/\\")
 
 
@@ -148,25 +153,28 @@ def require_local_uri(uri: str, *, what: str) -> str:
                 )
         for key in ("host", "hostaddr"):
             for val in parse_qs(query).get(key, []):
-                h = val.strip()
-                # A Unix-domain-socket directory (leading '/') is local and accepted (#K-SEC-1).
-                if h and not is_loopback_host(h) and not is_local_socket_path(h):
-                    raise NonLocalEndpointError(
-                        f"{what} must be a local store (ADR-0003 data sovereignty); URI query "
-                        f"{key}={h!r} points off-box"
-                    )
+                # libpq allows a COMMA-SEPARATED multi-host value; split and validate EVERY element
+                # (#K-SEC-9-1) — else "/tmp,evil.com" slipped through because the whole string
+                # looked like a socket path and the off-box host after the comma was never checked.
+                for h in (p.strip() for p in val.split(",")):
+                    if h and not is_loopback_host(h) and not is_local_socket_path(h):
+                        raise NonLocalEndpointError(
+                            f"{what} must be a local store (ADR-0003 data sovereignty); URI query "
+                            f"{key}={h!r} points off-box"
+                        )
         return uri
 
     if "=" in uri:  # libpq keyword/value DSN (no URI authority)
         for match in _DSN_TOKEN_RE.finditer(uri):
             if match.group(1).strip().lower() in {"host", "hostaddr"}:
-                h = match.group(2).strip().strip("'\"")
-                # A Unix-domain-socket directory (leading '/') is local and accepted (#K-SEC-1).
-                if h and not is_loopback_host(h) and not is_local_socket_path(h):
-                    raise NonLocalEndpointError(
-                        f"{what} must be a local store (ADR-0003 data sovereignty); DSN names "
-                        f"non-loopback host {h!r}"
-                    )
+                raw = match.group(2).strip().strip("'\"")
+                # Split libpq's comma-separated multi-host and validate each element (#K-SEC-9-1).
+                for h in (p.strip() for p in raw.split(",")):
+                    if h and not is_loopback_host(h) and not is_local_socket_path(h):
+                        raise NonLocalEndpointError(
+                            f"{what} must be a local store (ADR-0003 data sovereignty); DSN names "
+                            f"non-loopback host {h!r}"
+                        )
         return uri
 
     stripped = uri.lstrip()
