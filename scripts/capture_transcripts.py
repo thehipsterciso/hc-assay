@@ -113,18 +113,23 @@ def _display_name_patterns() -> list[re.Pattern[str]]:
         # appears glued to a JSON-escaped newline ("...---\\nThomas Jones") where \b doesn't fire
         # because the escape's 'n' abuts the name (#J-002 follow-up). A trailing \b still prevents
         # matching inside a longer word (e.g. "Joneses"); the >=4-char guard bounds over-redaction.
+        # CASE-INSENSITIVE (#J-002 confirm-concern round 2): the operator's name also appears
+        # lowercased as actor/handle tokens — "thomas@hcgrc" (an initiated_by field), "thomas-jones
+        # (human)" in actor tables — which a case-sensitive pattern misses. re.IGNORECASE covers all
+        # casings; "Joneses"/"joneses" stays protected by the trailing \b either way.
         toks = n.split()
-        pats.append(re.compile(r"\s+".join(re.escape(t) for t in toks) + r"\b"))
+        pats.append(re.compile(r"\s+".join(re.escape(t) for t in toks) + r"\b", re.IGNORECASE))
         # Redact each NAME TOKEN standalone too (#J-002 confirm-concern): the full-name pattern
         # leaves the operator's bare first/last name in cleartext — e.g. "Thomas approves ..." and
         # "Thomas builds and governs ..." appear in governance prose hundreds of times, uniquely
         # re-identifying the operator. Per-token redaction (len>=4, trailing \b, no leading \b for
         # the JSON-\n-glued case) closes it. Over-redaction is bounded: the tokens come only from
-        # the verified operator name and the corpus contains no unrelated bearer of these tokens.
+        # the verified operator name and the corpus contains no unrelated bearer of these tokens
+        # (all 256 "Thomas" contexts were sampled — every one is an operator governance reference).
         for t in toks:
-            if len(t) >= 4 and t not in seen:
-                seen.add(t)
-                pats.append(re.compile(re.escape(t) + r"\b"))
+            if len(t) >= 4 and t.lower() not in seen:
+                seen.add(t.lower())
+                pats.append(re.compile(re.escape(t) + r"\b", re.IGNORECASE))
     return pats
 
 
@@ -138,6 +143,9 @@ def _repo_handle_patterns() -> list[re.Pattern[str]]:
     (#J-008). Derive candidate handles from the git remotes and the ``ASSAY_SCRUB_HANDLES`` env;
     redact each as a bare token (length-guarded). A handle is a single unambiguous string, so no
     word-boundary is needed — redact it inside URLs, ``gh`` args, and the ``<handle>@`` email stem.
+    Matched case-insensitively, and the distinctive STEM (handle minus a generic ``the`` prefix) is
+    also redacted, because the handle leaks via derived names — e.g. ``hipsterciso-audience-profiles``
+    (a skill name) embeds the handle minus ``the`` (#J-008 confirm-concern).
     """
     handles: list[str] = []
     extra = os.environ.get("ASSAY_SCRUB_HANDLES", "")
@@ -151,13 +159,20 @@ def _repo_handle_patterns() -> list[re.Pattern[str]]:
                 handles.append(m.group(1))
     except Exception:  # noqa: BLE001 - git absent/misconfigured must never break capture
         pass
+    # Expand each handle with its distinctive stem (drop a leading generic "the") so handle-derived
+    # names/slugs are covered too (#J-008 confirm-concern).
+    expanded: list[str] = []
+    for h in handles:
+        expanded.append(h)
+        if h.lower().startswith("the") and len(h) - 3 >= 4:
+            expanded.append(h[3:])
     pats: list[re.Pattern[str]] = []
     seen: set[str] = set()
-    for h in handles:
-        if len(h) < 4 or h in seen:
+    for h in expanded:
+        if len(h) < 4 or h.lower() in seen:
             continue  # too short → risks over-redacting common words; or already added
-        seen.add(h)
-        pats.append(re.compile(re.escape(h)))
+        seen.add(h.lower())
+        pats.append(re.compile(re.escape(h), re.IGNORECASE))
     return pats
 
 
