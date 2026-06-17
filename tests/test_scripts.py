@@ -123,6 +123,79 @@ def test_copy_scrubbed_copies_binary_verbatim(tmp_path):
     assert dst.read_bytes() == b"\xff\xfe\x00\x01binary"
 
 
+def test_scrub_fails_closed_on_invalid_utf8_bytes():
+    # #J-001: a stray non-UTF-8 byte must NOT disable redaction for the whole file. The scrubber
+    # decodes errors='replace' and classifies binary by a NUL byte, so a secret next to an invalid
+    # byte is still scrubbed (the pass-6 strict-decode fix had made this fail OPEN).
+    cap = _load("scripts/capture_transcripts.py", "capture_transcripts_failclosed")
+    raw = b'{"out":"sk-ant-oat01-SECRETTOKEN1234567890 caf\xe9 /Users/somebody/x"}'  # invalid \xe9
+    text = raw.decode("utf-8", errors="replace")
+    out = cap._scrub(text)
+    assert "sk-ant-oat01-SECRETTOKEN1234567890" not in out  # secret scrubbed despite the bad byte
+    assert "somebody" not in out
+
+
+def test_copy_scrubbed_scrubs_file_with_invalid_utf8(tmp_path):
+    # #J-001 end-to-end: a .jsonl with an invalid byte is still scrubbed on copy, not copied raw.
+    cap = _load("scripts/capture_transcripts.py", "capture_transcripts_fc2")
+    src = tmp_path / "t.jsonl"
+    src.write_bytes(b'{"k":"Bearer abcdefghijklmnopqrstuv \x80 end"}')  # invalid \x80
+    dst = tmp_path / "out" / "t.jsonl"
+    cap._copy_scrubbed(src, dst)
+    out = dst.read_bytes()
+    assert b"abcdefghijklmnopqrstuv" not in out and b"[REDACTED]" in out
+
+
+def test_scrub_redacts_operator_display_name(monkeypatch):
+    # #J-002: the operator's full display name (from ASSAY_SCRUB_NAMES / git user.name) is redacted,
+    # not just the email — distinct PII that leaked beside redacted emails.
+    monkeypatch.setenv("ASSAY_SCRUB_NAMES", "Ada Lovelace")
+    cap = _load("scripts/capture_transcripts.py", "capture_transcripts_name")
+    out = cap._scrub("Author: Ada Lovelace <a@b.co>; also Ada   Lovelace in prose")
+    assert "Ada Lovelace" not in out and "Ada   Lovelace" not in out  # flexible whitespace too
+    assert "a@b.co" not in out  # email still scrubbed
+
+
+def test_scrub_redacts_bare_name_tokens(monkeypatch):
+    # #J-002 confirm-concern: the operator's bare first/last name (not just the full name) is
+    # operator PII — "Thomas approves ..." appears in governance prose hundreds of times. Each
+    # name token (len>=4) is redacted standalone, while a longer word containing it is protected.
+    monkeypatch.setenv("ASSAY_SCRUB_NAMES", "Thomas Jones")
+    cap = _load("scripts/capture_transcripts.py", "capture_transcripts_tokens")
+    out = cap._scrub("Thomas approves the charter; Jones governs. The Joneses are unrelated.")
+    assert "Thomas approves" not in out  # bare first name redacted
+    assert "Jones governs" not in out  # bare last name redacted
+    assert "Joneses" in out  # trailing \b protects the longer word
+    # CASE-INSENSITIVE (#J-002 confirm-concern round 2): the name also leaks lowercased as actor
+    # tokens — "thomas@hcgrc", "thomas-jones (human)" — which a case-sensitive pattern missed.
+    low = cap._scrub('initiated_by="thomas@hcgrc"; actor thomas-jones (human); the joneses stay')
+    assert "thomas" not in low and "jones (" not in low  # both casings redacted
+    assert "joneses" in low  # still protected case-insensitively
+
+
+def test_scrub_redacts_github_handle(monkeypatch):
+    # #J-008: the operator's repo owner / GitHub handle leaks in PR/issue URLs and `gh --repo
+    # <handle>/...` commands — operator PII no email/username rule covers. It is redacted while the
+    # repo name is preserved (legitimate provenance).
+    monkeypatch.setenv("ASSAY_SCRUB_HANDLES", "theninjacoder")
+    cap = _load("scripts/capture_transcripts.py", "capture_transcripts_handle")
+    out = cap._scrub(
+        "gh issue list --repo theninjacoder/hc-assay; "
+        "https://github.com/TheNinjaCoder/hc-assay/pull/28; "
+        "skill ninjacoder-audience-profiles; brand: The Ninja Coder writes; "
+        "a normal coder reviews and the ninja stays."
+    )
+    assert "theninjacoder" not in out.lower()  # handle redacted everywhere, case-insensitively
+    assert "ninjacoder" not in out.lower()  # the distinctive STEM (handle minus "the") too (#J-008)
+    assert (
+        "The Ninja Coder" not in out
+    )  # the SPACED source brand, reconstructable by concat (#J-008 r3)
+    assert "hc-assay" in out  # repo name (not PII) preserved
+    # NO over-redaction: a standalone common token that merely appears inside the handle's letters
+    # is preserved — the whole ordered sequence must be present for the separator-flexible rule.
+    assert "a normal coder reviews" in out and "the ninja stays" in out
+
+
 def test_example_uses_no_hardcoded_hmac_secret():
     # #F-048: the example must not carry a shippable, publicly-known HMAC secret a user could copy
     # into production. It derives a fresh random secret per run instead.

@@ -1,5 +1,5 @@
 commit 6f96d0ffd1fcad095911007039bca67a0dd41436
-Author: Thomas Jones <[REDACTED]>
+Author: [REDACTED] <[REDACTED]>
 Date:   Mon Jun 15 09:33:22 2026 -0400
 
     fix(hardening-p4): batch 15 — clear the remaining tail (12 issues, all reviewed)

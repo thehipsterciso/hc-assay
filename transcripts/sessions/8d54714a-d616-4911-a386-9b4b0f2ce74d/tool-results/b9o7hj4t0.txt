@@ -451,7 +451,7 @@ The SCF's explicit argument that EDC > NLP for IP reasons does not preclude anal
 
 ### Execution Model
 
-The platform is an autonomous research organism (ADR-0012). Thomas builds and governs the infrastructure; the platform conducts the research. Thomas approves Charter amendments and tier completion; the platform handles all execution within approved scope.
+The platform is an autonomous research organism (ADR-0012). [REDACTED] builds and governs the infrastructure; the platform conducts the research. [REDACTED] approves Charter amendments and tier completion; the platform handles all execution within approved scope.
 
 ### Tier 1 Completion Criteria
 
@@ -461,7 +461,7 @@ Tier 1 is complete when **both** of the following are true:
 
 2. **At least one Tier 1 finding published** — preprint (arXiv) counts. The publication serves two purposes simultaneously: community influence (primary strategic objective) and context base for Tier 2 exploration. The publication informs Tier 2 possibilities; it does not pre-specify Tier 2 hypotheses.
 
-Tier 1 completion is **platform-proposed, Thomas-approved**: the platform generates a Tier 1 completion report, Thomas reviews and approves. Tier 1 is not done until the completion report is approved.
+Tier 1 completion is **platform-proposed, [REDACTED]-approved**: the platform generates a Tier 1 completion report, [REDACTED] reviews and approves. Tier 1 is not done until the completion report is approved.
 
 ### Tier Escalation Model
 
@@ -469,7 +469,7 @@ Tier 1 completion is **platform-proposed, Thomas-approved**: the platform genera
 
 Tier 2 executes when Tier 1 is complete — unconditionally. The quality of Tier 1 findings does not gate Tier 2. Cross-framework comparison is worth conducting regardless of whether Tier 1 findings are strong or null. Null results in Tier 1 are findings; they do not block Tier 2.
 
-If the Tier 1 platform generates cross-framework intelligence (questions comparing SCF to other frameworks), that is a **Charter violation** — the scope boundary is broken, not the findings. This triggers Escalation routing per ADR-0012: park the finding, notify Thomas, correct scope. Tier 2 does not begin early because interesting cross-framework questions emerge.
+If the Tier 1 platform generates cross-framework intelligence (questions comparing SCF to other frameworks), that is a **Charter violation** — the scope boundary is broken, not the findings. This triggers Escalation routing per ADR-0012: park the finding, notify [REDACTED], correct scope. Tier 2 does not begin early because interesting cross-framework questions emerge.
 
 **T2 → T3 is a prerequisites gate.**
 
@@ -478,7 +478,7 @@ Tier 3 has genuine blocking prerequisites that do not currently exist:
 - Privacy and consent framework design
 - Ethics review
 
-Tier 3 cannot proceed until all three prerequisites are independently satisfied. The platform monitors T3 prerequisites passively but cannot self-authorize T3 entry under any conditions. Thomas initiates T3 feasibility work explicitly.
+Tier 3 cannot proceed until all three prerequisites are independently satisfied. The platform monitors T3 prerequisites passively but cannot self-authorize T3 entry under any conditions. [REDACTED] initiates T3 feasibility work explicitly.
 
 ### Tier 2 and Tier 3 Completion
 
@@ -488,7 +488,7 @@ Follow the same two-condition model as Tier 1, adapted to their scope:
 
 ### Single-Operator Independence Model
 
-This is a single-operator program. Thomas Jones is the researcher, operator, and Charter approver. There is no independent co-reviewer.
+This is a single-operator program. [REDACTED] is the researcher, operator, and Charter approver. There is no independent co-reviewer.
 
 Independence from researcher bias is achieved through structural transparency, not co-reviewer availability. This was an explicit design decision (see issue #89) — evaluated alternatives included OSF pre-registration and an independent Gate 2 co-reviewer; both were declined as incompatible with the autonomous iterative model.
 
