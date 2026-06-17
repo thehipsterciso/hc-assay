@@ -16,7 +16,7 @@ from typing import Iterable
 
 from assay_engine.baseline.determinism import build_baseline_artifact
 from assay_engine.baseline.toolkit import BaselineArtifact
-from assay_engine.contracts.claims import ClaimRecord
+from assay_engine.contracts.claims import ClaimRecord, claim_set_fingerprint
 from assay_engine.contracts.schema import Corpus, Unit
 from assay_engine.contracts.study import StudyDefinition, StudyMode
 from assay_engine.methodology.firewalls import ClaimBlindGuard, DiscoverConfirmSplit
@@ -68,7 +68,9 @@ class ReferenceClaims:
         ]
 
     def claim_fingerprint(self) -> str:
-        return hashlib.sha256(",".join(self._ids).encode()).hexdigest()
+        # The engine enforces that this equals its canonical recomputation over claims() (#F-001),
+        # so commit to the same content the engine will score, via the public helper.
+        return claim_set_fingerprint(self.claims())
 
 
 def discover(discovery_corpus: Corpus) -> list[Hypothesis]:

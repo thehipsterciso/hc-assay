@@ -27,6 +27,19 @@ def test_freeze_mapping_returns_frozendict():
     assert isinstance(freeze_mapping({"k": "v"}), FrozenDict)
 
 
+def test_freeze_mapping_is_idempotent_and_preserves_cached_hash():
+    # #F-034: re-freezing an already-FrozenDict must return the SAME object so its lazily-cached
+    # hash survives — re-wrapping would allocate a fresh FrozenDict with _hash=None and force an
+    # O(N*depth) re-hash. (ProvenanceEntry/DeterminismRecord re-freeze payloads that already hold
+    # FrozenDict values.)
+    fd = freeze_mapping({"a": 1, "nested": {"b": 2}})
+    _ = hash(fd)  # populate the cache
+    assert fd._hash is not None
+    again = freeze_mapping(fd)
+    assert again is fd  # same object, not a rebuilt copy
+    assert again._hash is fd._hash  # cached hash preserved
+
+
 def test_verdict_is_hashable_and_evidence_immutable():
     v = Verdict("h", VerdictLabel.SUPPORTED, "rule", evidence={"p_value": 0.01})
     assert hash(v) is not None  # no longer TypeError

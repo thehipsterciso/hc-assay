@@ -32,16 +32,25 @@ class FeatureMatrix:
         # None, NaN) from a misimplemented builder would otherwise flow into baseline math and
         # surface as an opaque downstream error. bool is excluded (it is an int subclass but not
         # a feature value). NaN/inf are rejected as not finite numeric features (#149).
-        import math
+        #
+        # A numpy whole-matrix fast-path was evaluated for #F-035 and DECLINED: np.asarray
+        # coercion silently UPCASTS a Python bool to a numeric (``[True, 1.0]`` → float64), so it
+        # cannot preserve the bool-exclusion contract above, and it would reject numpy float
+        # scalars that isinstance(v, float) accepts. There is no numpy form that keeps both
+        # invariants, so the authoritative check stays pure-Python; the locals below shave the
+        # per-cell overhead. (This is a blueprint with no real corpus yet, so the 100k×100 worst
+        # case is not a current workload.)
+        from math import isfinite
 
+        _isinst = isinstance
         for i, r in enumerate(self.rows):
             for v in r:
-                if isinstance(v, bool) or not isinstance(v, (int, float)):
+                if _isinst(v, bool) or not _isinst(v, (int, float)):
                     raise TypeError(
                         f"FeatureMatrix.rows[{i}] contains a non-numeric value {v!r} "
                         f"({type(v).__name__}); features must be int/float"
                     )
-                if not math.isfinite(v):
+                if not isfinite(v):
                     raise ValueError(f"FeatureMatrix.rows[{i}] contains a non-finite value {v!r}")
 
 

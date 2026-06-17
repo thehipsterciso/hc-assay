@@ -334,16 +334,65 @@ def test_scorecard_alignment_rate_none_when_no_decisive_verdicts():
     assert sc.alignment_rate is None and sc.n_indeterminate == 1
 
 
-def test_adjudicate_runs_with_no_claims():
-    _, sc = adjudicate(
-        _corpus(),
-        _Claims([]),
-        baseline_builder=_GoodBuilder(),
-        hypothesis_for=_hypothesis_for,
-        authority=_AUTH,
-        confirm=_confirmer(),
-    )
-    assert sc.total == 0 and sc.alignment_rate is None
+def test_adjudicate_rejects_no_claims():
+    # #F-010: the standalone adjudicate() must reject an empty claim set just as the pipeline
+    # runner does — a vacuous total=0 scorecard was an inconsistent contract (one caller errors,
+    # the other silently returns nothing).
+    with pytest.raises(ValueError, match="at least one claim"):
+        adjudicate(
+            _corpus(),
+            _Claims([]),
+            baseline_builder=_GoodBuilder(),
+            hypothesis_for=_hypothesis_for,
+            authority=_AUTH,
+            confirm=_confirmer(),
+        )
+
+
+def test_adjudicate_rejects_two_claims_mapping_to_one_hypothesis_id():
+    # #F-019: two distinct claims whose hypothesis_for collapses to one hypothesis_id would
+    # double-count that hypothesis in the scorecard. The claim_id guard cannot catch it (the
+    # claim_ids differ); a separate hypothesis_id guard must.
+    def collapsing_hypothesis_for(claim):
+        return lock_hypothesis(
+            Hypothesis(
+                hypothesis_id="H-shared",  # same id for every claim
+                statement="s",
+                kind=HypothesisKind.WHOLE_CORPUS,
+                origin=HypothesisOrigin.EXTERNAL_CLAIM,
+                test_name="t",
+                decision_rule="r",
+                source_claim_id=claim.claim_id,
+            ),
+            authority=_AUTH,
+            instant=_LOCK_INSTANT,
+        )
+
+    claims = _Claims([_claim("c1"), _claim("c2")])
+    with pytest.raises(FirewallViolation, match="duplicate hypothesis_id"):
+        adjudicate(
+            _corpus(),
+            claims,
+            baseline_builder=_GoodBuilder(),
+            hypothesis_for=collapsing_hypothesis_for,
+            authority=_AUTH,
+            confirm=_confirmer(),
+        )
+
+
+def test_adjudicate_rejects_confirmer_returning_non_verdict():
+    # #F-021: a confirmer that forgets to `return` yields None; the runner must raise a typed
+    # FirewallViolation, not die on an opaque AttributeError at verdict.hypothesis_id.
+    claims = _Claims([_claim("c1")])
+    with pytest.raises(FirewallViolation, match="expected a Verdict"):
+        adjudicate(
+            _corpus(),
+            claims,
+            baseline_builder=_GoodBuilder(),
+            hypothesis_for=_hypothesis_for,
+            authority=_AUTH,
+            confirm=lambda h, b, c: None,
+        )
 
 
 def test_guard_release_blocked_while_sealed_directly():

@@ -106,6 +106,15 @@ def discover_and_confirm(
             "(do split ids match the corpus unit ids?)"
         )
     hypotheses = list(discover(discovery_corpus))  # sees only the discovery partition
+    if not hypotheses:
+        # discovery surfaced nothing — a discovery run with zero hypotheses produces no
+        # confirmatory verdict at all and is indistinguishable from a silently broken
+        # ``discover`` callable that forgot to return. Fail loud rather than complete vacuously
+        # (pass 3, #F-042; mirrors the empty-partition guards above).
+        raise FirewallViolation(
+            "discover() returned no hypotheses — a discovery run with zero hypotheses is "
+            "vacuous and cannot produce a confirmatory verdict"
+        )
 
     held_out = subset_corpus(corpus, split.confirm_ids)  # disjoint from discovery (split invariant)
     if not held_out.units:
@@ -116,7 +125,18 @@ def discover_and_confirm(
             "(do split ids match the corpus unit ids?)"
         )
     verdicts: list[Verdict] = []
+    # within-run hypothesis uniqueness (pass 3, #F-018): a ``discover`` step returning the same
+    # hypothesis_id twice would append two verdicts for one hypothesis, inflating the verdict
+    # count. The pipeline runner guards this via ``_require_unique_ids``; mirror it in the
+    # public standalone runner so both entry points enforce the same identity invariant.
+    seen_hypothesis_ids: set[str] = set()
     for hypothesis in hypotheses:
+        if hypothesis.hypothesis_id in seen_hypothesis_ids:
+            raise FirewallViolation(
+                f"duplicate hypothesis_id {hypothesis.hypothesis_id!r} returned by discover() — "
+                "each discovered hypothesis must have a unique id"
+            )
+        seen_hypothesis_ids.add(hypothesis.hypothesis_id)
         if hypothesis.origin is not HypothesisOrigin.DISCOVERY:
             raise FirewallViolation(
                 f"hypothesis {hypothesis.hypothesis_id!r} is {hypothesis.origin.value!r}; the "

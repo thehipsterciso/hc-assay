@@ -66,7 +66,91 @@ def test_run_trace_context_noop_without_otel():
 
 def test_otel_tracer_span_is_noop_without_otel():
     with OtelTracer().span("x", {"a": 1}):
-        pass  # must not raise when opentelemetry is absent
+        pass
+
+
+def _in_memory_provider(monkeypatch):
+    """Install a real in-memory OTel provider so emitted spans are inspectable."""
+    from opentelemetry import trace
+    from opentelemetry.sdk.trace import TracerProvider
+    from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+    from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
+
+    exporter = InMemorySpanExporter()
+    provider = TracerProvider()
+    provider.add_span_processor(SimpleSpanProcessor(exporter))
+    # get_tracer_provider is read by OtelTracer; override the module-global for the test.
+    monkeypatch.setattr(trace, "_TRACER_PROVIDER", provider, raising=False)
+    monkeypatch.setattr(trace, "get_tracer_provider", lambda: provider)
+    return exporter
+
+
+def test_otel_span_records_error_status_and_exception_on_raise(monkeypatch):
+    # #F-005 was a FALSE POSITIVE: start_as_current_span defaults record_exception=True and
+    # set_status_on_exception=True, so an error escaping the span body IS auto-recorded as an
+    # ERROR span with the exception event — no manual handling needed. This is a CHARACTERIZATION
+    # guard: it pins the SDK behavior we rely on, so an accidental record_exception=False (or an
+    # SDK default flip) is caught — errors must never render green/UNSET in Phoenix.
+    from opentelemetry.trace import StatusCode
+
+    exporter = _in_memory_provider(monkeypatch)
+    with pytest.raises(ValueError, match="boom"):
+        with OtelTracer().span("phase:INGEST"):
+            raise ValueError("boom")
+    spans = exporter.get_finished_spans()
+    assert len(spans) == 1
+    assert spans[0].status.status_code is StatusCode.ERROR
+    assert any(ev.name == "exception" for ev in spans[0].events)
+
+
+def test_bootstrap_logs_warning_on_setup_failure(monkeypatch, caplog):
+    # #F-044: a setup failure (e.g. bad host) must leave a diagnosable warning, not run silently
+    # untraced.
+    import logging
+
+    monkeypatch.delenv("ASSAY_DISABLE_TRACING", raising=False)
+    monkeypatch.setattr(tr, "_provider", None)
+    monkeypatch.setattr(tr, "TRACING_HOST", "evil.example.com")  # non-loopback → require fails
+    with caplog.at_level(logging.WARNING, logger="assay_engine.observability"):
+        assert bootstrap_tracing() is None
+    assert any("setup failed" in r.message for r in caplog.records)
+
+
+def test_start_run_terminates_run_when_param_logging_fails(monkeypatch, tmp_path):
+    # #F-023: if create_run succeeds but log_param fails, the run must be terminated FAILED, not
+    # left orphaned in RUNNING state. Mock the MLflow client to exercise the failure path without
+    # requiring the mlflow extra.
+    monkeypatch.setenv("ASSAY_TRACKING_URI", f"sqlite:///{tmp_path / 'x.db'}")
+    events = []
+
+    class _RunInfo:
+        run_id = "run-xyz"
+
+    class _Run:
+        info = _RunInfo()
+
+    class _FakeClient:
+        def get_experiment_by_name(self, name):
+            return None
+
+        def create_experiment(self, name):
+            return "exp-1"
+
+        def create_run(self, exp_id, run_name=None):
+            events.append(("create", run_name))
+            return _Run()
+
+        def log_param(self, run_id, k, v):
+            raise RuntimeError("store unreachable")
+
+        def set_terminated(self, run_id, status="FINISHED"):
+            events.append(("terminated", run_id, status))
+
+    t = MlflowExperimentTracker()
+    monkeypatch.setattr(t, "_client", lambda: _FakeClient())
+    with pytest.raises(RuntimeError, match="store unreachable"):
+        t.start_run("study", {"k": "v"})
+    assert ("terminated", "run-xyz", "FAILED") in events  # orphan run was not left RUNNING
 
 
 def test_unconfigured_tracer_fails_loud():

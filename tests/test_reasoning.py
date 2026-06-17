@@ -36,8 +36,11 @@ def _req(tier=StakesTier.BULK, **params) -> ReasoningRequest:
         ("ANTHROPIC_AUTH_TOKEN", True),
         ("ANTHROPIC_FOUNDRY_API_KEY", True),
         ("ANTHROPIC_FUTURE_TOKEN", True),  # forward-proofing
+        ("anthropic_api_key", True),  # #F-003: lowercase must still match
+        ("Anthropic_Auth_Token", True),  # #F-003: mixed case must still match
         ("ANTHROPIC_BASE_URL", False),  # not a credential
         ("CLAUDE_CODE_OAUTH_TOKEN", False),  # subscription auth — keep
+        ("claude_code_oauth_token", False),  # #F-003: lowercase subscription auth still kept
         ("PATH", False),
     ],
 )
@@ -136,6 +139,26 @@ def test_retry_then_success(monkeypatch):
     monkeypatch.setattr(rc, "_attempt", flaky)
     assert rc._run_with_retries(_req()) == "ok"
     assert calls["n"] == 2
+
+
+def test_deadline_gates_retry_entry_not_just_backoff(monkeypatch):
+    # #F-022: once the overall deadline has passed, NO further _attempt is started — the deadline
+    # bounds retry ENTRY, not only the backoff sleeps. Discriminating: neutralize the backoff gate
+    # (_sleep_bounded → no-op) so the ONLY thing that can stop the retry loop is the entry gate,
+    # and feed a deadline already in the past. With the entry gate the loop runs exactly ONE
+    # attempt then raises "before retry"; without it, it would run all MAX_RETRIES+1 attempts.
+    monkeypatch.setattr(rc, "_sleep_bounded", lambda *_a, **_k: None)
+    calls = {"n": 0}
+
+    def always(_req):
+        calls["n"] += 1
+        raise ReasoningError("transient")
+
+    monkeypatch.setattr(rc, "_attempt", always)
+    past_deadline = rc.time.monotonic() - 1.0  # already elapsed
+    with pytest.raises(ReasoningError, match="deadline exceeded before retry"):
+        rc._run_with_retries(_req(), deadline=past_deadline)
+    assert calls["n"] == 1  # exactly one attempt ran; no retry was started past the deadline
 
 
 def test_transient_retries_exhausted_raises(monkeypatch):

@@ -27,6 +27,7 @@ with none of them installed. Install the optional ``reasoning`` extra to run rea
 
 from __future__ import annotations
 
+import atexit
 import json
 import os
 import threading
@@ -121,8 +122,13 @@ def is_metered_anthropic_credential(key: str) -> bool:
     Matches the *shape* — any ``ANTHROPIC_*`` var naming a ``KEY`` or ``TOKEN`` — rather than
     a static list, so a newly-added metered var cannot silently slip through. The subscription
     ``CLAUDE_CODE_OAUTH_TOKEN`` does not start with ``ANTHROPIC_`` and is deliberately kept.
+
+    The match is case-insensitive (pass 3, #F-003): a metered key set under a non-uppercase name
+    (``anthropic_api_key``) must scrub too — the AWS_/GOOGLE_ checks already uppercase, so this
+    closes the one credential path that did not.
     """
-    return key.startswith("ANTHROPIC_") and ("KEY" in key or "TOKEN" in key)
+    ku = key.upper()
+    return ku.startswith("ANTHROPIC_") and ("KEY" in ku or "TOKEN" in ku)
 
 
 # Env vars that — beyond metered credentials — would redirect the subprocess OFF-BOX or onto a
@@ -179,13 +185,29 @@ def scrubbed_env() -> dict[str, str]:
 # --------------------------------------------------------------------------------------
 _POOL_WORKERS = 8
 _pool = ThreadPoolExecutor(max_workers=_POOL_WORKERS, thread_name_prefix="reasoning-timeout")
+# Shut the pool down at interpreter exit (#F-043). wait=False avoids blocking exit on in-flight
+# backend calls (already bounded by _with_timeout); without this, module globals can be torn down
+# while a worker is mid-call, leaving behavior undefined. Mirrors checkpoint.py's atexit cleanup.
+atexit.register(_pool.shutdown, wait=False)
 _inflight = 0
 _inflight_lock = threading.Lock()
 
 
-def _release(_future: Any) -> None:
+def _release(future: Any) -> None:
+    # Idempotent per future (#F-032 follow-up): decrement _inflight AT MOST ONCE for a given
+    # future. The done-callback path and the interrupt-window fallback in _submit_bounded can BOTH
+    # reach _release for the same future when add_done_callback appended the callback and then was
+    # interrupted before returning — without this guard that double-decrements and over-releases a
+    # slot (the inverse of the leak being fixed). A per-future flag set under the lock makes the
+    # "_release runs at most once" claim true rather than aspirational.
     global _inflight
     with _inflight_lock:
+        if getattr(future, "_assay_released", False):
+            return
+        try:
+            future._assay_released = True
+        except (AttributeError, TypeError):  # pragma: no cover - Future allows attrs; defensive
+            pass
         _inflight -= 1
 
 
@@ -213,7 +235,18 @@ def _submit_bounded(fn: Callable[[], Any]) -> Any:
         with _inflight_lock:
             _inflight -= 1
         raise
-    future.add_done_callback(_release)
+    # Register the slot-release callback under its own guard (#F-032): if a BaseException
+    # (KeyboardInterrupt/SystemExit) fires while attaching the callback, release the slot
+    # explicitly so a permanent leak can't accumulate and brick the pool with spurious
+    # RateLimitErrors. If the interrupt landed AFTER add_done_callback already appended the
+    # callback (so it will still fire on completion), the explicit _release here and the later
+    # callback both target this future — _release is per-future idempotent, so the slot is
+    # released exactly once either way.
+    try:
+        future.add_done_callback(_release)
+    except BaseException:
+        _release(future)
+        raise
     return future
 
 
@@ -518,12 +551,22 @@ def _sleep_bounded(secs: float, deadline: float | None) -> None:
 def _run_with_retries(request: ReasoningRequest, *, deadline: float | None = None) -> str:
     """Execute with independent transient and rate-limit retry budgets.
 
-    ``deadline`` (monotonic seconds) bounds the cumulative backoff so the retry budgets cannot
-    block a caller past its overall deadline (#102).
+    ``deadline`` (monotonic seconds) bounds both the cumulative backoff AND entry into each
+    retry: once the deadline has passed, no further ``_attempt`` is started (#102, #F-022). It
+    does not interrupt an attempt already in flight — that is bounded by the per-call timeout —
+    so total wall-clock is at most ``deadline`` plus one in-flight attempt's timeout, not
+    ``deadline`` plus the full retry budget of per-call timeouts.
     """
     transient = 0
     rate = 0
+    attempted = False
     while True:
+        # Gate retry ENTRY on the deadline (#F-022): the first attempt always runs, but a retry is
+        # not started once the deadline is past — otherwise the per-attempt timeouts could stack
+        # well beyond the overall budget even though the backoff sleeps were bounded.
+        if attempted and deadline is not None and time.monotonic() >= deadline:
+            raise ReasoningError("reasoning deadline exceeded before retry")
+        attempted = True
         try:
             return _attempt(request)
         except PermanentReasoningError:
@@ -565,6 +608,8 @@ def _span(name: str, attributes: Mapping[str, Any], *, kind: str = "AGENT") -> I
         yield
         return
     tracer = trace.get_tracer("assay_engine.reasoning")
+    # start_as_current_span auto-records exceptions + sets ERROR status by default (#F-005 was a
+    # false positive — see assay_engine.observability.tracing for the verification note).
     with tracer.start_as_current_span(name) as span:
         span.set_attribute("openinference.span.kind", kind)
         for k, v in attributes.items():

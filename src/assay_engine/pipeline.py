@@ -29,17 +29,19 @@ versioning*. Reasoning enters only inside the study's own callables (which may u
 from __future__ import annotations
 
 import datetime as _dt
+import logging
+import time
 import uuid
+import warnings
 from contextlib import ExitStack
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Iterable, Mapping, cast
 
-from assay_engine._canonical import hash_value
 from assay_engine._frozen import freeze_mapping, unfreeze
 from assay_engine.baseline.determinism import corpus_fingerprint
 from assay_engine.baseline.toolkit import BaselineArtifact, BaselineBuilder
-from assay_engine.contracts.claims import ClaimRecord
+from assay_engine.contracts.claims import ClaimRecord, claim_set_fingerprint
 from assay_engine.contracts.features import FeatureMatrix
 from assay_engine.contracts.schema import Corpus
 from assay_engine.contracts.study import StudyDefinition, StudyMode
@@ -70,6 +72,8 @@ from assay_engine.persistence.versioning import DataVersioner
 from assay_engine.provenance import Clock, ProvenanceEntry, ProvenanceTrail
 
 _UTC = _dt.timezone.utc
+
+_log = logging.getLogger("assay_engine.pipeline")
 
 DiscoverFn = Callable[[Corpus], Iterable[Hypothesis]]
 
@@ -107,25 +111,16 @@ GateHandler = Callable[[GateReview], GateDecision]
 
 
 def _engine_claim_fingerprint(claim_records: list[ClaimRecord]) -> str:
-    """Engine-computed content hash of the EXACT claim set that will be scored (#137).
+    """Engine-computed content hash of the EXACT claim set that will be scored (#137, #F-001).
 
-    The source's self-reported ``claim_fingerprint()`` is an unverified self-report — it can say
-    anything. The engine therefore computes its own type-faithful hash over the materialized
-    records (in scored order) and records THAT as the authoritative fingerprint, so an auditor
-    re-deriving the fingerprint from the recorded/scored claims gets the value the trail records.
+    Delegates to the public :func:`~assay_engine.contracts.claims.claim_set_fingerprint` so the
+    engine's authoritative fingerprint and the scheme adapters must implement in
+    ``claim_fingerprint()`` are one and the same canonical function — the engine recomputes it
+    over the materialized records (in scored order) and enforces agreement with the source's
+    self-report, so an auditor re-deriving the fingerprint from the scored claims gets the value
+    the trail records.
     """
-    return hash_value(
-        [
-            {
-                "claim_id": c.claim_id,
-                "subject": c.subject,
-                "referents": list(c.referents),
-                "assertion": c.assertion,
-                "provenance": c.provenance,
-            }
-            for c in claim_records
-        ]
-    )
+    return claim_set_fingerprint(claim_records)
 
 
 def _require_unique_ids(ids: list[str], what: str) -> None:
@@ -228,6 +223,26 @@ class StudyResult:
     feature_matrices: tuple[FeatureMatrix, ...] = ()
     experiment_run_id: str | None = None
 
+    def persist_trail(self, path: str | Path) -> Path:
+        """Write the hash-chained provenance trail to ``path`` as JSON and return it (#F-045).
+
+        ``run_study`` keeps the trail only in memory (``self.provenance``); a caller that needs a
+        durable, re-verifiable audit trail across process exit must persist it. The written
+        records round-trip through :func:`~assay_engine.provenance.from_records` and re-check via
+        :func:`~assay_engine.provenance.verify_records`. Call ``tracker.log_artifact`` on the
+        returned path to attach it to the experiment run.
+        """
+        import json
+
+        from assay_engine.provenance import entries_to_records
+
+        out = Path(path)
+        out.write_text(
+            json.dumps(list(entries_to_records(list(self.provenance))), indent=2),
+            encoding="utf-8",
+        )
+        return out
+
 
 def _count_logger(key: str, n: float) -> Callable[[ExperimentTracker, str], None]:
     """A typed metric-logging callback for :func:`run_study`'s best-effort tracker."""
@@ -254,6 +269,7 @@ def run_study(
     clock: Clock | None = None,
     secret: bytes | None = None,
     trail: ProvenanceTrail | None = None,
+    verify_trail: bool = True,
 ) -> StudyResult:
     """Run one study end-to-end through its governed phase sequence. See module docstring.
 
@@ -274,6 +290,19 @@ def run_study(
     tracer = tracer or OtelTracer()
     if trail is not None and secret is not None:
         raise ValueError("pass either a caller-owned trail OR a secret to key a new one, not both")
+    if secret is None and trail is None:
+        # An engine-created unkeyed trail is tamper-evident (a naive edit breaks the SHA-256
+        # chain) but NOT forgery-resistant: an adversary with write access can edit an entry and
+        # recompute the whole genesis-rooted chain. That is fine for local reproducibility but
+        # insufficient for an audit trail that crosses a trust boundary. Flag the insecure
+        # default rather than letting it pass silently (pass 3, #F-049); pass a `secret` to key
+        # the trail with HMAC, or `clock=`-driven deterministic repro if forgery is out of scope.
+        warnings.warn(
+            "run_study provenance trail is UNKEYED (secret=None) — tamper-evident but not "
+            "forgery-resistant. Pass secret=<bytes> to HMAC-key the trail for audit trails that "
+            "cross a trust boundary.",
+            stacklevel=2,
+        )
     defn = plan.definition
     modes = defn.modes
     required = required_phases(modes)
@@ -329,9 +358,19 @@ def run_study(
                 },
             )
         except Exception as exc:  # noqa: BLE001
+            # run_id stays None → every track() call silently no-ops and ALL metrics are dropped
+            # for the whole run. Record it to the trail AND emit a structured warning so an
+            # operator seeing no MLflow run knows why instead of guessing (pass 3, #F-028).
             trail.record("tracking_error", f"experiment tracker start_run failed: {exc}")
+            _log.warning(
+                "experiment tracker start_run failed (%s: %s); run metrics will not be logged "
+                "to the tracker for this study",
+                type(exc).__name__,
+                exc,
+            )
 
     ok = False
+    started_at = time.monotonic()
     trace_ctx = ExitStack()
     try:
         # Bootstrap tracing once and correlate every phase/reasoning span to this run via baggage,
@@ -365,7 +404,17 @@ def run_study(
             cfp = corpus_fingerprint(corpus)
             source_version: str | None = None
             if versioner is not None:
-                source_version = versioner.put(str(plan.source))
+                # The versioner is an optional seam; a storage failure (PermissionError,
+                # OSError) must surface as the documented IngestionError, not a raw untyped
+                # exception that the caller cannot distinguish from a fatal firewall breach
+                # (pass 3, #F-008). Versioning is part of ingesting the source, so a failure to
+                # content-address it is an ingestion failure.
+                try:
+                    source_version = versioner.put(str(plan.source))
+                except Exception as exc:  # noqa: BLE001 — normalize optional-seam storage failures
+                    raise IngestionError(
+                        f"data versioner failed to store {plan.source!r}: {exc}"
+                    ) from exc
             trail.record(
                 "ingest",
                 "parsed source into canonical corpus",
@@ -375,6 +424,11 @@ def run_study(
                 n_relations=len(corpus.relations),
                 source_version=source_version,
             )
+            # SLO-relevant scale metrics to the tracker so corpus-size↔latency regressions are
+            # analysable from the experiment store, not only the provenance trail (pass 3,
+            # #F-029). Best-effort via track() (no-ops if no tracker/run_id).
+            track(_count_logger("n_units", float(len(corpus.units))))
+            track(_count_logger("n_relations", float(len(corpus.relations))))
             # split ids must reference real corpus units (no silent partition drift, audit H4)
             if StudyMode.DISCOVERY in modes:
                 assert plan.split is not None
@@ -447,6 +501,13 @@ def run_study(
                 if not discovery_corpus.units:
                     raise FirewallViolation("discovery partition selects no corpus units")
                 hypotheses = list(plan.discover(discovery_corpus))  # only the discovery partition
+                if not hypotheses:
+                    # discover() surfaced nothing — a vacuous run indistinguishable from a broken
+                    # callable that forgot to return. Fail loud (pass 3, #F-042).
+                    raise FirewallViolation(
+                        "discover() returned no hypotheses — a discovery run with zero "
+                        "hypotheses is vacuous and cannot produce a confirmatory verdict"
+                    )
                 # within-run identity uniqueness: a repeated hypothesis_id would be counted once
                 # per occurrence in the verdict accounting (#138)
                 _require_unique_ids([h.hypothesis_id for h in hypotheses], "hypothesis_id")
@@ -496,6 +557,14 @@ def run_study(
                 confirmed: list[Verdict] = []
                 for h in hypotheses:
                     verdict = plan.confirm_held_out(h, held_out)  # only the held-out partition
+                    # A confirmer that forgets to `return` yields None; accessing
+                    # verdict.hypothesis_id would raise an opaque AttributeError instead of the
+                    # documented typed error (pass 3, #F-021). Guard the contract explicitly.
+                    if not isinstance(verdict, Verdict):
+                        raise FirewallViolation(
+                            f"confirm_held_out returned {type(verdict).__name__} for hypothesis "
+                            f"{h.hypothesis_id!r} — expected a Verdict"
+                        )
                     if verdict.hypothesis_id != h.hypothesis_id:
                         raise FirewallViolation(
                             f"verdict reports hypothesis_id {verdict.hypothesis_id!r} for "
@@ -525,10 +594,26 @@ def run_study(
                 )
             # within-run identity uniqueness: a repeated claim_id would inflate the scorecard (#138)
             _require_unique_ids([c.claim_id for c in claim_records], "claim_id")
+            track(_count_logger("n_claims", float(len(claim_records))))  # SLO metric (#F-029)
             # The engine fingerprints the EXACT claims it will score (authoritative), and records
             # the source's self-report separately for cross-check rather than trusting it (#137).
             engine_claim_fp = _engine_claim_fingerprint(claim_records)
             source_claim_fp = defn.claims_source.claim_fingerprint()
+            # Enforce — do not merely *record* — the fingerprint agreement (pass 3, #F-001).
+            # Pass-2 #137 made the engine fingerprint authoritative and surfaced the match as a
+            # boolean in the gate payload, but a non-interactive gate (auto_approve) approves
+            # regardless, so a source whose claim_fingerprint() lies about a claim set that
+            # claims() does not actually yield completed a run with the discrepancy silently
+            # recorded. The source's self-report is a content commitment for pre-registration;
+            # a disagreement means the scored claims are not the set the source attested to —
+            # a provenance-integrity breach the engine must refuse, not defer to a human.
+            if source_claim_fp != engine_claim_fp:
+                raise FirewallViolation(
+                    "claims source self-reported claim_fingerprint "
+                    f"{source_claim_fp!r} but the engine computed {engine_claim_fp!r} over the "
+                    "claims actually yielded — the scored claim set does not match the source's "
+                    "attested fingerprint (provenance-integrity breach)"
+                )
             prev_phase = Phase.CONFIRM if StudyMode.DISCOVERY in modes else Phase.BASELINE
             run_gate(
                 GateReview(
@@ -614,7 +699,29 @@ def run_study(
                 f"visited phase sequence {[p.name for p in visited]} != required "
                 f"{[p.name for p in required]}"
             )
-        trail.verify()  # the provenance chain must be intact before we hand back the result
+        if verify_trail:
+            # Re-verify the whole chain before handing back the result. This re-hashes every
+            # entry — O(N) — which is redundant for an in-memory trail this call built and never
+            # mutated (each entry was hashed correctly when appended). It is a cheap safety net in
+            # the common case but a real cost for very large trails, so a perf-sensitive caller
+            # that trusts the in-process trail may pass verify_trail=False (pass 3, #F-036). The
+            # important re-verification — of a trail deserialized from an external store — is the
+            # caller's verify_records() on from_records(), which this flag does not affect.
+            trail.verify()  # the provenance chain must be intact before we hand back the result
+        # Terminal success entry (pass 3, #F-006): a phase 'report' record is not a run-level
+        # terminus, so a trail truncated mid-run is otherwise indistinguishable from one that
+        # completed. Record run_end ONLY after verify() passes, so its presence as the last
+        # entry is an affirmative "this run finished with an intact chain" marker. The payload is
+        # deterministic (no wall-clock) so the provenance-hash determinism guarantee holds — the
+        # non-deterministic run duration goes to the experiment tracker as an SLO metric instead.
+        trail.record(
+            "run_end",
+            f"study {defn.name!r} completed successfully",
+            study=defn.name,
+            experiment_run_id=run_id,
+            n_provenance_entries=len(trail.entries) + 1,  # +1 counts this terminal entry itself
+        )
+        track(_count_logger("run_duration_s", time.monotonic() - started_at))  # SLO metric (#F-029)
         ok = True
     except Exception as exc:
         # Record a terminal failure entry BEFORE re-raising so the abort reason is recoverable
@@ -628,8 +735,16 @@ def run_study(
                 message=str(exc)[:2000],
                 last_phase=last_phase,
             )
-        except Exception:  # noqa: BLE001,S110 — never mask the original failure
-            pass
+        except Exception as inner:  # noqa: BLE001 — never mask the original failure
+            # The run_failed entry could not be recorded (payload unserializable, clock raised,
+            # trail lock contended). Don't silently swallow — emit a structured warning so the
+            # failure reason is at least in the logs, even though it is absent from the trail
+            # (pass 3, #F-030). The original exception is still re-raised below.
+            _log.warning(
+                "could not record run_failed provenance entry (%s: %s)",
+                type(inner).__name__,
+                inner,
+            )
         raise
     finally:
         trace_ctx.close()

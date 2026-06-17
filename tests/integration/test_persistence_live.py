@@ -154,7 +154,11 @@ def test_postgres_concurrent_get_checkpointer(monkeypatch):
     from assay_engine.persistence import checkpoint as cp
 
     monkeypatch.setenv("ASSAY_POSTGRES_URL", _pg_url())
-    monkeypatch.setattr(cp, "_INITIALIZED_CONN_STRS", set())  # force setup contention this run
+    # Force setup contention this run by clearing the real idempotency guards — the pool cache and
+    # the per-conn bootstrap locks (#F-025 removed the dead _INITIALIZED_CONN_STRS set).
+    monkeypatch.setattr(cp, "_POOLS_BY_CONN", {})
+    monkeypatch.setattr(cp, "_CONN_INIT_LOCKS", {})
+    monkeypatch.setattr(cp, "_OPEN_POOLS", [])
 
     results: list = []
     errors: list = []

@@ -152,6 +152,20 @@ def confirm_unit_level(
     """
     if hypothesis.kind is not HypothesisKind.UNIT_LEVEL:
         raise ValueError("confirm_unit_level requires a UNIT_LEVEL hypothesis")
+    # Defense-in-depth direction validation (pass 3, #F-002): the unit-level path takes the
+    # deciding direction as a trusted caller flag (``direction_supports_claim``) and so never
+    # routed through ``_resolve_direction`` — which left a locked-but-invalid
+    # ``predicted_direction`` (e.g. "UP") entirely unchecked here. ``Hypothesis.__post_init__``
+    # now rejects such values at construction, but re-validate any pre-registered direction here
+    # so a hypothesis constructed by an unusual path (or a future field mutation) cannot confirm
+    # against an unrecognized tail.
+    if hypothesis.predicted_direction is not None and (
+        hypothesis.predicted_direction not in _VALID_DIRECTIONS
+    ):
+        raise ValueError(
+            f"predicted_direction must be one of {_VALID_DIRECTIONS}; got "
+            f"{hypothesis.predicted_direction!r}"
+        )
     _gate_preregistration(hypothesis, authority)
     split.assert_confirm_only(evaluated_ids)  # Firewall B (rejects empty / discovery ids)
     return verdict_from_pvalue(
@@ -186,9 +200,28 @@ def _resample_stability(
     resample distribution clearing the null median by an epsilon would satisfy while reproducing
     nothing of the observed magnitude (audit pass 2, #139). The closer to 1.0, the more
     consistently the effect's significance reproduces across resamples.
+
+    The default path is O(R·N) pure Python (one null pass per resample). When numpy is available
+    (the optional ``baseline`` extra) the whole R×N comparison runs as a single vectorized op
+    (pass 3, #F-017). The numpy path computes the IDENTICAL integer extreme-counts and the same
+    ``(extreme + 1) / (n + 1) <= alpha`` test, so its result is exactly equal to the Python path;
+    it is purely a speed optimization for large R·N, never a semantic change.
     """
-    significant = sum(1 for r in resamples if _empirical_p(null, r, tail) <= alpha)
-    return significant / len(resamples)
+    n = len(null)
+    try:
+        import numpy as np
+
+        null_arr = np.asarray(null, dtype=np.float64)
+        res_arr = np.asarray(resamples, dtype=np.float64)
+        if tail == "greater":
+            extreme = (null_arr[None, :] >= res_arr[:, None]).sum(axis=1)
+        else:
+            extreme = (null_arr[None, :] <= res_arr[:, None]).sum(axis=1)
+        p = (extreme + 1) / (n + 1)
+        return float(int((p <= alpha).sum()) / len(resamples))
+    except ImportError:
+        significant = sum(1 for r in resamples if _empirical_p(null, r, tail) <= alpha)
+        return significant / len(resamples)
 
 
 _VALID_DIRECTIONS = ("greater", "less")

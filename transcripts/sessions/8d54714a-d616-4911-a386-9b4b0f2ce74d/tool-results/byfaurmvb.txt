@@ -1,0 +1,1424 @@
+########## methodology/firewalls.py ##########
+     1	"""The two firewalls, enforced as runtime primitives (ADR-0005, METHODOLOGY.md §2).
+     2	
+     3	Both separations are enforced in code and exercised by tests — never asserted only in prose.
+     4	
+     5	Firewall A — claim-blindness:
+     6	    The baseline must be built blind to external claims. The *structural* guarantee is that
+     7	    the baseline builder is never handed an ``ExternalClaimsSource`` (its ``build`` signature
+     8	    takes only a ``Corpus``) and that ``StudyDefinition`` refuses a claims source outside
+     9	    adjudication mode. On top of that, :class:`ClaimBlindGuard` gives the claims source
+    10	    *custody*: hand the source to the guard, and the only way to obtain it is
+    11	    ``release()``/``access()``, which raise while the guard is sealed. Baseline construction
+    12	    runs inside ``sealed()``; adjudication runs after it.
+    13	
+    14	    Caveat (audit pass 1, issue #1): the guard cannot police a baseline builder that ignores
+    15	    it and reads external judgments smuggled into ``Corpus`` metadata/relations — that path
+    16	    is closed by the adapter contract (see schema.py), not by this guard. The guard is
+    17	    custodial defense-in-depth over the type-level separation, not the sole barrier.
+    18	
+    19	Firewall B — discover/confirm separation:
+    20	    The data used to discover a hypothesis must not be the data used to confirm it.
+    21	    :class:`DiscoverConfirmSplit` holds disjoint, non-empty discovery and confirmation id
+    22	    sets and refuses to confirm on any id the discovery phase touched (or on an empty set).
+    23	"""
+    24	
+    25	from __future__ import annotations
+    26	
+    27	from contextlib import contextmanager
+    28	from dataclasses import dataclass
+    29	from typing import Generic, Iterable, Iterator, TypeVar
+    30	
+    31	C = TypeVar("C")
+    32	
+    33	
+    34	class FirewallViolation(RuntimeError):
+    35	    """Raised when a methodological firewall is breached at runtime."""
+    36	
+    37	
+    38	class ClaimBlindGuard(Generic[C]):
+    39	    """Firewall A. While sealed, the held claims source is unreachable.
+    40	
+    41	    Custodial usage (preferred) — the guard owns the source, so the baseline pipeline holds
+    42	    the guard rather than the source and cannot read claims while sealed::
+    43	
+    44	        guard = ClaimBlindGuard(claims_source)
+    45	        with guard.sealed():
+    46	            corpus = parser.parse(source)            # baseline build — claims unreachable
+    47	            baseline = build_baseline(corpus, claim_guard=guard)
+    48	        claims = guard.release()                      # adjudication — guard released
+    49	
+    50	    ``access(obj)`` remains for defensive checks at call sites that hold a reference directly:
+    51	    it returns ``obj`` when unsealed and raises while sealed.
+    52	    """
+    53	
+    54	    def __init__(self, claims_source: C | None = None) -> None:
+    55	        self._sealed = False
+    56	        self._claims_source = claims_source
+    57	
+    58	    @property
+    59	    def is_sealed(self) -> bool:
+    60	        return self._sealed
+    61	
+    62	    @contextmanager
+    63	    def sealed(self) -> Iterator["ClaimBlindGuard[C]"]:
+    64	        prior = self._sealed
+    65	        self._sealed = True
+    66	        try:
+    67	            yield self
+    68	        finally:
+    69	            self._sealed = prior
+    70	
+    71	    def release(self) -> C:
+    72	        """Return the custodial claims source, or raise while sealed / if none was given."""
+    73	        if self._sealed:
+    74	            raise FirewallViolation(
+    75	                "Firewall A: external claims released during blind baseline construction"
+    76	            )
+    77	        if self._claims_source is None:
+    78	            raise FirewallViolation("Firewall A: no claims source is under this guard's custody")
+    79	        return self._claims_source
+    80	
+    81	    def access(self, claims_source: C) -> C:
+    82	        """Return ``claims_source`` only if the guard is not sealed; else raise."""
+    83	        if self._sealed:
+    84	            raise FirewallViolation(
+    85	                "Firewall A: external claims accessed during blind baseline construction"
+    86	            )
+    87	        return claims_source
+    88	
+    89	
+    90	@dataclass(frozen=True, slots=True)
+    91	class DiscoverConfirmSplit:
+    92	    """Firewall B. Disjoint discovery / confirmation id partitions for unit-level claims."""
+    93	
+    94	    discovery_ids: frozenset[str]
+    95	    confirm_ids: frozenset[str]
+    96	
+    97	    def __post_init__(self) -> None:
+    98	        # Coerce to frozenset so the raw constructor (public API) cannot yield a "frozen" record
+    99	        # backed by mutable sets — otherwise the disjointness invariant below could be defeated by
+   100	        # post-construction in-place mutation (s.confirm_ids.add(...)) (#135).
+   101	        if not isinstance(self.discovery_ids, frozenset):
+   102	            object.__setattr__(self, "discovery_ids", frozenset(self.discovery_ids))
+   103	        if not isinstance(self.confirm_ids, frozenset):
+   104	            object.__setattr__(self, "confirm_ids", frozenset(self.confirm_ids))
+   105	        overlap = self.discovery_ids & self.confirm_ids
+   106	        if overlap:
+   107	            raise FirewallViolation(
+   108	                f"Firewall B: discovery and confirmation partitions overlap on "
+   109	                f"{len(overlap)} id(s), e.g. {sorted(overlap)[:3]}"
+   110	            )
+   111	        # An empty confirmation partition means there is nothing held out to confirm on; a
+   112	        # unit-level held-out split with no held-out object is invalid by construction. The
+   113	        # genuine no-holdout case must use the whole-corpus null path (audit pass 1, issue #5).
+   114	        if not self.confirm_ids:
+   115	            raise FirewallViolation(
+   116	                "Firewall B: confirmation partition is empty — a unit-level held-out split "
+   117	                "must hold out at least one object (use whole-corpus confirmation otherwise)"
+   118	            )
+   119	
+   120	    @classmethod
+   121	    def from_partition(
+   122	        cls, discovery_ids: Iterable[str], confirm_ids: Iterable[str]
+   123	    ) -> "DiscoverConfirmSplit":
+   124	        return cls(frozenset(discovery_ids), frozenset(confirm_ids))
+   125	
+   126	    def assert_confirm_only(self, ids: Iterable[str]) -> None:
+   127	        """Raise if ``ids`` is empty or any of it was seen during discovery (double-dip)."""
+   128	        ids = frozenset(ids)
+   129	        if not ids:
+   130	            raise FirewallViolation(
+   131	                "Firewall B: confirmatory test evaluated zero held-out objects — a verdict "
+   132	                "cannot be produced from an empty confirmation set (audit pass 1, issue #5)"
+   133	            )
+   134	        leaked = ids & self.discovery_ids
+   135	        if leaked:
+   136	            raise FirewallViolation(
+   137	                f"Firewall B: confirmatory test touched {len(leaked)} discovery id(s) — "
+   138	                f"double-dipping, e.g. {sorted(leaked)[:3]}"
+   139	            )
+   140	        unknown = ids - self.confirm_ids
+   141	        if unknown:
+   142	            raise FirewallViolation(
+   143	                f"Firewall B: confirmatory test used {len(unknown)} id(s) outside the "
+   144	                f"confirmation partition, e.g. {sorted(unknown)[:3]}"
+   145	            )
+########## methodology/preregistration.py ##########
+     1	"""Pre-registration integrity (METHODOLOGY.md §3, GOVERNANCE.md §2).
+     2	
+     3	GOVERNANCE §2 defines pre-registration as three steps: a hypothesis is (1) made specific and
+     4	typed, (2) **content-hashed and committed**, and (3) **timestamped against a trusted authority**
+     5	— *before* any confirmatory test. Steps 2–3 were a presence sentinel until now: ``Hypothesis.locked``
+     6	asserted only that ``locked_at`` and ``timestamp_proof`` were non-``None``, so a hand-written
+     7	``timestamp_proof="rfc3161:demo"`` "locked" a hypothesis and nothing stopped a study from
+     8	locking *after* it had seen the baseline, or from swapping the hypothesis content after locking
+     9	(audit pass 1, issue #6). Both firewalls (:mod:`adjudication`, :mod:`discovery`) and all of
+    10	:mod:`confirm` rest on the lock, so a sentinel lock made the three verdicts decorative.
+    11	
+    12	This module makes the lock mean what the method says, by construction:
+    13	
+    14	- **Content binding** — :func:`canonical_hypothesis_digest` is a type-faithful SHA-256 over a
+    15	  hypothesis's *decision-bearing* fields (statement, kind, origin, test, decision rule,
+    16	  predicted direction, source claim, params). A valid proof must attest to *this* digest, so
+    17	  the content the verdict is about is provably the content that was locked: change the claim,
+    18	  the test, or the decision rule after locking and verification fails.
+    19	- **Verifiable timestamp** — a pluggable :class:`TimestampAuthority` returns a
+    20	  :class:`VerifiedTimestamp` only if the proof genuinely binds the digest. The engine ships one
+    21	  real, data-sovereign authority (:class:`LocalHmacAuthority`, on-box HMAC) and the *Protocol*
+    22	  so a study can plug an RFC-3161 TSA. It ships **no** silent-accept authority.
+    23	- **Lock before confirm** — :func:`require_preregistered` rejects a lock whose attested time is
+    24	  not strictly before the confirmation moment, so a hypothesis cannot be "pre"-registered after
+    25	  the result is known.
+    26	
+    27	Honest scope (the lesson carried from ADR-0008): :class:`LocalHmacAuthority` proves content
+    28	integrity, time binding, and unforgeability *relative to a secret that lives on this box*.
+    29	Whoever holds that secret could backdate a proof — it is local tamper-evidence, **not**
+    30	third-party non-repudiation. A study that needs non-repudiation wires an RFC-3161 authority
+    31	(which sends only the digest, never the data, so it stays compatible with data sovereignty —
+    32	ADR-0003 — at the cost of an external dependency the study opts into). And content binding
+    33	covers the *structured fields*: free text inside ``statement``/``params`` is hashed (so it
+    34	cannot change after locking) but the engine cannot judge whether that text is *meaningful* —
+    35	that remains a review obligation (GOVERNANCE §2 "timestamped adaptive design").
+    36	"""
+    37	
+    38	from __future__ import annotations
+    39	
+    40	import datetime as _dt
+    41	import hmac
+    42	from dataclasses import dataclass, replace
+    43	from typing import Protocol
+    44	
+    45	from assay_engine._canonical import canonical_json, hash_text
+    46	from assay_engine.methodology.firewalls import FirewallViolation
+    47	from assay_engine.methodology.hypothesis import Hypothesis
+    48	
+    49	_UTC = _dt.timezone.utc
+    50	_PROOF_PREFIX = "local-hmac:v1:"
+    51	_PROOF_FIELD_SEP = "|"  # ISO-8601 and lowercase hex never contain "|"
+    52	
+    53	
+    54	class PreRegistrationError(FirewallViolation):
+    55	    """A hypothesis failed pre-registration verification (METHODOLOGY §3, GOVERNANCE §2).
+    56	
+    57	    A subclass of :class:`FirewallViolation` so existing ``except FirewallViolation`` handlers
+    58	    in the runners and studies treat a bad lock as the firewall breach it is.
+    59	    """
+    60	
+    61	
+    62	@dataclass(frozen=True, slots=True)
+    63	class VerifiedTimestamp:
+    64	    """The authority's attestation that ``digest`` existed at ``instant``."""
+    65	
+    66	    instant: _dt.datetime  # timezone-aware, normalized to UTC
+    67	    authority: str
+    68	    digest: str
+    69	
+    70	
+    71	class TimestampAuthority(Protocol):
+    72	    """Engine contract: verify that ``proof`` binds ``digest``, returning the attested time.
+    73	
+    74	    Implementations MUST raise :class:`PreRegistrationError` (not return a sentinel) when the
+    75	    proof is malformed, does not bind ``digest``, or is otherwise invalid — the engine treats a
+    76	    non-raising return as a genuine attestation.
+    77	    """
+    78	
+    79	    def verify(self, digest: str, proof: str) -> VerifiedTimestamp: ...
+    80	
+    81	
+    82	class StampingAuthority(TimestampAuthority, Protocol):
+    83	    """A study-side authority that can also *issue* proofs (used by :func:`lock_hypothesis`)."""
+    84	
+    85	    def stamp(self, digest: str, *, instant: _dt.datetime | None = None) -> str: ...
+    86	
+    87	
+    88	def _require_aware_utc(instant: _dt.datetime, what: str) -> _dt.datetime:
+    89	    if instant.tzinfo is None or instant.utcoffset() is None:
+    90	        raise PreRegistrationError(
+    91	            f"{what} must be timezone-aware (a naive datetime has no defined instant)"
+    92	        )
+    93	    return instant.astimezone(_UTC)
+    94	
+    95	
+    96	def canonical_hypothesis_digest(hypothesis: Hypothesis) -> str:
+    97	    """A type-faithful SHA-256 over a hypothesis's decision-bearing content **and its id**.
+    98	
+    99	    Includes ``hypothesis_id``: although it is a label, it is fixed at lock time and is the key
+   100	    the runners attribute verdicts by (``verdict.hypothesis_id``), so leaving it unbound would
+   101	    let a post-lock id swap file a verdict under an id the proof never attested (adversarial
+   102	    review, #80). Excludes only the lock fields themselves (``locked_at``/``timestamp_proof`` —
+   103	    they attest *to* this digest, so binding them would be circular).
+   104	
+   105	    Raises :class:`PreRegistrationError` if the content cannot be canonicalized reproducibly
+   106	    (a non-finite float or an unhashable leaf in ``params``) — the pre-registration entrypoints
+   107	    must surface a typed firewall error, not a bare ``ValueError``/``TypeError`` (#82).
+   108	    """
+   109	    payload = {
+   110	        "hypothesis_id": hypothesis.hypothesis_id,
+   111	        "statement": hypothesis.statement,
+   112	        "kind": hypothesis.kind.value,
+   113	        "origin": hypothesis.origin.value,
+   114	        "test_name": hypothesis.test_name,
+   115	        "decision_rule": hypothesis.decision_rule,
+   116	        "source_claim_id": hypothesis.source_claim_id,
+   117	        "predicted_direction": hypothesis.predicted_direction,
+   118	        "params": dict(hypothesis.params),
+   119	    }
+   120	    try:
+   121	        return hash_text(canonical_json(payload))
+   122	    except (ValueError, TypeError) as exc:
+   123	        raise PreRegistrationError(
+   124	            f"hypothesis {hypothesis.hypothesis_id!r} cannot be canonicalized for a content "
+   125	            f"digest ({exc}); pre-registration requires reproducibly hashable content "
+   126	            "(no non-finite floats or unhashable leaves in params)"
+   127	        ) from None
+   128	
+   129	
+   130	class LocalHmacAuthority:
+   131	    """A real, on-box timestamp authority binding a digest and an instant under a secret key.
+   132	
+   133	    ``stamp`` issues ``local-hmac:v1:<instant-iso>|<hmac-hex>`` where the MAC is
+   134	    ``HMAC-SHA256(secret, digest || instant)``. ``verify`` recomputes the MAC over the digest
+   135	    the engine derived from the *current* hypothesis and the instant carried in the proof, and
+   136	    constant-time compares. The proof therefore verifies iff the content is unchanged, the
+   137	    instant is unchanged, and the same secret is used — without the secret it cannot be forged
+   138	    for arbitrary content or time.
+   139	
+   140	    Honest scope: this is local tamper-evidence, not third-party non-repudiation — the holder of
+   141	    ``secret`` could backdate (see module docstring). Use an RFC-3161 authority when you need a
+   142	    third party to vouch for the time.
+   143	    """
+   144	
+   145	    authority_id = "local-hmac"
+   146	
+   147	    def __init__(self, secret: bytes) -> None:
+   148	        if not isinstance(secret, (bytes, bytearray)) or len(secret) < 16:
+   149	            raise ValueError("LocalHmacAuthority secret must be >= 16 bytes of key material")
+   150	        self._secret = bytes(secret)
+   151	
+   152	    def _mac(self, digest: str, instant_iso: str) -> str:
+   153	        msg = canonical_json(["local-hmac:v1", digest, instant_iso]).encode("utf-8")
+   154	        return hmac.new(self._secret, msg, "sha256").hexdigest()
+   155	
+   156	    def stamp(self, digest: str, *, instant: _dt.datetime | None = None) -> str:
+   157	        when = instant if instant is not None else _dt.datetime.now(tz=_UTC)
+   158	        when = _require_aware_utc(when, "stamp instant")
+   159	        instant_iso = when.isoformat()
+   160	        return f"{_PROOF_PREFIX}{instant_iso}{_PROOF_FIELD_SEP}{self._mac(digest, instant_iso)}"
+   161	
+   162	    def verify(self, digest: str, proof: str) -> VerifiedTimestamp:
+   163	        if not proof.startswith(_PROOF_PREFIX):
+   164	            raise PreRegistrationError(
+   165	                f"proof is not a {self.authority_id} v1 token (wrong prefix)"
+   166	            )
+   167	        body = proof[len(_PROOF_PREFIX) :]
+   168	        instant_iso, sep, mac_hex = body.partition(_PROOF_FIELD_SEP)
+   169	        if not sep or not instant_iso or not mac_hex:
+   170	            raise PreRegistrationError("malformed local-hmac proof (expected <instant>|<mac>)")
+   171	        # The MAC field must be exactly the hex of a SHA-256 digest. Validating its shape here
+   172	        # (a) rejects garbage early and (b) keeps non-ASCII/non-hex out of hmac.compare_digest,
+   173	        # which raises TypeError on non-ASCII str rather than returning False (#81).
+   174	        if len(mac_hex) != 64 or any(c not in "0123456789abcdef" for c in mac_hex):
+   175	            raise PreRegistrationError("malformed local-hmac proof (mac is not 64 lowercase hex)")
+   176	        try:
+   177	            parsed = _dt.datetime.fromisoformat(instant_iso)
+   178	        except ValueError:
+   179	            raise PreRegistrationError(f"proof instant is not ISO-8601: {instant_iso!r}") from None
+   180	        instant = _require_aware_utc(parsed, "proof instant")
+   181	        expected = self._mac(digest, instant_iso)
+   182	        if not hmac.compare_digest(expected, mac_hex):
+   183	            # Either the content (digest) changed since locking, the instant was tampered, or the
+   184	            # proof was issued under a different secret. All are pre-registration failures.
+   185	            raise PreRegistrationError(
+   186	                "proof does not bind this hypothesis's content at the stated time "
+   187	                "(content changed after locking, or proof was forged/issued by another authority)"
+   188	            )
+   189	        return VerifiedTimestamp(instant=instant, authority=self.authority_id, digest=digest)
+   190	
+   191	
+   192	def lock_hypothesis(
+   193	    hypothesis: Hypothesis,
+   194	    *,
+   195	    authority: StampingAuthority,
+   196	    instant: _dt.datetime | None = None,
+   197	) -> Hypothesis:
+   198	    """Return a locked copy of ``hypothesis`` whose proof binds its current content.
+   199	
+   200	    The engine's blessed way to pre-register: it computes the content digest, has ``authority``
+   201	    stamp it, and records the attested instant in ``locked_at`` so the displayed lock time and
+   202	    the cryptographic proof always agree. Re-locking an already-locked hypothesis is refused.
+   203	
+   204	    Scope of the seal (same honest boundary as ADR-0008): this refuses re-locking *this object*.
+   205	    It cannot stop a study that willfully reconstructs a hypothesis — e.g. ``dataclasses.replace``
+   206	    to clear the lock fields, then re-lock different content — any more than the runners can stop
+   207	    a builder that reflects into their frame; both need process isolation, which is out of scope.
+   208	    What the engine *does* guarantee is that whatever is ultimately confirmed has a proof binding
+   209	    its content at an attested time before confirmation. So a re-locked copy is simply a new
+   210	    pre-registration with a new, later timestamp — visible as such, not a silent override.
+   211	    """
+   212	    if hypothesis.locked:
+   213	        raise PreRegistrationError(
+   214	            f"hypothesis {hypothesis.hypothesis_id!r} is already locked; re-locking is forbidden"
+   215	        )
+   216	    digest = canonical_hypothesis_digest(hypothesis)
+   217	    proof = authority.stamp(digest, instant=instant)
+   218	    verified = authority.verify(digest, proof)  # fail loud here if the authority is misbehaving
+   219	    return replace(hypothesis, locked_at=verified.instant.isoformat(), timestamp_proof=proof)
+   220	
+   221	
+   222	def verify_preregistration(
+   223	    hypothesis: Hypothesis, *, authority: TimestampAuthority
+   224	) -> VerifiedTimestamp:
+   225	    """Verify a hypothesis is genuinely pre-registered: present, content-bound, time-attested.
+   226	
+   227	    Raises :class:`PreRegistrationError` if the hypothesis is not locked, the proof does not
+   228	    bind the *current* content digest, the attested instant is not a timezone-aware time, or the
+   229	    self-reported ``locked_at`` disagrees with the authority's attested instant.
+   230	    """
+   231	    if not hypothesis.locked:
+   232	        raise PreRegistrationError(
+   233	            f"hypothesis {hypothesis.hypothesis_id!r} is not locked; confirm is forbidden "
+   234	            "before pre-registration (METHODOLOGY §3 / GOVERNANCE §2)"
+   235	        )
+   236	    assert hypothesis.timestamp_proof is not None  # .locked guarantees this; for the type checker
+   237	    digest = canonical_hypothesis_digest(hypothesis)
+   238	    verified = authority.verify(digest, hypothesis.timestamp_proof)
+   239	    if verified.digest != digest:
+   240	        raise PreRegistrationError(
+   241	            f"authority attested digest {verified.digest!r} but the hypothesis content hashes to "
+   242	            f"{digest!r} — the proof does not cover this hypothesis"
+   243	        )
+   244	    # The displayed lock time must match the attested one, so a study cannot show a time the
+   245	    # authority did not vouch for.
+   246	    try:
+   247	        claimed = _dt.datetime.fromisoformat(hypothesis.locked_at or "")
+   248	    except ValueError:
+   249	        raise PreRegistrationError(
+   250	            f"locked_at {hypothesis.locked_at!r} is not an ISO-8601 timestamp"
+   251	        ) from None
+   252	    if _require_aware_utc(claimed, "locked_at") != verified.instant:
+   253	        raise PreRegistrationError(
+   254	            f"locked_at {hypothesis.locked_at!r} disagrees with the authority-attested instant "
+   255	            f"{verified.instant.isoformat()!r}"
+   256	        )
+   257	    return verified
+   258	
+   259	
+   260	def require_preregistered(
+   261	    hypothesis: Hypothesis,
+   262	    *,
+   263	    authority: TimestampAuthority,
+   264	    not_after: _dt.datetime,
+   265	) -> VerifiedTimestamp:
+   266	    """Gate a confirmatory step: the hypothesis must be verifiably locked *before* ``not_after``.
+   267	
+   268	    ``not_after`` is the confirmation moment (a runner captures it at entry). A lock whose
+   269	    attested instant is not strictly earlier is rejected — you cannot pre-register a hypothesis
+   270	    after the result that would confirm it is already in hand.
+   271	    """
+   272	    not_after = _require_aware_utc(not_after, "not_after")
+   273	    verified = verify_preregistration(hypothesis, authority=authority)
+   274	    if not verified.instant < not_after:
+   275	        raise PreRegistrationError(
+   276	            f"hypothesis {hypothesis.hypothesis_id!r} was locked at "
+   277	            f"{verified.instant.isoformat()!r}, not strictly before the confirmation moment "
+   278	            f"{not_after.isoformat()!r} — a lock must precede confirmation (GOVERNANCE §2)"
+   279	        )
+   280	    return verified
+########## methodology/fence.py ##########
+     1	"""The measurement ↔ interpretation fence (METHODOLOGY.md §6).
+     2	
+     3	A hard boundary separates **measurement** (numbers the engine produces) from
+     4	**interpretation** (what they mean). Interpretation lives strictly downstream and cannot
+     5	feed back into measurement. Any use of judgment — including LLM-assisted classification — is
+     6	interpretation, and is labeled as such.
+     7	
+     8	These wrappers make the boundary explicit and type-visible in the pipeline. ``fence`` turns
+     9	a measurement into an interpretation; there is deliberately no inverse — you cannot turn an
+    10	interpretation back into a measurement.
+    11	"""
+    12	
+    13	from __future__ import annotations
+    14	
+    15	from collections.abc import Mapping as AbcMapping
+    16	from dataclasses import dataclass, field
+    17	from typing import Any, Generic, Mapping, TypeVar
+    18	
+    19	from assay_engine._frozen import duck_mapping_items, freeze, freeze_mapping
+    20	
+    21	T = TypeVar("T")
+    22	
+    23	
+    24	@dataclass(frozen=True, slots=True)
+    25	class Interpretation(Generic[T]):
+    26	    """A judgment *about* one or more measurements. Downstream-only; never an input upstream."""
+    27	
+    28	    value: T
+    29	    basis: tuple[str, ...]  # refs (producer:inputs_hash) of the measurements this interprets
+    30	    rationale: str
+    31	    judged_by: str  # e.g. "operator" or a model identifier — judgment is always labeled
+    32	    metadata: Mapping[str, Any] = field(default_factory=dict)
+    33	
+    34	    def __post_init__(self) -> None:
+    35	        # Freeze the payload so the frozen record is deeply immutable + hashable (issue #29).
+    36	        object.__setattr__(self, "value", freeze(self.value))
+    37	        object.__setattr__(self, "metadata", freeze_mapping(self.metadata))
+    38	
+    39	
+    40	def _contains_interpretation(obj: Any) -> bool:
+    41	    """True if ``obj`` is, or recursively contains, an :class:`Interpretation`."""
+    42	    if isinstance(obj, Interpretation):
+    43	        return True
+    44	    if isinstance(obj, AbcMapping):
+    45	        # scan KEYS as well as values — an Interpretation used as a dict key would otherwise be
+    46	        # smuggled into a Measurement undetected (#115)
+    47	        return any(
+    48	            _contains_interpretation(k) or _contains_interpretation(v) for k, v in obj.items()
+    49	        )
+    50	    duck = duck_mapping_items(obj)
+    51	    if duck is not None:  # lazy/proxy dict-like — scan it like a mapping, not an opaque leaf (#140)
+    52	        return any(_contains_interpretation(k) or _contains_interpretation(v) for k, v in duck)
+    53	    if isinstance(obj, (list, tuple, set, frozenset)):
+    54	        return any(_contains_interpretation(v) for v in obj)
+    55	    return False
+    56	
+    57	
+    58	@dataclass(frozen=True, slots=True)
+    59	class Measurement(Generic[T]):
+    60	    """A value produced purely by the engine from data — no judgment involved."""
+    61	
+    62	    value: T
+    63	    produced_by: str
+    64	    inputs_hash: str
+    65	    metadata: Mapping[str, Any] = field(default_factory=dict)
+    66	
+    67	    def __post_init__(self) -> None:
+    68	        # Structurally close the one-way fence: an interpretation may never re-enter as a
+    69	        # measurement value — at the top level OR nested in a container/metadata (issues #22,
+    70	        # #30). Note: ref/inputs_hash integrity (forgery resistance) is delegated to the
+    71	        # provenance/audit layer, not enforced here.
+    72	        if _contains_interpretation(self.value) or _contains_interpretation(self.metadata):
+    73	            raise TypeError(
+    74	                "Measurement value/metadata must not contain an Interpretation — "
+    75	                "interpretation must not feed back into measurement (the fence)"
+    76	            )
+    77	        # Freeze the payload so the frozen record is deeply immutable + hashable (issue #29).
+    78	        object.__setattr__(self, "value", freeze(self.value))
+    79	        object.__setattr__(self, "metadata", freeze_mapping(self.metadata))
+    80	
+    81	    @property
+    82	    def ref(self) -> str:
+    83	        """A stable id for this specific measurement: producer + input hash."""
+    84	        return f"{self.produced_by}:{self.inputs_hash}"
+    85	
+    86	
+    87	def fence(
+    88	    measurement: Measurement[Any], value: T, *, rationale: str, judged_by: str
+    89	) -> Interpretation[T]:
+    90	    """Cross the fence once, in the only permitted direction: measurement → interpretation.
+    91	
+    92	    ``basis`` records the specific measurement's ``ref`` (``producer:inputs_hash``), so an
+    93	    interpretation can be traced to the exact measurement it interprets — not merely to the
+    94	    producer (audit pass 1, issue #16).
+    95	    """
+    96	    return Interpretation(
+    97	        value=value,
+    98	        basis=(measurement.ref,),
+    99	        rationale=rationale,
+   100	        judged_by=judged_by,
+   101	        metadata={"inputs_hash": measurement.inputs_hash},
+   102	    )
+########## methodology/verdict.py ##########
+     1	"""The three verdicts (ADR-0004, METHODOLOGY.md §4).
+     2	
+     3	A confirmatory test returns exactly one of supported / contradicted / indeterminate — never
+     4	a forced binary. Every verdict carries the evidence and the decision rule behind it, so a
+     5	reviewer can re-derive it.
+     6	"""
+     7	
+     8	from __future__ import annotations
+     9	
+    10	from dataclasses import dataclass, field
+    11	from enum import Enum
+    12	from typing import Any, Mapping
+    13	
+    14	from assay_engine._frozen import freeze_mapping
+    15	
+    16	
+    17	class VerdictLabel(Enum):
+    18	    SUPPORTED = "supported"
+    19	    CONTRADICTED = "contradicted"
+    20	    INDETERMINATE = "indeterminate"
+    21	
+    22	
+    23	@dataclass(frozen=True, slots=True)
+    24	class Verdict:
+    25	    """The outcome of one confirmatory test, structured identically for all three labels.
+    26	
+    27	    ``indeterminate`` is first-class: underpowered, beyond the measurement's reach, or a
+    28	    disagreement plausibly attributable to a method limitation rather than a claim error.
+    29	    """
+    30	
+    31	    hypothesis_id: str
+    32	    label: VerdictLabel
+    33	    decision_rule: str
+    34	    statistic: float | None = None
+    35	    threshold: float | None = None
+    36	    evidence: Mapping[str, Any] = field(default_factory=dict)
+    37	    notes: str = ""
+    38	
+    39	    def __post_init__(self) -> None:
+    40	        # The label annotation is type-checker-only; a study-supplied confirmer (the public
+    41	        # ClaimConfirmer/HeldOutConfirmer Protocols) that returns a bare string label would
+    42	        # otherwise build a structurally-valid Verdict that later crashes _score with an opaque
+    43	        # KeyError and breaks verdict.label.value provenance lines. Fail fast and attributable
+    44	        # at construction instead (#133).
+    45	        if not isinstance(self.label, VerdictLabel):
+    46	            raise TypeError(
+    47	                f"Verdict.label must be a VerdictLabel, got {type(self.label).__name__!r} "
+    48	                f"({self.label!r}) for hypothesis {self.hypothesis_id!r}"
+    49	            )
+    50	        if not isinstance(self.hypothesis_id, str) or not self.hypothesis_id:
+    51	            raise ValueError("Verdict.hypothesis_id must be a non-empty str")
+    52	        object.__setattr__(self, "evidence", freeze_mapping(self.evidence))
+    53	
+    54	    @property
+    55	    def is_indeterminate(self) -> bool:
+    56	        return self.label is VerdictLabel.INDETERMINATE
+    57	
+    58	    @classmethod
+    59	    def supported(cls, hypothesis_id: str, decision_rule: str, **kw: Any) -> "Verdict":
+    60	        return cls(hypothesis_id, VerdictLabel.SUPPORTED, decision_rule, **kw)
+    61	
+    62	    @classmethod
+    63	    def contradicted(cls, hypothesis_id: str, decision_rule: str, **kw: Any) -> "Verdict":
+    64	        return cls(hypothesis_id, VerdictLabel.CONTRADICTED, decision_rule, **kw)
+    65	
+    66	    @classmethod
+    67	    def indeterminate(cls, hypothesis_id: str, decision_rule: str, **kw: Any) -> "Verdict":
+    68	        return cls(hypothesis_id, VerdictLabel.INDETERMINATE, decision_rule, **kw)
+########## methodology/adjudication.py ##########
+     1	"""Adjudication runner — the engine owns the firewall guarantee, not each study (ADR-0008).
+     2	
+     3	METHODOLOGY.md describes the adjudication pipeline: build a baseline *blind* to the external
+     4	claims (Firewall A), convert each claim into a typed, pre-stated hypothesis, test each against
+     5	the blind baseline, and *score the external source* against the validated baseline (§5). Until
+     6	now the engine shipped the parts (a custodial :class:`ClaimBlindGuard`, the confirmatory tests,
+     7	the verdicts) but no composition — so Firewall A held only if a study wired it correctly by
+     8	hand. For a blueprint inherited by many studies, that pushes the single most important
+     9	methodological guarantee onto every cloner, where it is easy to get silently wrong (build the
+    10	baseline with the claims in scope and nothing stops you).
+    11	
+    12	:func:`adjudicate` makes the guarantee structural: it builds the baseline *inside* a sealed
+    13	claim-guard that holds the claims source, so the baseline builder cannot reach the claims
+    14	during construction (any attempt raises ``FirewallViolation``); only after the baseline is
+    15	built does the runner release the claims and adjudicate. It then aggregates the verdicts into a
+    16	:class:`SourceScorecard` — the §5 "score the source" step, expressed as alignment *frequency*
+    17	on decisive claims, explicitly NOT a normative judgement of the source's quality (richer
+    18	dimensions — where it aligns, diverges, leaves gaps — are data-surfaced downstream, per §5).
+    19	"""
+    20	
+    21	from __future__ import annotations
+    22	
+    23	import datetime as _dt
+    24	from dataclasses import dataclass, field
+    25	from typing import TYPE_CHECKING, Callable, Iterable, Protocol
+    26	
+    27	from assay_engine.contracts.claims import ClaimRecord, ExternalClaimsSource
+    28	from assay_engine.contracts.schema import Corpus
+    29	from assay_engine.methodology.firewalls import ClaimBlindGuard, FirewallViolation
+    30	from assay_engine.methodology.hypothesis import Hypothesis, HypothesisOrigin
+    31	from assay_engine.methodology.preregistration import (
+    32	    TimestampAuthority,
+    33	    require_preregistered,
+    34	)
+    35	from assay_engine.methodology.verdict import Verdict, VerdictLabel
+    36	
+    37	if TYPE_CHECKING:
+    38	    # Annotations only — importing baseline at runtime would invert the layering
+    39	    # (baseline.toolkit depends on methodology.firewalls) and create a cycle.
+    40	    from assay_engine.baseline.toolkit import BaselineArtifact, BaselineBuilder
+    41	
+    42	
+    43	class ClaimConfirmer(Protocol):
+    44	    """Study-supplied: confirm one claim-derived hypothesis against the (blind) baseline.
+    45	
+    46	    The study owns this because only it knows the baseline's structure and how a given claim
+    47	    maps onto a measurement of it; the engine supplies the confirmatory primitives
+    48	    (``confirm_whole_corpus`` / ``confirm_unit_level``) the study uses inside it.
+    49	    """
+    50	
+    51	    def __call__(
+    52	        self, hypothesis: Hypothesis, baseline: BaselineArtifact, claim: ClaimRecord
+    53	    ) -> Verdict: ...
+    54	
+    55	
+    56	@dataclass(frozen=True, slots=True)
+    57	class SourceScorecard:
+    58	    """How an external source aligns with the independent baseline (METHODOLOGY.md §5).
+    59	
+    60	    ``alignment_rate`` is supported / (supported + contradicted) — the fraction of *decisive*
+    61	    claims where the blind baseline agrees with the source's assertion. ``indeterminate`` is
+    62	    excluded from the denominator (the method could not decide; counting it would understate
+    63	    or overstate alignment). This is a frequency, not a verdict on whether the source is
+    64	    "good": it says how often an independent reading of the data corroborates the source.
+    65	    """
+    66	
+    67	    source: str
+    68	    n_supported: int
+    69	    n_contradicted: int
+    70	    n_indeterminate: int
+    71	    alignment_rate: float | None
+    72	    verdicts: tuple[Verdict, ...] = field(default_factory=tuple)
+    73	
+    74	    @property
+    75	    def total(self) -> int:
+    76	        return self.n_supported + self.n_contradicted + self.n_indeterminate
+    77	
+    78	    @property
+    79	    def decisive(self) -> int:
+    80	        return self.n_supported + self.n_contradicted
+    81	
+    82	
+    83	def _score(source: str, verdicts: list[Verdict]) -> SourceScorecard:
+    84	    counts = {
+    85	        VerdictLabel.SUPPORTED: 0,
+    86	        VerdictLabel.CONTRADICTED: 0,
+    87	        VerdictLabel.INDETERMINATE: 0,
+    88	    }
+    89	    for v in verdicts:
+    90	        counts[v.label] += 1
+    91	    decisive = counts[VerdictLabel.SUPPORTED] + counts[VerdictLabel.CONTRADICTED]
+    92	    rate = counts[VerdictLabel.SUPPORTED] / decisive if decisive else None
+    93	    return SourceScorecard(
+    94	        source=source,
+    95	        n_supported=counts[VerdictLabel.SUPPORTED],
+    96	        n_contradicted=counts[VerdictLabel.CONTRADICTED],
+    97	        n_indeterminate=counts[VerdictLabel.INDETERMINATE],
+    98	        alignment_rate=rate,
+    99	        verdicts=tuple(verdicts),
+   100	    )
+   101	
+   102	
+   103	def adjudicate(
+   104	    corpus: Corpus,
+   105	    claims_source: ExternalClaimsSource,
+   106	    *,
+   107	    baseline_builder: BaselineBuilder,
+   108	    hypothesis_for: Callable[[ClaimRecord], Hypothesis],
+   109	    confirm: ClaimConfirmer,
+   110	    authority: TimestampAuthority,
+   111	    source_name: str = "external",
+   112	) -> tuple[BaselineArtifact, SourceScorecard]:
+   113	    """Run the full adjudication, enforcing Firewall A by construction.
+   114	
+   115	    1. The claims source is kept in this function's local scope and is NOT handed to the
+   116	       builder; the baseline is built inside a sealed :class:`ClaimBlindGuard` that holds
+   117	       nothing. This is a **signature-level** guarantee: the builder is never *handed* a
+   118	       claims source by the engine, so it cannot accidentally consult the claims. It is NOT
+   119	       frame isolation — a builder that deliberately reflects into this runner's call stack
+   120	       (``sys._getframe``) could reach ``claims_source``; preventing that would require
+   121	       running the builder in a separate process, which is out of scope. The guarantee is
+   122	       against *accidental* circularity, not against a builder that willfully defeats the
+   123	       firewall.
+   124	    2. After the baseline exists, each claim is mapped (by ``hypothesis_for``) to its typed,
+   125	       pre-stated ``EXTERNAL_CLAIM`` hypothesis whose ``source_claim_id`` must match the claim
+   126	       and which must be genuinely **pre-registered** — :func:`~assay_engine.methodology.
+   127	       preregistration.require_preregistered` checks (via the supplied ``authority``) that the
+   128	       proof binds this hypothesis's content and that its attested lock time precedes the
+   129	       **baseline build** (the ordering instant is captured before the build). A claim-derived
+   130	       hypothesis must therefore be locked *before* ``adjudicate`` is called — ``hypothesis_for``
+   131	       looks up an already-locked hypothesis; locking on demand inside it (after the baseline
+   132	       exists) is rejected, so the hypothesis cannot have been tuned to the baseline.
+   133	    3. The verdict's ``hypothesis_id`` must match the hypothesis it answers (no misattribution),
+   134	       and the verdicts are aggregated into a :class:`SourceScorecard`.
+   135	
+   136	    ``authority`` is the pre-registration timestamp authority (e.g.
+   137	    :class:`~assay_engine.methodology.preregistration.LocalHmacAuthority`, or an RFC-3161
+   138	    adapter); the engine ships no silent-accept default, so a study must supply a real one.
+   139	
+   140	    Returns ``(baseline, scorecard)``. Raises ``FirewallViolation`` (incl.
+   141	    :class:`~assay_engine.methodology.preregistration.PreRegistrationError`) on any
+   142	    claim↔hypothesis↔verdict identity mismatch, a non-``EXTERNAL_CLAIM`` (data-surfaced)
+   143	    hypothesis, or a hypothesis that is not verifiably pre-registered before confirmation.
+   144	    """
+   145	    # The claims source stays in THIS function's local scope and is never given to the builder.
+   146	    # The builder receives a guard holding nothing (a blind-mode signal only), so there is no
+   147	    # object reachable from the builder that contains the claims — not even via the guard's
+   148	    # internals. This is stronger than a custodial guard, whose private `_claims_source` a
+   149	    # determined builder could read past the sealed `release()` check (adversarial review).
+   150	    # Captured BEFORE the baseline is built: an EXTERNAL_CLAIM hypothesis derives from the
+   151	    # external claim, not from the baseline, so it must be pre-registered before the baseline (the
+   152	    # answer) exists. Using this as `not_after` makes "lock before the result is in hand" real —
+   153	    # a hypothesis locked on demand inside `hypothesis_for` (i.e. after the build) is rejected,
+   154	    # forcing studies to pre-lock their claim-derived hypotheses (#83).
+   155	    not_after = _dt.datetime.now(tz=_dt.timezone.utc)
+   156	
+   157	    guard: ClaimBlindGuard[ExternalClaimsSource] = ClaimBlindGuard()
+   158	    with guard.sealed():
+   159	        baseline = baseline_builder.build(corpus, claim_guard=guard)
+   160	
+   161	    scorecard = adjudicate_with_baseline(
+   162	        baseline,
+   163	        claims_source.claims(),
+   164	        hypothesis_for=hypothesis_for,
+   165	        confirm=confirm,
+   166	        authority=authority,
+   167	        not_after=not_after,
+   168	        source_name=source_name,
+   169	    )
+   170	    return baseline, scorecard
+   171	
+   172	
+   173	def adjudicate_with_baseline(
+   174	    baseline: BaselineArtifact,
+   175	    claims: "Iterable[ClaimRecord]",
+   176	    *,
+   177	    hypothesis_for: Callable[[ClaimRecord], Hypothesis],
+   178	    confirm: ClaimConfirmer,
+   179	    authority: TimestampAuthority,
+   180	    not_after: _dt.datetime,
+   181	    source_name: str = "external",
+   182	    on_step: "Callable[[Hypothesis, Verdict], None] | None" = None,
+   183	) -> SourceScorecard:
+   184	    """Adjudicate a **materialized claim set** against an already-built blind baseline (core).
+   185	
+   186	    Factored out of :func:`adjudicate` so a composed pipeline that builds the baseline once
+   187	    (and shares it with discovery) can reuse the identical, hardened Firewall-A loop instead of
+   188	    rebuilding the baseline. The caller is responsible for having built ``baseline`` blind and
+   189	    for passing the ``not_after`` ordering instant captured *before* that build — so the
+   190	    lock-before-baseline guarantee is preserved across the shared-baseline composition.
+   191	
+   192	    ``claims`` is **materialized once** here (not re-pulled from a source): a caller that gated
+   193	    or recorded a claim snapshot must adjudicate *that* snapshot, not a set a re-iterable source
+   194	    could change between the gate and the scoring (adversarial review #95). Enforces the same
+   195	    claim↔hypothesis↔verdict identity + pre-registration checks as :func:`adjudicate`.
+   196	    """
+   197	    verdicts: list[Verdict] = []
+   198	    materialized = list(claims)  # claims used only after the blind baseline is built
+   199	    # within-run identity uniqueness: a repeated claim_id would be counted once per occurrence in
+   200	    # _score, inflating the scorecard denominator and biasing alignment_rate (#138).
+   201	    seen_claim_ids: set[str] = set()
+   202	    for c in materialized:
+   203	        if c.claim_id in seen_claim_ids:
+   204	            raise FirewallViolation(
+   205	                f"duplicate claim_id {c.claim_id!r} within one adjudication run — claim identity "
+   206	                "must be unique (a repeat would inflate the scorecard denominator)"
+   207	            )
+   208	        seen_claim_ids.add(c.claim_id)
+   209	    for claim in materialized:
+   210	        hypothesis = hypothesis_for(claim)
+   211	        if hypothesis.origin is not HypothesisOrigin.EXTERNAL_CLAIM:
+   212	            raise FirewallViolation(
+   213	                f"claim {claim.claim_id!r} produced a {hypothesis.origin.value!r} hypothesis; "
+   214	                "adjudicated claims must be EXTERNAL_CLAIM (pre-stated, not data-surfaced)"
+   215	            )
+   216	        if hypothesis.source_claim_id != claim.claim_id:
+   217	            raise FirewallViolation(
+   218	                f"hypothesis for claim {claim.claim_id!r} carries source_claim_id "
+   219	                f"{hypothesis.source_claim_id!r} — claim↔hypothesis misattribution"
+   220	            )
+   221	        # Pre-registration: the proof must bind THIS hypothesis's content (no post-lock content
+   222	        # swap) and its attested lock time must precede the baseline build (so the claim-derived
+   223	        # hypothesis cannot have been tuned to the baseline).
+   224	        require_preregistered(hypothesis, authority=authority, not_after=not_after)
+   225	        verdict = confirm(hypothesis, baseline, claim)
+   226	        if verdict.hypothesis_id != hypothesis.hypothesis_id:
+   227	            raise FirewallViolation(
+   228	                f"verdict for hypothesis {hypothesis.hypothesis_id!r} reports hypothesis_id "
+   229	                f"{verdict.hypothesis_id!r} — hypothesis↔verdict misattribution"
+   230	            )
+   231	        verdicts.append(verdict)
+   232	        if on_step is not None:
+   233	            # per-claim hook (in order) so a caller can record the pre-registered hypothesis AND
+   234	            # its verdict to provenance as each happens, not in a post-hoc batch (#93).
+   235	            on_step(hypothesis, verdict)
+   236	
+   237	    return _score(source_name, verdicts)
+########## methodology/confirm.py ##########
+     1	"""Confirmatory-test machinery (METHODOLOGY.md §2, §4).
+     2	
+     3	A confirmatory test takes a *locked* hypothesis and returns a :class:`Verdict`. Two
+     4	mechanisms, selected by hypothesis kind:
+     5	
+     6	- unit-level → evaluate on a held-out confirmation partition (Firewall B via
+     7	  :class:`DiscoverConfirmSplit`);
+     8	- whole-corpus → compare the observed statistic against a null/permutation distribution and
+     9	  require stability across resamples.
+    10	
+    11	This module defines the *contract and guards* around confirmation. The concrete statistics
+    12	are supplied by callers via the baseline toolkit; the engine's responsibility here is to
+    13	refuse to confirm an unlocked hypothesis or on discovery data, validate the supplied
+    14	statistics, and map an outcome onto one of the three verdicts honestly (including
+    15	``indeterminate``).
+    16	
+    17	Direction handling (audit pass 1, issue #2): a claim predicts the statistic lies in a
+    18	particular tail of the null. The empirical p-value is computed against *that* tail, so a
+    19	claim predicting a low value is confirmable, and a genuine contradiction (significant in the
+    20	opposite tail) is detectable — both were impossible under the previous direction-blind
+    21	upper-tail-only implementation.
+    22	"""
+    23	
+    24	from __future__ import annotations
+    25	
+    26	import datetime as _dt
+    27	import math
+    28	from typing import Iterable, Sequence
+    29	
+    30	from assay_engine.methodology.firewalls import DiscoverConfirmSplit, FirewallViolation
+    31	from assay_engine.methodology.hypothesis import Direction, Hypothesis, HypothesisKind
+    32	from assay_engine.methodology.preregistration import (
+    33	    TimestampAuthority,
+    34	    require_preregistered,
+    35	)
+    36	from assay_engine.methodology.verdict import Verdict
+    37	
+    38	
+    39	def _gate_preregistration(hypothesis: Hypothesis, authority: TimestampAuthority | None) -> None:
+    40	    """Pre-registration gate for the confirm primitives.
+    41	
+    42	    If ``authority`` is supplied, run the full :func:`require_preregistered` check (content
+    43	    binding + verifiable timestamp + lock-before-this-moment) — so a study calling a confirm
+    44	    primitive *directly* (outside a runner) gets the same guarantee the runners enforce. If it
+    45	    is ``None``, fall back to the cheap presence gate (:func:`require_locked`); the caller has
+    46	    then opted out of real verification and owns that choice.
+    47	    """
+    48	    if authority is not None:
+    49	        require_preregistered(
+    50	            hypothesis, authority=authority, not_after=_dt.datetime.now(tz=_dt.timezone.utc)
+    51	        )
+    52	    else:
+    53	        require_locked(hypothesis)
+    54	
+    55	
+    56	def require_locked(hypothesis: Hypothesis) -> None:
+    57	    """Cheap **presence** gate: refuse a hypothesis that carries no lock fields at all.
+    58	
+    59	    This is defense-in-depth, not the methodology-grade check. It does not verify the proof
+    60	    binds the content or that the lock precedes confirmation — that is
+    61	    :func:`~assay_engine.methodology.preregistration.require_preregistered`, which the
+    62	    confirmatory *runners* (:mod:`adjudication`, :mod:`discovery`) call before they confirm.
+    63	    A study driving :func:`confirm_whole_corpus`/:func:`confirm_unit_level` directly (outside a
+    64	    runner) should call ``require_preregistered`` itself to get the real guarantee.
+    65	    """
+    66	    if not hypothesis.locked:
+    67	        raise FirewallViolation(
+    68	            f"hypothesis {hypothesis.hypothesis_id!r} is not locked; confirm is forbidden "
+    69	            "before pre-registration (Firewall B / pre-registration)"
+    70	        )
+    71	
+    72	
+    73	def _validate_alpha(alpha: float) -> None:
+    74	    # A significance threshold of 0.5 or more is not a meaningful one-sided level, and
+    75	    # admitting it lets both tails register "significant" at once (alpha < 0.5 guarantees
+    76	    # p_support + p_contra >= 1 cannot both fall below alpha) — fix-review nit on issue #2.
+    77	    if not (0.0 < alpha < 0.5):
+    78	        raise ValueError(f"alpha must be in (0, 0.5); got {alpha}")
+    79	
+    80	
+    81	def _validate_pvalue(p_value: float) -> None:
+    82	    if not (0.0 <= p_value <= 1.0):
+    83	        raise ValueError(f"p_value must be in [0, 1]; got {p_value}")
+    84	
+    85	
+    86	def _validate_finite(name: str, value: float) -> None:
+    87	    if not math.isfinite(value):
+    88	        raise ValueError(f"{name} must be a finite number; got {value}")
+    89	
+    90	
+    91	def verdict_from_pvalue(
+    92	    hypothesis_id: str,
+    93	    *,
+    94	    statistic: float,
+    95	    p_value: float,
+    96	    alpha: float,
+    97	    powered: bool,
+    98	    direction_supports_claim: bool,
+    99	    test_description: str = "confirmatory test",
+   100	) -> Verdict:
+   101	    """Map a confirmatory statistic onto the three verdicts.
+   102	
+   103	    - not ``powered`` → ``indeterminate`` (the method cannot decide).
+   104	    - significant and direction agrees with the claim → ``supported``.
+   105	    - significant and direction disagrees → ``contradicted``.
+   106	    - not significant → ``indeterminate`` (absence of evidence is not contradiction here).
+   107	
+   108	    ``p_value`` and ``direction_supports_claim`` must be derived by the caller from a test
+   109	    appropriate to the claim's predicted direction. For a unit-level held-out test the engine
+   110	    is handed only an opaque ``statistic`` + ``p_value`` and cannot itself infer whether the
+   111	    statistic supports or contradicts the claim — so ``direction_supports_claim`` is a trusted
+   112	    caller obligation, ``statistic`` is recorded for provenance only (it does NOT gate the
+   113	    verdict), and the deciding flag is recorded in ``evidence`` so the verdict is re-derivable
+   114	    (audit pass 2, issue #20). Inputs are validated (issue #4) and the recorded decision rule
+   115	    reflects the caller's ``test_description``, not a hard-coded sidedness label (issue #2).
+   116	    """
+   117	    _validate_pvalue(p_value)
+   118	    _validate_alpha(alpha)
+   119	    _validate_finite("statistic", statistic)
+   120	
+   121	    rule = f"{test_description} at alpha={alpha}; powered={powered}"
+   122	    common = dict(
+   123	        statistic=statistic,
+   124	        threshold=alpha,
+   125	        evidence={"p_value": p_value, "direction_supports_claim": direction_supports_claim},
+   126	    )
+   127	    if not powered:
+   128	        return Verdict.indeterminate(hypothesis_id, rule, notes="underpowered", **common)
+   129	    if p_value <= alpha:
+   130	        if direction_supports_claim:
+   131	            return Verdict.supported(hypothesis_id, rule, **common)
+   132	        return Verdict.contradicted(hypothesis_id, rule, **common)
+   133	    return Verdict.indeterminate(hypothesis_id, rule, notes="not significant at alpha", **common)
+   134	
+   135	
+   136	def confirm_unit_level(
+   137	    hypothesis: Hypothesis,
+   138	    *,
+   139	    split: DiscoverConfirmSplit,
+   140	    evaluated_ids: Iterable[str],
+   141	    statistic: float,
+   142	    p_value: float,
+   143	    alpha: float,
+   144	    powered: bool,
+   145	    direction_supports_claim: bool,
+   146	    authority: TimestampAuthority | None = None,
+   147	) -> Verdict:
+   148	    """Confirm a unit-level hypothesis on the held-out partition only.
+   149	
+   150	    Pass ``authority`` to verify pre-registration in full (content binding + timestamp +
+   151	    lock-before-now); omit it to fall back to the presence gate (see :func:`require_locked`).
+   152	    """
+   153	    if hypothesis.kind is not HypothesisKind.UNIT_LEVEL:
+   154	        raise ValueError("confirm_unit_level requires a UNIT_LEVEL hypothesis")
+   155	    _gate_preregistration(hypothesis, authority)
+   156	    split.assert_confirm_only(evaluated_ids)  # Firewall B (rejects empty / discovery ids)
+   157	    return verdict_from_pvalue(
+   158	        hypothesis.hypothesis_id,
+   159	        statistic=statistic,
+   160	        p_value=p_value,
+   161	        alpha=alpha,
+   162	        powered=powered,
+   163	        direction_supports_claim=direction_supports_claim,
+   164	        test_description="held-out unit-level test",
+   165	    )
+   166	
+   167	
+   168	def _empirical_p(null: Sequence[float], observed: float, tail: Direction) -> float:
+   169	    """One-sided empirical p-value with +1 smoothing for the given tail."""
+   170	    n = len(null)
+   171	    if tail == "greater":
+   172	        extreme = sum(1 for v in null if v >= observed)
+   173	    else:
+   174	        extreme = sum(1 for v in null if v <= observed)
+   175	    return (extreme + 1) / (n + 1)
+   176	
+   177	
+   178	def _resample_stability(
+   179	    resamples: Sequence[float], null: Sequence[float], tail: Direction, alpha: float
+   180	) -> float:
+   181	    """Fraction of resamples that **reproduce the observed effect**.
+   182	
+   183	    Each resample is scored as its own observed statistic against the null and must itself be
+   184	    significant in the predicted tail (empirical p ≤ ``alpha``). This measures reproduction of
+   185	    the observed *effect* — not merely landing on the predicted side of the null center, which a
+   186	    resample distribution clearing the null median by an epsilon would satisfy while reproducing
+   187	    nothing of the observed magnitude (audit pass 2, #139). The closer to 1.0, the more
+   188	    consistently the effect's significance reproduces across resamples.
+   189	    """
+   190	    significant = sum(1 for r in resamples if _empirical_p(null, r, tail) <= alpha)
+   191	    return significant / len(resamples)
+   192	
+   193	
+   194	_VALID_DIRECTIONS = ("greater", "less")
+   195	
+   196	
+   197	def _resolve_direction(hypothesis: Hypothesis, predicted_direction: Direction | None) -> Direction:
+   198	    """Direction is fixed at lock time on the hypothesis (issue #24); the confirm-time
+   199	    argument is optional and, if given, must match the pre-registered one.
+   200	
+   201	    The resolved direction is validated against ``{"greater", "less"}`` and any other value is
+   202	    rejected: an unrecognized direction would otherwise fall through to the 'less' tail in
+   203	    :func:`_empirical_p`, silently flipping supported↔contradicted (audit pass 2, #128).
+   204	    """
+   205	    locked_dir = hypothesis.predicted_direction
+   206	    if locked_dir is not None:
+   207	        if predicted_direction is not None and predicted_direction != locked_dir:
+   208	            raise ValueError(
+   209	                "predicted_direction argument contradicts the hypothesis's pre-registered "
+   210	                f"direction ({predicted_direction!r} != {locked_dir!r})"
+   211	            )
+   212	        resolved = locked_dir
+   213	    elif predicted_direction is None:
+   214	        raise ValueError(
+   215	            "no predicted_direction: set it on the hypothesis at pre-registration "
+   216	            "(preferred) or pass it explicitly"
+   217	        )
+   218	    else:
+   219	        resolved = predicted_direction
+   220	    if resolved not in _VALID_DIRECTIONS:
+   221	        raise ValueError(
+   222	            f"predicted_direction must be one of {_VALID_DIRECTIONS}; got {resolved!r} — an "
+   223	            "unrecognized tail would silently flip the supported/contradicted verdict"
+   224	        )
+   225	    return resolved
+   226	
+   227	
+   228	def confirm_whole_corpus(
+   229	    hypothesis: Hypothesis,
+   230	    *,
+   231	    observed: float,
+   232	    null_distribution: Sequence[float],
+   233	    alpha: float,
+   234	    resample_statistics: Sequence[float] | None = None,
+   235	    stability_threshold: float = 0.9,
+   236	    predicted_direction: Direction | None = None,
+   237	    authority: TimestampAuthority | None = None,
+   238	) -> Verdict:
+   239	    """Confirm a whole-corpus hypothesis against a null distribution + measured stability.
+   240	
+   241	    Pass ``authority`` to verify pre-registration in full (content binding + timestamp +
+   242	    lock-before-now); omit it to fall back to the presence gate (see :func:`require_locked`).
+   243	
+   244	    The predicted tail is taken from the hypothesis's pre-registered ``predicted_direction``
+   245	    (issue #24). The pattern must (a) beat the null at ``alpha`` in the predicted tail and
+   246	    (b) be **stable across resamples** — measured by the engine from ``resample_statistics``,
+   247	    not asserted by the caller (audit pass 2, issue #21). Outcomes:
+   248	
+   249	    - significant in the predicted tail AND stable → ``supported``;
+   250	    - significant in the *opposite* tail → ``contradicted``;
+   251	    - unstable, not significant, or stability not assessed → ``indeterminate``.
+   252	
+   253	    If ``resample_statistics`` is omitted, stability cannot be measured, so ``supported`` is
+   254	    unavailable and the verdict is ``indeterminate`` ("stability not assessed").
+   255	    """
+   256	    if hypothesis.kind is not HypothesisKind.WHOLE_CORPUS:
+   257	        raise ValueError("confirm_whole_corpus requires a WHOLE_CORPUS hypothesis")
+   258	    _gate_preregistration(hypothesis, authority)
+   259	    _validate_alpha(alpha)
+   260	    _validate_finite("observed", observed)
+   261	    if not null_distribution:
+   262	        raise ValueError(
+   263	            "a null/permutation distribution is required for whole-corpus confirmation"
+   264	        )
+   265	    for v in null_distribution:
+   266	        _validate_finite("null_distribution value", v)
+   267	    if not (0.0 < stability_threshold <= 1.0):
+   268	        raise ValueError(f"stability_threshold must be in (0, 1]; got {stability_threshold}")
+   269	
+   270	    direction = _resolve_direction(hypothesis, predicted_direction)
+   271	    opposite: Direction = "less" if direction == "greater" else "greater"
+   272	    p_support = _empirical_p(null_distribution, observed, direction)
+   273	    p_contra = _empirical_p(null_distribution, observed, opposite)
+   274	    n = len(null_distribution)
+   275	
+   276	    stability: float | None = None
+   277	    if resample_statistics is not None:
+   278	        if not resample_statistics:
+   279	            raise ValueError("resample_statistics, if given, must be non-empty")
+   280	        for r in resample_statistics:
+   281	            _validate_finite("resample statistic", r)
+   282	        stability = _resample_stability(resample_statistics, null_distribution, direction, alpha)
+   283	    stable = stability is not None and stability >= stability_threshold
+   284	
+   285	    rule = (
+   286	        f"empirical p from {n}-sample null at alpha={alpha}, predicted tail '{direction}'; "
+   287	        f"stability across resamples >= {stability_threshold} (engine-measured)"
+   288	    )
+   289	    evidence = {
+   290	        "p_support": p_support,
+   291	        "p_contradict": p_contra,
+   292	        "null_n": n,
+   293	        "predicted_direction": direction,
+   294	        "stability": stability,
+   295	        "stability_threshold": stability_threshold,
+   296	        "n_resamples": len(resample_statistics) if resample_statistics is not None else 0,
+   297	    }
+   298	    common = dict(statistic=observed, threshold=alpha, evidence=evidence)
+   299	
+   300	    # A contradiction (significant in the opposite tail) is reportable without stability.
+   301	    if p_contra <= alpha:
+   302	        return Verdict.contradicted(
+   303	            hypothesis.hypothesis_id, rule, notes="significant in the opposite tail", **common
+   304	        )
+   305	    if stability is None:
+   306	        return Verdict.indeterminate(
+   307	            hypothesis.hypothesis_id,
+   308	            rule,
+   309	            notes="stability not assessed (no resamples supplied)",
+   310	            **common,
+   311	        )
+   312	    if not stable:
+   313	        return Verdict.indeterminate(
+   314	            hypothesis.hypothesis_id, rule, notes="unstable across resamples", **common
+   315	        )
+   316	    if p_support <= alpha:
+   317	        return Verdict.supported(hypothesis.hypothesis_id, rule, **common)
+   318	    return Verdict.indeterminate(
+   319	        hypothesis.hypothesis_id, rule, notes="does not beat null at alpha", **common
+   320	    )
+########## provenance.py ##########
+     1	"""Append-only provenance trail (GOVERNANCE §3, W3C PROV-DM style).
+     2	
+     3	Every action a study takes is recorded, in order, before the next executes: ingestion, the
+     4	blind baseline build, each discovered/locked hypothesis, every gate decision, each verdict,
+     5	the source scorecard, the final report. The trail is the spine of reproducibility and of the
+     6	independence claim — "no step can be retroactively removed or reordered" (GOVERNANCE §3).
+     7	
+     8	The trail enforces that structurally, not by promise:
+     9	
+    10	- **Append-only.** Entries are added through :meth:`ProvenanceTrail.record` only; there is no
+    11	  remove/edit/reorder API and the exposed view is an immutable tuple of frozen entries.
+    12	- **Chained.** Each entry carries ``prev_hash`` and an ``entry_hash`` over
+    13	  ``(prev_hash, seq, kind, summary, payload, timestamp)`` using the engine's one type-faithful
+    14	  serializer (:mod:`assay_engine._canonical`), rooted at a fixed genesis.
+    15	
+    16	Integrity — honest scope, two tiers:
+    17	
+    18	- **Unkeyed (default).** The chain is plain SHA-256. It is *tamper-evident against naive
+    19	  tampering and accidental corruption*: editing one entry without recomputing downstream
+    20	  hashes, reordering, or deleting an entry is caught by :func:`verify_records`. It is **not**
+    21	  forgery-proof: a motivated party who controls the serialized bytes can edit a payload and
+    22	  recompute the whole genesis-rooted chain, and the result verifies. Unkeyed integrity buys
+    23	  "is this a valid chain?", not "is this *the* chain the engine produced."
+    24	- **Keyed (``secret=...``).** Pass an on-box secret (as pre-registration does, ADR-0009) and
+    25	  the chain is HMAC-SHA256. The head cannot be recomputed without the secret, so a downstream
+    26	  store cannot silently rewrite history and re-seal it; :func:`verify_records` must be given
+    27	  the same secret. This is local tamper-*resistance*; non-repudiable third-party attestation of
+    28	  the trail's time remains the same pluggable concern as pre-registration, out of scope here.
+    29	"""
+    30	
+    31	from __future__ import annotations
+    32	
+    33	import datetime as _dt
+    34	import hashlib
+    35	import hmac
+    36	import threading
+    37	from dataclasses import dataclass
+    38	from typing import Any, Callable, Mapping
+    39	
+    40	from assay_engine._canonical import canonical_json
+    41	from assay_engine._frozen import freeze_mapping
+    42	
+    43	_UTC = _dt.timezone.utc
+    44	_GENESIS = "assay-provenance:v1:genesis"
+    45	
+    46	Clock = Callable[[], _dt.datetime]
+    47	
+    48	
+    49	class ProvenanceError(RuntimeError):
+    50	    """The provenance trail is inconsistent (a broken chain) or an entry cannot be recorded."""
+    51	
+    52	
+    53	@dataclass(frozen=True, slots=True)
+    54	class ProvenanceEntry:
+    55	    """One immutable, chained record of a single action."""
+    56	
+    57	    seq: int
+    58	    kind: str
+    59	    summary: str
+    60	    payload: Mapping[str, Any]
+    61	    timestamp: str  # ISO-8601 UTC
+    62	    prev_hash: str
+    63	    entry_hash: str
+    64	
+    65	    def __post_init__(self) -> None:
+    66	        object.__setattr__(self, "payload", freeze_mapping(self.payload))
+    67	
+    68	
+    69	def _digest(
+    70	    seq: int,
+    71	    kind: str,
+    72	    summary: str,
+    73	    payload: Mapping[str, Any],
+    74	    timestamp: str,
+    75	    prev_hash: str,
+    76	    secret: bytes | None,
+    77	) -> str:
+    78	    try:
+    79	        msg = canonical_json(
+    80	            ["assay-prov:v1", prev_hash, seq, kind, summary, dict(payload), timestamp]
+    81	        ).encode("utf-8")
+    82	    except (ValueError, TypeError, RecursionError) as exc:
+    83	        # RecursionError (deeply nested payload) is a RuntimeError, not Value/TypeError — catch it
+    84	        # too so the entrypoints surface a typed ProvenanceError, never a raw exception (#89).
+    85	        raise ProvenanceError(
+    86	            f"provenance payload for {kind!r} cannot be serialized reproducibly ({exc}); "
+    87	            "record only JSON-native / hashable values of bounded depth"
+    88	        ) from None
+    89	    if secret is None:
+    90	        return hashlib.sha256(msg).hexdigest()
+    91	    return hmac.new(secret, msg, "sha256").hexdigest()
+    92	
+    93	
+    94	def _utc_now() -> _dt.datetime:
+    95	    return _dt.datetime.now(tz=_UTC)
+    96	
+    97	
+    98	class ProvenanceTrail:
+    99	    """An append-only, chained audit trail for one study run.
+   100	
+   101	    ``secret`` (>= 16 bytes) keys the chain with HMAC so a serialized trail cannot be forged
+   102	    without it (see module docstring). ``clock`` injects the timestamp source (deterministic
+   103	    tests); it must return a timezone-aware ``datetime``.
+   104	    """
+   105	
+   106	    def __init__(self, *, secret: bytes | None = None, clock: Clock | None = None) -> None:
+   107	        if secret is not None and (not isinstance(secret, (bytes, bytearray)) or len(secret) < 16):
+   108	            raise ValueError("provenance secret must be >= 16 bytes of key material")
+   109	        self._entries: list[ProvenanceEntry] = []
+   110	        self._secret: bytes | None = bytes(secret) if secret is not None else None
+   111	        self._clock: Clock = clock or _utc_now
+   112	        # serialize the read-compute-append so concurrent record() calls cannot interleave and
+   113	        # corrupt the seq/prev_hash chain (#114)
+   114	        self._lock = threading.Lock()
+   115	
+   116	    def record(self, kind: str, summary: str, **payload: Any) -> ProvenanceEntry:
+   117	        """Append one entry. Returns it. The only way to add to the trail. Thread-safe."""
+   118	        if not kind:
+   119	            raise ProvenanceError("provenance entry kind must be non-empty")
+   120	        with self._lock:
+   121	            return self._record_locked(kind, summary, payload)
+   122	
+   123	    def _record_locked(
+   124	        self, kind: str, summary: str, payload: Mapping[str, Any]
+   125	    ) -> ProvenanceEntry:
+   126	        seq = len(self._entries)
+   127	        prev_hash = self._entries[-1].entry_hash if self._entries else _GENESIS
+   128	        try:
+   129	            instant = self._clock()
+   130	        except Exception as exc:  # noqa: BLE001 — the clock is an injected dependency
+   131	            raise ProvenanceError(f"provenance clock raised: {exc}") from None
+   132	        if not isinstance(instant, _dt.datetime):
+   133	            raise ProvenanceError("provenance clock must return a datetime")
+   134	        try:
+   135	            # utcoffset()/astimezone()/isoformat() can raise on a hostile datetime subclass or an
+   136	            # out-of-range value — keep the typed-error contract (#96).
+   137	            if instant.tzinfo is None or instant.utcoffset() is None:
+   138	                raise ProvenanceError("provenance clock must return a timezone-aware datetime")
+   139	            timestamp = instant.astimezone(_UTC).isoformat()
+   140	        except ProvenanceError:
+   141	            raise
+   142	        except Exception as exc:  # noqa: BLE001
+   143	            raise ProvenanceError(f"provenance timestamp could not be normalized: {exc}") from None
+   144	        entry_hash = _digest(seq, kind, summary, payload, timestamp, prev_hash, self._secret)
+   145	        try:
+   146	            entry = ProvenanceEntry(
+   147	                seq=seq,
+   148	                kind=kind,
+   149	                summary=summary,
+   150	                payload=payload,
+   151	                timestamp=timestamp,
+   152	                prev_hash=prev_hash,
+   153	                entry_hash=entry_hash,
+   154	            )
+   155	        except (ValueError, TypeError, RecursionError) as exc:
+   156	            raise ProvenanceError(
+   157	                f"provenance entry for {kind!r} could not be frozen ({exc})"
+   158	            ) from None
+   159	        self._entries.append(entry)
+   160	        return entry
+   161	
+   162	    def as_recorder(self) -> Callable[[Any], None]:
+   163	        """A :data:`gates.ProvenanceRecorder` bound to this trail (records GateDecisions).
+   164	
+   165	        Reads each attribute exactly once and defensively, so a booby-trapped decision object
+   166	        (a property that raises) surfaces a typed ``ProvenanceError`` rather than a raw error.
+   167	        """
+   168	
+   169	        def _record(decision: Any) -> None:
+   170	            try:
+   171	                gate = getattr(decision, "gate", None)
+   172	                approved = bool(getattr(decision, "approved", False))
+   173	                reason = getattr(decision, "reason", "")
+   174	                evidence = dict(getattr(decision, "evidence", {}) or {})
+   175	            except Exception as exc:  # noqa: BLE001 — the decision is on the trust boundary
+   176	                raise ProvenanceError(
+   177	                    f"could not read gate decision for provenance: {exc}"
+   178	                ) from None
+   179	            self.record(
+   180	                "gate",
+   181	                f"gate {gate!r}: {'approved' if approved else 'blocked'}",
+   182	                gate=gate,
+   183	                approved=approved,
+   184	                reason=reason,
+   185	                evidence=evidence,
+   186	            )
+   187	
+   188	        return _record
+   189	
+   190	    @property
+   191	    def entries(self) -> tuple[ProvenanceEntry, ...]:
+   192	        return tuple(self._entries)
+   193	
+   194	    @property
+   195	    def head(self) -> str:
+   196	        """The current chain head (last entry_hash, or the genesis if empty)."""
+   197	        return self._entries[-1].entry_hash if self._entries else _GENESIS
+   198	
+   199	    def __len__(self) -> int:
+   200	        return len(self._entries)
+   201	
+   202	    def verify(self) -> None:
+   203	        """Recompute the chain; raise :class:`ProvenanceError` on any inconsistency."""
+   204	        verify_records(self._entries, secret=self._secret)
+   205	
+   206	    def to_records(self) -> tuple[dict[str, Any], ...]:
+   207	        """Serialize to plain dicts (for a persistent store); re-checkable via :func:`verify_records`."""
+   208	        return tuple(
+   209	            {
+   210	                "seq": e.seq,
+   211	                "kind": e.kind,
+   212	                "summary": e.summary,
+   213	                "payload": dict(e.payload),
+   214	                "timestamp": e.timestamp,
+   215	                "prev_hash": e.prev_hash,
+   216	                "entry_hash": e.entry_hash,
+   217	            }
+   218	            for e in self._entries
+   219	        )
+   220	
+   221	
+   222	def verify_records(
+   223	    entries: "list[ProvenanceEntry] | tuple[ProvenanceEntry, ...]",
+   224	    *,
+   225	    secret: bytes | None = None,
+   226	) -> None:
+   227	    """Verify a sequence of entries forms an intact chain (order, linkage, content).
+   228	
+   229	    Pass the same ``secret`` the trail was keyed with; an unkeyed trail verifies with
+   230	    ``secret=None``. A keyed trail will not verify under the wrong/absent secret.
+   231	    """
+   232	    prev = _GENESIS
+   233	    for i, e in enumerate(entries):
+   234	        if e.seq != i:
+   235	            raise ProvenanceError(f"provenance entry {i} has seq {e.seq} (reordered or removed)")
+   236	        if e.prev_hash != prev:
+   237	            raise ProvenanceError(f"provenance entry {i} prev_hash breaks the chain")
+   238	        recomputed = _digest(e.seq, e.kind, e.summary, e.payload, e.timestamp, e.prev_hash, secret)
+   239	        if not hmac.compare_digest(recomputed, e.entry_hash):
+   240	            raise ProvenanceError(
+   241	                f"provenance entry {i} content was altered, or the wrong key was used (hash mismatch)"
+   242	            )
+   243	        prev = e.entry_hash
+   244	
+   245	
+   246	def from_records(
+   247	    records: "list[Mapping[str, Any]] | tuple[Mapping[str, Any], ...]",
+   248	    *,
+   249	    secret: bytes | None = None,
+   250	) -> tuple[ProvenanceEntry, ...]:
+   251	    """Rebuild entries from :meth:`ProvenanceTrail.to_records` output and verify the chain."""
+   252	    entries = tuple(
+   253	        ProvenanceEntry(
+   254	            seq=r["seq"],
+   255	            kind=r["kind"],
+   256	            summary=r["summary"],
+   257	            payload=r["payload"],
+   258	            timestamp=r["timestamp"],
+   259	            prev_hash=r["prev_hash"],
+   260	            entry_hash=r["entry_hash"],
+   261	        )
+   262	        for r in records
+   263	    )
+   264	    verify_records(entries, secret=secret)
+   265	    return entries
