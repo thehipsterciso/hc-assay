@@ -35,7 +35,8 @@ All passes, findings, verdicts, fixes, confirmations, and retrospectives are doc
 | 1 | harden/pass-1 | 22 confirmed (#101-#122) | 22/22 (2-agent) | 22/22 fixed+confirmed | #123 | merged |
 | 2 | harden/pass-2 | 33 confirmed (#124-#156) | 33/33 (2-agent) | 33/33 fixed; 21 CONFIRMED + 6 CONCERN→remediated, 0 rejected | #157 | merged |
 | 3 | harden/pass-3 | 54 deduped; 49 confirmed (F-001..F-054), 5 rejected | 49/49 (2-agent) | 43 code/test fixed + 1 reclassified-FP (F-005) + 2 scoped-declines (F-035, F-016 sub) + 1 deferred-by-mandate-and-mitigated (F-024); confirm 40/46 + 6 CONCERN→remediated | #161 | merged |
-| 4 | harden/pass-4 | 33 raw → 7 self-refuted → 24 deduped; 23 confirmed (G-001..G-024), 1 rejected | 23/23 (2-agent) | 23 fixed; confirm 22/23 + 1 CONCERN (G-004 test) → remediated | — | in progress |
+| 4 | harden/pass-4 | 33 raw → 7 self-refuted → 24 deduped; 23 confirmed (G-001..G-024), 1 rejected | 23/23 (2-agent) | 23 fixed; confirm 22/23 + 1 CONCERN (G-004 test) → remediated | #162 | merged |
+| 5 | harden/pass-5 | (assessing) | — | — | — | in progress |
 
 ## Pass-3 added assessment dimensions (from pass-2 retrospective)
 
