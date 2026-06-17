@@ -37,7 +37,8 @@ All passes, findings, verdicts, fixes, confirmations, and retrospectives are doc
 | 3 | harden/pass-3 | 54 deduped; 49 confirmed (F-001..F-054), 5 rejected | 49/49 (2-agent) | 43 code/test fixed + 1 reclassified-FP (F-005) + 2 scoped-declines (F-035, F-016 sub) + 1 deferred-by-mandate-and-mitigated (F-024); confirm 40/46 + 6 CONCERN→remediated | #161 | merged |
 | 4 | harden/pass-4 | 33 raw → 7 self-refuted → 24 deduped; 23 confirmed (G-001..G-024), 1 rejected | 23/23 (2-agent) | 23 fixed; confirm 22/23 + 1 CONCERN (G-004 test) → remediated | #162 | merged |
 | 5 | harden/pass-5 | 30 raw → 4 self-refuted → 24 deduped; 19 confirmed (H-001..H-024), 1 rejected, 4 split | 19/19 (2-agent) | 19 fixed; confirm 19/19, 0 CONCERN | #166 | merged |
-| 6 | harden/pass-6 | 4 split re-verified (all rejected) + 3 fresh confirmed (CV-O-1 high, CV-M-1, CV-S-1) | 3/3 (2-agent) | 3 fixed; confirm 3/3, 0 CONCERN | — | in progress |
+| 6 | harden/pass-6 | 4 split re-verified (all rejected) + 3 fresh confirmed (CV-O-1 high, CV-M-1, CV-S-1) | 3/3 (2-agent) | 3 fixed; confirm 3/3, 0 CONCERN | #167 | merged |
+| 7 | harden/pass-7 | per-dimension coverage matrix + fix-regression audit | — | — | — | in progress |
 
 **CONVERGENCE — CORRECTED (pass 6).** The pass-5 convergence call was PREMATURE: the four split
 findings did re-verify as elective (confirming behavioral-methodology convergence), but pass-6's
