@@ -467,6 +467,50 @@ def test_tracker_receives_run_and_metrics_and_failures_dont_abort(tmp_path):
     assert any(e.kind == "tracking_error" for e in res2.provenance)
 
 
+def test_provenance_artifact_survives_non_json_evidence(tmp_path):
+    # #K-OBS-2: freeze() accepts any HASHABLE leaf, so a payload may carry a hashable-but-non-JSON
+    # value (bytes/datetime). Pre-fix, _log_trail called json.dump INSIDE the temp-file block before
+    # assigning the path, so the TypeError (a) orphaned the temp file (leak) and (b) was swallowed
+    # by track(), silently dropping the #G-009 artifact. Now serialized up front with default=str:
+    # the artifact still attaches AND no temp file leaks.
+    import datetime as _dt
+    import os as _os
+
+    trail = ProvenanceTrail()
+    trail.record(
+        "gate",
+        "evidence with non-json leaves",
+        evidence={"token": b"\x00rawbytes-secretish", "when": _dt.datetime(2026, 1, 1)},
+    )
+
+    class CapTracker:
+        def __init__(self):
+            self.artifacts = []
+            self.contents = ""
+
+        def start_run(self, name, params):
+            return "run-1"
+
+        def log_metric(self, *a):
+            pass
+
+        def log_artifact(self, run_id, path):
+            self.artifacts.append(path)
+            assert _os.path.exists(path), "tracker cannot read the artifact (temp file gone early)"
+            with open(path, encoding="utf-8") as fh:
+                self.contents = fh.read()
+
+        def end_run(self, *a, **k):
+            pass
+
+    t = CapTracker()
+    _run(tmp_path, ALL, tracker=t, trail=trail)
+    prov = [p for p in t.artifacts if str(p).endswith("_provenance.json")]
+    assert prov, "provenance artifact was silently dropped on non-JSON evidence (#K-OBS-2)"
+    assert not any(_os.path.exists(p) for p in prov), "temp file leaked (#K-OBS-2/#H-013)"
+    assert "rawbytes-secretish" in t.contents, "non-JSON value lost instead of serialized via str"
+
+
 def test_versioner_failure_is_wrapped_as_ingestion_error(tmp_path):
     # #F-008: a storage failure in the optional versioner seam must surface as the documented
     # IngestionError, not a raw untyped exception the caller cannot distinguish from a firewall

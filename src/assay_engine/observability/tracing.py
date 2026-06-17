@@ -150,8 +150,17 @@ def _install_flush_on_exit(provider: Any) -> None:
             def _handler(signum: int, frame: Any) -> None:
                 _safe(flush)
                 _safe(getattr(provider, "shutdown", lambda: None))
+                # Preserve the ORIGINAL disposition (#K-REL-1). If a Python handler pre-existed,
+                # chain to it. Otherwise prior is SIG_DFL/SIG_IGN — both NON-callable — and simply
+                # returning here would SWALLOW the signal: we replaced SIGTERM's default
+                # terminate-the-process action with a flush-and-return, so `docker stop` / `kill` /
+                # k8s would hang until SIGKILL escalation. Re-establish and re-deliver the default
+                # action so the process still dies on SIGTERM (SIG_IGN stays ignored).
                 if callable(prior):
                     prior(signum, frame)
+                elif prior == signal.SIG_DFL:
+                    signal.signal(signal.SIGTERM, signal.SIG_DFL)
+                    os.kill(os.getpid(), signum)  # re-deliver → default terminate action runs
 
             signal.signal(signal.SIGTERM, _handler)
         except (ValueError, OSError):  # pragma: no cover - not on main thread / unsupported

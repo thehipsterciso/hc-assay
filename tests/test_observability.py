@@ -98,6 +98,10 @@ def test_otel_span_records_error_status_and_exception_on_raise(monkeypatch):
     # ERROR span with the exception event — no manual handling needed. This is a CHARACTERIZATION
     # guard: it pins the SDK behavior we rely on, so an accidental record_exception=False (or an
     # SDK default flip) is caught — errors must never render green/UNSET in Phoenix.
+    # #K-CI-3: skip cleanly without the observability extra (this ran green in CI ONLY because the
+    # bare-pytest collection bug (#K-CI-2) meant the core lane never executed; fixing that exposed
+    # this unguarded import).
+    pytest.importorskip("opentelemetry")
     from opentelemetry.trace import StatusCode
 
     exporter = _in_memory_provider(monkeypatch)
@@ -209,9 +213,15 @@ def test_install_flush_on_exit_wires_atexit_and_sigterm(monkeypatch):
     monkeypatch.setattr(tr.atexit, "register", lambda fn: calls["atexit"].append(fn))
     captured = {}
     monkeypatch.setattr(tr.signal, "getsignal", lambda s: _signal.SIG_DFL)
-    monkeypatch.setattr(
-        tr.signal, "signal", lambda sig, handler: captured.__setitem__("h", handler)
-    )
+
+    def _capture_signal(sig, handler):
+        if handler is not _signal.SIG_DFL:  # the install call (not the #K-REL-1 reset-to-default)
+            captured["h"] = handler
+
+    monkeypatch.setattr(tr.signal, "signal", _capture_signal)
+    # The handler now RE-DELIVERS SIGTERM when prior is SIG_DFL (#K-REL-1); stub os.kill so invoking
+    # it here doesn't actually signal the test process.
+    monkeypatch.setattr(tr.os, "kill", lambda pid, sig: None)
 
     tr._install_flush_on_exit(_Provider())
 
@@ -229,6 +239,51 @@ def test_install_flush_on_exit_wires_atexit_and_sigterm(monkeypatch):
         assert calls["shutdown"] >= 1
     else:  # pragma: no cover - the suite runs on the main thread
         pass
+
+
+def test_sigterm_handler_redelivers_default_termination(monkeypatch):
+    # #K-REL-1: when no prior Python SIGTERM handler exists, getsignal returns SIG_DFL (NOT
+    # callable). The handler must NOT just flush-and-return — that would SWALLOW SIGTERM (it
+    # replaced the default terminate action), so docker stop / kill / k8s would hang until SIGKILL.
+    # It must re-establish SIG_DFL and re-deliver the signal so the process still terminates.
+    import signal as _signal
+
+    calls = {"flush": 0, "shutdown": 0, "reset": [], "killed": []}
+
+    class _Provider:
+        def force_flush(self):
+            calls["flush"] += 1
+
+        def shutdown(self):
+            calls["shutdown"] += 1
+
+    captured = {}
+    monkeypatch.setattr(tr.atexit, "register", lambda fn: None)
+    monkeypatch.setattr(tr.signal, "getsignal", lambda s: _signal.SIG_DFL)
+
+    def _fake_signal(sig, handler):
+        if handler is _signal.SIG_DFL:
+            calls["reset"].append(sig)  # the re-establish-default call
+        else:
+            captured["h"] = handler  # the install call
+
+    monkeypatch.setattr(tr.signal, "signal", _fake_signal)
+    monkeypatch.setattr(tr.os, "kill", lambda pid, sig: calls["killed"].append((pid, sig)))
+
+    import threading
+
+    if threading.current_thread() is not threading.main_thread():  # pragma: no cover
+        pytest.skip("SIGTERM wiring only on the main thread")
+
+    tr._install_flush_on_exit(_Provider())
+    assert "h" in captured
+    captured["h"](_signal.SIGTERM, None)
+    # flushed AND shut down AND re-delivered the default terminate (reset to SIG_DFL + os.kill)
+    assert calls["flush"] >= 1 and calls["shutdown"] >= 1
+    assert _signal.SIGTERM in calls["reset"], "did not re-establish default SIGTERM disposition"
+    assert calls["killed"] and calls["killed"][0][1] == _signal.SIGTERM, (
+        "did not re-deliver SIGTERM — termination is swallowed (#K-REL-1)"
+    )
 
 
 def test_install_flush_on_exit_noop_without_force_flush(monkeypatch):
