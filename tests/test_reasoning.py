@@ -62,6 +62,10 @@ def test_is_metered_credential_matches_shape(key, metered):
         ("https_proxy", True),  # case-insensitive
         ("AWS_SECRET_ACCESS_KEY", True),
         ("GOOGLE_APPLICATION_CREDENTIALS", True),
+        ("ANTHROPIC_CUSTOM_HEADERS", True),  # #G-018: whole ANTHROPIC_ namespace scrubbed
+        ("anthropic_base_url", True),  # #G-018: lowercase namespace too
+        ("NODE_EXTRA_CA_CERTS", True),  # #G-018: custom CA enables off-box MITM
+        ("NODE_TLS_REJECT_UNAUTHORIZED", True),  # #G-018: disabling cert checks
         ("CLAUDE_CODE_OAUTH_TOKEN", False),  # subscription auth — keep
         ("PATH", False),
         ("HOME", False),

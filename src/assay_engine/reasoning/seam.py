@@ -135,13 +135,14 @@ def is_metered_anthropic_credential(key: str) -> bool:
 # metered provider, defeating ADR-0003 / "no metered API". The claude CLI honours all of these.
 _UNSAFE_SUBPROCESS_VARS = frozenset(
     {
-        "ANTHROPIC_BASE_URL",
-        "ANTHROPIC_BEDROCK_BASE_URL",
-        "ANTHROPIC_VERTEX_BASE_URL",
         "CLAUDE_CODE_USE_BEDROCK",
         "CLAUDE_CODE_USE_VERTEX",
         "CLAUDE_CODE_API_KEY_HELPER",
         "GOOGLE_APPLICATION_CREDENTIALS",
+        # TLS-trust / egress-interception knobs the Node-based CLI honours: a custom CA or disabled
+        # cert verification enables a transparent off-box MITM proxy (pass 4, #G-018).
+        "NODE_EXTRA_CA_CERTS",
+        "NODE_TLS_REJECT_UNAUTHORIZED",
     }
 )
 
@@ -150,12 +151,16 @@ def is_unsafe_subprocess_var(key: str) -> bool:
     """True for any env var that must not reach the high-stakes subprocess (#101).
 
     Covers metered credentials, off-box/metered-provider redirects, proxies (which redirect
-    egress), and cloud-provider credentials (AWS_*/GOOGLE_*). The subscription OAuth token is
-    deliberately NOT matched.
+    egress), cloud-provider credentials (AWS_*/GOOGLE_*), and TLS-trust overrides. The ENTIRE
+    ``ANTHROPIC_*`` namespace is scrubbed (#G-018): any such var configures the SDK's endpoint /
+    auth / headers and could redirect off-box or onto a metered provider — the subscription token
+    is ``CLAUDE_CODE_OAUTH_TOKEN`` (no ``ANTHROPIC_`` prefix) and is deliberately NOT matched.
     """
     ku = key.upper()
     return (
-        is_metered_anthropic_credential(key)
+        ku.startswith(
+            "ANTHROPIC_"
+        )  # whole namespace: endpoint/auth/headers/custom-headers (#G-018)
         or ku in _UNSAFE_SUBPROCESS_VARS
         or ku.endswith("_PROXY")  # HTTP_PROXY/HTTPS_PROXY/ALL_PROXY/NO_PROXY (any case)
         or ku.startswith("AWS_")
