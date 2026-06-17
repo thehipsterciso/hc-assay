@@ -43,10 +43,30 @@ def test_freeze_mapping_is_idempotent_and_preserves_cached_hash():
 def test_unfreeze_frozenset_of_unorderable_types_is_deterministic():
     # #G-004: unfreeze sorts a frozenset for reproducible output; for unorderable mixed types it
     # must fall back to a STABLE key (type name, repr), NOT raw set iteration order (hash-seed
-    # dependent → non-reproducible across processes). Pin the exact stable order so a revert to raw
-    # iteration fails: by (type name, repr), ints precede strs → [1, 2, 'a', 'b'].
+    # dependent → non-reproducible across processes). By (type name, repr), ints precede strs.
     assert unfreeze(frozenset({1, "a", 2, "b"})) == [1, 2, "a", "b"]
     assert unfreeze(frozenset({"b", 2, "a", 1})) == [1, 2, "a", "b"]
+
+
+def test_unfreeze_frozenset_order_is_seed_independent_subprocess():
+    # #G-004 (deterministic discrimination): the in-process assertion above can pass ~1/3 of the
+    # time even on the buggy raw-iteration code because CPython's per-process hash seed sometimes
+    # coincides with the stable order. Pin PYTHONHASHSEED to a value at which raw set-iteration
+    # order is known to DIFFER from the stable order, run in a subprocess, and assert the stable
+    # output — so a revert to raw iteration fails this guard EVERY run, not probabilistically.
+    import os
+    import subprocess
+    import sys
+
+    snippet = (
+        "from assay_engine._frozen import unfreeze;"
+        "assert unfreeze(frozenset({1,'a',2,'b'})) == [1,2,'a','b'], 'non-deterministic order'"
+    )
+    # seed where raw frozenset iteration of {1,'a',2,'b'} is ['b',1,2,'a'] (verified) — i.e. it
+    # DIFFERS from the stable [1,2,'a','b'], so the reverted raw-iteration code fails this every run.
+    env = {**os.environ, "PYTHONHASHSEED": "2"}
+    proc = subprocess.run([sys.executable, "-c", snippet], env=env, capture_output=True, text=True)
+    assert proc.returncode == 0, f"seed-independent order guard failed: {proc.stderr}"
 
 
 def test_verdict_is_hashable_and_evidence_immutable():
