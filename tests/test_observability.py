@@ -98,6 +98,10 @@ def test_otel_span_records_error_status_and_exception_on_raise(monkeypatch):
     # ERROR span with the exception event — no manual handling needed. This is a CHARACTERIZATION
     # guard: it pins the SDK behavior we rely on, so an accidental record_exception=False (or an
     # SDK default flip) is caught — errors must never render green/UNSET in Phoenix.
+    # #K-CI-3: skip cleanly without the observability extra (this ran green in CI ONLY because the
+    # bare-pytest collection bug (#K-CI-2) meant the core lane never executed; fixing that exposed
+    # this unguarded import).
+    pytest.importorskip("opentelemetry")
     from opentelemetry.trace import StatusCode
 
     exporter = _in_memory_provider(monkeypatch)
