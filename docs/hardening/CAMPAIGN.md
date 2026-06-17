@@ -36,7 +36,12 @@ All passes, findings, verdicts, fixes, confirmations, and retrospectives are doc
 | 2 | harden/pass-2 | 33 confirmed (#124-#156) | 33/33 (2-agent) | 33/33 fixed; 21 CONFIRMED + 6 CONCERN→remediated, 0 rejected | #157 | merged |
 | 3 | harden/pass-3 | 54 deduped; 49 confirmed (F-001..F-054), 5 rejected | 49/49 (2-agent) | 43 code/test fixed + 1 reclassified-FP (F-005) + 2 scoped-declines (F-035, F-016 sub) + 1 deferred-by-mandate-and-mitigated (F-024); confirm 40/46 + 6 CONCERN→remediated | #161 | merged |
 | 4 | harden/pass-4 | 33 raw → 7 self-refuted → 24 deduped; 23 confirmed (G-001..G-024), 1 rejected | 23/23 (2-agent) | 23 fixed; confirm 22/23 + 1 CONCERN (G-004 test) → remediated | #162 | merged |
-| 5 | harden/pass-5 | (assessing) | — | — | — | in progress |
+| 5 | harden/pass-5 | 30 raw → 4 self-refuted → 24 deduped; 19 confirmed (H-001..H-024), 1 rejected, 4 split | 19/19 (2-agent) | 19 fixed; confirm 19/19, 0 CONCERN | — | in progress |
+
+**CONVERGENCE REACHED (pass 5):** confirmed-finding count 22→33→49→23→19; pass-5 had a single
+high (H-001, a refinement of the #G-001 firewall, not a new class), ~half doc-honesty/test polish,
+and 0 confirmation concerns. See PASS-5.md §6. The campaign continues to the deadline per mandate,
+but the codebase is hardened-stable; further passes are expected to confirm convergence.
 
 ## Pass-3 added assessment dimensions (from pass-2 retrospective)
 
