@@ -38,6 +38,23 @@ def test_corpus_fingerprint_is_order_independent_and_stable():
     assert corpus_fingerprint(c1) != corpus_fingerprint(Corpus(units=(Unit("a"), Unit("c"))))
 
 
+def test_corpus_fingerprint_is_byte_stable_across_the_streaming_change():
+    # #F-016: the fingerprint was changed to stream JSON into SHA-256 (iterencode) instead of
+    # materializing one big string. This PINS the exact hash for a fixed corpus so the streaming
+    # change — or any future refactor — that alters the fingerprint bytes fails loudly (every
+    # existing baseline/provenance record depends on this value being unchanged).
+    from assay_engine.contracts.schema import Relation
+
+    c = Corpus(
+        units=(Unit("u1", "alpha", attributes={"n": 1}), Unit("u2", "beta")),
+        relations=(Relation("u1", "u2", "rel"),),
+        metadata={"src": "fixed"},
+    )
+    assert (
+        corpus_fingerprint(c) == "d4a4b7123ba6248e56e6287aa35774d81db8996de9f1ce630e2fa3bff75f9566"
+    )
+
+
 def test_stable_seed_is_deterministic_and_distinct():
     assert stable_seed("x", "y") == stable_seed("x", "y")
     assert stable_seed("x", "y") != stable_seed("x", "z")

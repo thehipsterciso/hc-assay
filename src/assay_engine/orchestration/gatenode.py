@@ -32,6 +32,7 @@ extra, imported lazily).
 
 from __future__ import annotations
 
+import warnings
 from typing import Any, Callable, Mapping
 
 from assay_engine.orchestration.gates import Gate, GateError
@@ -103,7 +104,20 @@ def make_gate_node(
     (untamper-evident) graph state, so the documented append-only trail would miss them. Pass a
     callback such as ``lambda r: trail.record("gate", f"gate {r['gate']}: {r['decision']}", **r)``
     so the graph path's approvals/rejections land in the same chained trail as the runner's.
+
+    Omitting ``recorder`` is a GOVERNANCE §3 audit gap: gate decisions then live only in
+    (non-tamper-evident) LangGraph state, never in the hash-chained trail, so a checkpoint edit
+    flipping ``rejected``→``approved`` is undetectable by ``verify_records``. Because that
+    insecure configuration is effortless to ship by accident, building a node without a recorder
+    emits a warning rather than failing silently (pass 3, #F-007).
     """
+    if recorder is None:
+        warnings.warn(
+            f"make_gate_node({gate.name!r}) built with no recorder: gate decisions will NOT be "
+            "written to the hash-chained provenance trail (GOVERNANCE §3 audit gap) — pass a "
+            "recorder that calls trail.record('gate', ...) for a tamper-evident audit trail",
+            stacklevel=2,
+        )
 
     def node(state: Mapping[str, Any]) -> dict[str, Any]:
         if already_decided(state, gate.name):

@@ -101,6 +101,9 @@ def test_ci_allowlist_loop_is_robust_in_the_workflow_file():
         "buggy unquoted IGNORES string reintroduced"
     )
     assert "while read -r id; do [ -n" not in text, "buggy non-newline-agnostic loop reintroduced"
+    # #F-052: the behavioral allowlist tests run a hardcoded copy of the loop against a tmp file,
+    # so they cannot catch a change to the allowlist FILENAME in ci.yml. Pin the filename here.
+    assert ".pip-audit-ignore" in text, "ci.yml allowlist filename changed (#F-052)"
 
 
 def test_no_dependency_range_spans_multiple_majors():
@@ -128,6 +131,9 @@ def test_dependabot_monitors_dependencies():
     assert db.exists(), "no .github/dependabot.yml (#147)"
     text = db.read_text(encoding="utf-8")
     assert "package-ecosystem: pip" in text
+    # #F-053: the github-actions ecosystem must also be monitored so action-pinning drift (the
+    # #F-037 class) is surfaced — deleting that block must fail this test.
+    assert "package-ecosystem: github-actions" in text
 
 
 def test_license_gate_present():
@@ -136,6 +142,115 @@ def test_license_gate_present():
     assert "License gate" in text and "pip-licenses" in text and "license_gate.py" in text
     gate = (_ROOT / "scripts" / "license_gate.py").read_text(encoding="utf-8")
     assert "AGPL" in gate and "GPL" in gate  # denies strong-copyleft families
+
+
+def _load_license_gate():
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location(
+        "license_gate", _ROOT / "scripts" / "license_gate.py"
+    )
+    assert spec and spec.loader
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+@pytest.mark.parametrize(
+    "license_name,denied",
+    [
+        ("Server Side Public License", True),  # #F-015: SSPL prose form
+        ("European Union Public Licence 1.2", True),  # #F-015: EUPL prose form
+        ("GNU Affero General Public License v3", True),  # AGPL prose form
+        ("SSPL", True),
+        ("GPL-3.0", True),
+        ("GNU Lesser General Public License v3 (LGPLv3)", False),  # weak copyleft permitted
+        ("MIT", False),
+        ("Apache-2.0", False),
+        ("BSD-3-Clause", False),
+    ],
+)
+def test_license_gate_behavioral_denies_strong_copyleft(tmp_path, license_name, denied):
+    # #F-015 + #F-039: a BEHAVIORAL test (call main() on a synthetic report), not a string-presence
+    # check — the prose-name SSPL/EUPL bypass and any logic regression are caught here.
+    import json
+
+    gate = _load_license_gate()
+    report = [{"Name": "pkg", "Version": "1.0", "License": license_name}]
+    p = tmp_path / "licenses.json"
+    p.write_text(json.dumps(report), encoding="utf-8")
+    rc = gate.main(str(p))
+    assert rc == (1 if denied else 0), f"{license_name!r}: expected denied={denied}"
+
+
+def test_ci_test_lanes_install_hash_pinned_not_live_pypi():
+    # #F-004: the core AND integration test lanes must install from the hashed lockfiles with
+    # --require-hashes, not a live `pip install -e .[...]` against PyPI (where a malicious patch
+    # release could execute under test).
+    text = _ci_text()
+    assert "--require-hashes -r requirements-core.lock" in text, (
+        "core lane not hash-pinned (#F-004)"
+    )
+    assert "--require-hashes -r requirements.lock" in text, "integration lane not hash-pinned"
+    assert (_ROOT / "requirements-core.lock").exists(), "requirements-core.lock missing (#F-004)"
+    # the old live-resolution install of the engine-with-extras must be gone from the test lanes
+    assert 'pip install -e ".[dev]"' not in text
+    assert 'pip install -e ".[dev,reasoning' not in text
+
+
+def test_core_lockfile_is_pinned_and_hashed_and_extra_free():
+    # #F-004: the core lock backs the no-extras lane — it must be fully pinned + hashed and must
+    # NOT pull in any backend extra (preserving the ADR-0006 dependency-free-core guard).
+    core = (_ROOT / "requirements-core.lock").read_text(encoding="utf-8")
+    assert "--hash=sha256:" in core
+    for backend in ("arize-phoenix", "langgraph", "psycopg", "qdrant-client", "langchain-ollama"):
+        assert f"\n{backend}==" not in core, f"core lock leaked a backend extra: {backend}"
+
+
+def test_sbom_generation_fails_loud():
+    # #F-012: the SBOM step must not mask pip-audit failure with `|| true`, and the upload must
+    # error (not warn) on a missing file — a broken/absent SBOM cannot pass CI green.
+    text = _ci_text()
+    sbom_section = text[text.index("SBOM (CycloneDX)") :]
+    assert "cyclonedx-json -o sbom.cyclonedx.json || true" not in sbom_section, "SBOM masks failure"
+    assert "if-no-files-found: error" in text, "SBOM/license upload must error on missing file"
+
+
+def test_license_gate_scans_pinned_lockfile_not_live_resolution():
+    # #F-013: the license gate must scan the hash-pinned set, not a live `pip install -e .[all]`.
+    text = _ci_text()
+    gate_section = text[text.index("License gate") :]
+    assert 'pip install -e ".[all]"' not in gate_section, "license gate still live-resolves .[all]"
+    assert "--require-hashes -r requirements.lock" in gate_section
+
+
+def test_ci_has_umbrella_required_check():
+    # #F-014: a single fan-in job depends on every other job so branch protection requires only it
+    # — audit/integration can't be silently dropped from the merge gate.
+    text = _ci_text()
+    assert "all-checks:" in text
+    assert "needs: [core, integration, audit]" in text
+
+
+def test_ci_pins_uv_version():
+    # #F-031: uv must be pinned so a format change between versions cannot cause spurious stale-lock
+    # diffs that block every PR.
+    text = _ci_text()
+    assert "pip install uv==" in text, "uv is not pinned in the lockfile sync check (#F-031)"
+    assert "pip install --upgrade uv\n" not in text, "unpinned uv upgrade reintroduced"
+
+
+def test_github_actions_are_sha_pinned():
+    # #F-037: every `uses:` third-party action must be pinned to a 40-char commit SHA (a mutable
+    # tag can be force-pushed to malicious code). A version tag is allowed only as a comment.
+    import re
+
+    text = _ci_text()
+    uses = re.findall(r"uses:\s*(\S+)", text)
+    assert uses, "no actions found"
+    for ref in uses:
+        _, _, pin = ref.partition("@")
+        assert re.fullmatch(r"[0-9a-f]{40}", pin), f"action {ref!r} not pinned to a commit SHA"
 
 
 def test_sbom_is_emitted():

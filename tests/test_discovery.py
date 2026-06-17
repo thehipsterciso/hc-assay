@@ -51,6 +51,41 @@ def _locked_discovery(hid="H1"):
     )
 
 
+# ---- discover_and_confirm: duplicate + empty guards (pass 3) ----
+
+
+def _confirm_ok(hypothesis, held_out):
+    return Verdict.indeterminate(hypothesis.hypothesis_id, "r", statistic=0.0, threshold=0.05)
+
+
+def test_discover_and_confirm_rejects_duplicate_hypothesis_ids():
+    # #F-018: a discover step returning the same hypothesis_id twice would append two verdicts
+    # for one hypothesis, inflating the verdict count. The standalone runner must guard it like
+    # the pipeline's _require_unique_ids does.
+    dup = _locked_discovery("H-dup")
+    with pytest.raises(FirewallViolation, match="duplicate hypothesis_id"):
+        discover_and_confirm(
+            _corpus(),
+            _split(),
+            discover=lambda c: [dup, dup],
+            confirm=_confirm_ok,
+            authority=_AUTH,
+        )
+
+
+def test_discover_and_confirm_rejects_empty_discovery():
+    # #F-042: discover() returning nothing is a vacuous run indistinguishable from a broken
+    # callable that forgot to return — fail loud rather than complete with zero verdicts.
+    with pytest.raises(FirewallViolation, match="no hypotheses"):
+        discover_and_confirm(
+            _corpus(),
+            _split(),
+            discover=lambda c: [],
+            confirm=_confirm_ok,
+            authority=_AUTH,
+        )
+
+
 # ---- subset_corpus ----
 
 

@@ -55,8 +55,23 @@ _MIGRATION_LOCK_KEY = 0x4153_5359
 # Upper bound (milliseconds) on how long the cross-process advisory lock may be waited for
 # during schema bootstrap. A stuck/crashed peer that still holds a live PG session on the lock
 # must NOT be able to hang bootstrap forever (#129); lock_timeout aborts the wait. 0 disables
-# the bound (block indefinitely, the pre-#129 behavior).
+# the bound (block indefinitely, the pre-#129 behavior). Read fresh on each bootstrap (#F-033) so
+# an env var set after import still takes effect; the module constant is the default + the value
+# tests monkeypatch.
 _MIGRATION_LOCK_TIMEOUT_MS = max(0, int(os.environ.get("ASSAY_MIGRATION_LOCK_TIMEOUT_MS", "30000")))
+
+
+def _migration_lock_timeout_ms() -> int:
+    """The advisory-lock wait bound, re-read from the env each call (#F-033).
+
+    Falls back to the import-time module constant when the env var is unset, so a test that
+    monkeypatches ``_MIGRATION_LOCK_TIMEOUT_MS`` still drives the value.
+    """
+    raw = os.environ.get("ASSAY_MIGRATION_LOCK_TIMEOUT_MS")
+    if raw is None:
+        return _MIGRATION_LOCK_TIMEOUT_MS
+    return max(0, int(raw))
+
 
 # Brief meta-lock guarding the process-local registries below (atexit registration, the open-pool
 # list, the per-conn lock map, the pool cache). It is held ONLY for in-memory check-and-set — it
@@ -77,11 +92,6 @@ _POOLS_BY_CONN: dict[str, Any] = {}
 # (registering one handler per call would accumulate handlers across repeated factory calls).
 _OPEN_POOLS: list[Any] = []
 _atexit_registered = False
-
-# conn_strs whose schema bootstrap (advisory lock + setup() DDL) has already run in this
-# process — bootstrap once per process per schema; the advisory lock still guards the
-# first-time cross-process race.
-_INITIALIZED_CONN_STRS: set[str] = set()
 
 # Strips ``://user:password@`` (URI userinfo) from any URI-like substring. '/' is allowed
 # inside the userinfo so a password containing '/' is still redacted; only '@' (the userinfo
@@ -156,7 +166,13 @@ def _safe_close(pool: Any) -> None:
 
 
 def _close_all_pools() -> None:
-    for p in _OPEN_POOLS:
+    # Snapshot under the meta-lock before iterating (#F-020): _OPEN_POOLS is appended under
+    # _init_lock elsewhere, and on a free-threaded (GIL-less) build a concurrent list.append
+    # reallocation during iteration is undefined behavior. _safe_close never takes _init_lock, so
+    # closing outside the lock cannot deadlock.
+    with _init_lock:
+        pools = list(_OPEN_POOLS)
+    for p in pools:
         _safe_close(p)
 
 
@@ -191,10 +207,9 @@ def _acquire_migration_lock(conn: Any) -> None:
     propagates as a redacted ``RuntimeError`` like any other backend failure. set_config is used
     (not ``SET``) so the value can be safely parameterized.
     """
-    if _MIGRATION_LOCK_TIMEOUT_MS:
-        conn.execute(
-            "SELECT set_config('lock_timeout', %s, false)", (str(_MIGRATION_LOCK_TIMEOUT_MS),)
-        )
+    timeout_ms = _migration_lock_timeout_ms()
+    if timeout_ms:
+        conn.execute("SELECT set_config('lock_timeout', %s, false)", (str(timeout_ms),))
     conn.execute("SELECT pg_advisory_lock(%s)", (_MIGRATION_LOCK_KEY,))
 
 
@@ -241,11 +256,23 @@ def get_checkpointer(use_memory: bool = False) -> Any:
         failure: str | None = None
         pool: Any = None
         try:
+            # Pool bounds are env-tunable (#F-040): the reasoning seam already runs 8 worker
+            # threads, so a fixed max_size=8 can be saturated under concurrent reasoning+checkpoint
+            # load on larger hardware. connect_timeout bounds an individual TCP connect so a
+            # black-holed host fails fast instead of hanging bootstrap for the OS default.
+            min_size = max(0, int(os.environ.get("ASSAY_POOL_MIN_SIZE", "1")))
+            max_size = max(min_size or 1, int(os.environ.get("ASSAY_POOL_MAX_SIZE", "8")))
+            connect_timeout = max(1, int(os.environ.get("ASSAY_POOL_CONNECT_TIMEOUT", "10")))
             pool = ConnectionPool(
                 conn_str,
-                min_size=1,
-                max_size=8,
-                kwargs={"autocommit": True, "prepare_threshold": 0, "row_factory": dict_row},
+                min_size=min_size,
+                max_size=max_size,
+                kwargs={
+                    "autocommit": True,
+                    "prepare_threshold": 0,
+                    "row_factory": dict_row,
+                    "connect_timeout": connect_timeout,
+                },
                 check=ConnectionPool.check_connection,  # liveness check on checkout (self-healing)
                 open=True,
             )
@@ -268,7 +295,6 @@ def get_checkpointer(use_memory: bool = False) -> Any:
                     except Exception:
                         pass
             with _init_lock:
-                _INITIALIZED_CONN_STRS.add(conn_str)
                 _POOLS_BY_CONN[conn_str] = pool  # cache for reuse on later calls (#144)
             return PostgresSaver(cast(Any, pool))  # dict-rowed pool (row_factory=dict_row)
         except Exception as exc:

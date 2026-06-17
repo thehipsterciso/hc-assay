@@ -127,7 +127,15 @@ def freeze(value: Any) -> Any:
 
 
 def freeze_mapping(value: Mapping[str, Any]) -> FrozenDict:
-    """Normalize a mapping field to a deep-immutable :class:`FrozenDict`."""
+    """Normalize a mapping field to a deep-immutable :class:`FrozenDict`.
+
+    Idempotent (pass 3, #F-034): an already-:class:`FrozenDict` value is returned unchanged so
+    its lazily-cached hash survives. Re-wrapping (e.g. when ``ProvenanceEntry.__post_init__``
+    freezes a payload that already holds FrozenDict values) would otherwise allocate a fresh
+    FrozenDict with ``_hash=None`` and force an O(N·depth) re-hash on next use.
+    """
+    if isinstance(value, FrozenDict):
+        return value
     return FrozenDict({k: freeze(v) for k, v in value.items()})
 
 

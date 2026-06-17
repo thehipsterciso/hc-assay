@@ -82,6 +82,16 @@ packages = ["src/assay_engine"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
+filterwarnings = [
+    # The unkeyed-trail advisory (#F-049) is intentional and fires whenever run_study is called
+    # without a secret — most tests deliberately use the unkeyed reproducible path. Suppress the
+    # noise here; test_run_study_warns_when_trail_is_unkeyed asserts the warning fires explicitly.
+    "ignore:run_study provenance trail is UNKEYED:UserWarning",
+    # The no-recorder gate-node advisory (#F-007) likewise fires in many graph tests that drive a
+    # gate node without a provenance recorder; test_make_gate_node_warns_when_no_recorder asserts
+    # it explicitly.
+    "ignore:make_gate_node:UserWarning",
+]
 
 [tool.ruff]
 line-length = 100

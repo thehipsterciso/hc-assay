@@ -12,6 +12,7 @@ It runs BOTH modes:
 from __future__ import annotations
 
 import datetime as _dt
+import os
 import tempfile
 from pathlib import Path
 
@@ -32,8 +33,13 @@ from assay_engine.methodology.hypothesis import Hypothesis, HypothesisKind, Hypo
 from assay_engine.methodology.preregistration import LocalHmacAuthority, lock_hypothesis
 from assay_engine.methodology.verdict import Verdict
 
-# A pre-registration authority (on-box HMAC). A real study would persist this secret securely.
-AUTHORITY = LocalHmacAuthority(b"example-study-secret-key-00000001")
+# A pre-registration authority (on-box HMAC). DEMO ONLY: a FRESH RANDOM secret per run, so this
+# example can never be copied into production carrying a shared, publicly-known (forgeable) key
+# (#F-048). A real study persists ONE secret securely (e.g. a secrets manager / sealed file) and
+# reuses it across runs so earlier proofs remain verifiable — never a hardcoded literal.
+AUTHORITY = LocalHmacAuthority(os.urandom(32))
+# DEMO ONLY: backdating the lock instant so the synthetic hypotheses read as "locked an hour
+# ago". A real study calls lock_hypothesis() at hypothesis-creation time — do not backdate.
 PAST = _dt.datetime.now(tz=_dt.timezone.utc) - _dt.timedelta(hours=1)
 
 

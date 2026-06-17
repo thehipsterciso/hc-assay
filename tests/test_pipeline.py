@@ -71,7 +71,11 @@ def test_combined_modes_run_all_phases(tmp_path):
 def res_verify_ok(res: StudyResult) -> None:
     verify_records(res.provenance)  # the trail is an intact hash chain
     kinds = [e.kind for e in res.provenance]
-    assert kinds[0] == "run_start" and kinds[-1] == "report"  # closes with the report record
+    # #F-006: a successful run closes with a terminal run_end entry (recorded only after the
+    # chain verifies), so a truncated trail is distinguishable from a completed one. The 'report'
+    # phase record still precedes it.
+    assert kinds[0] == "run_start" and kinds[-1] == "run_end"
+    assert "report" in kinds and kinds.index("report") < kinds.index("run_end")
     # the REPORT phase was entered before the report record was written
     assert any(e.kind == "phase" and e.payload["phase"] == "REPORT" for e in res.provenance)
     assert res.baseline.corpus_fingerprint == res.corpus_fingerprint
@@ -201,18 +205,24 @@ def test_adjudication_scores_the_gated_claim_snapshot_not_a_remutated_source(tmp
 
     calls = {"n": 0}
 
+    def _snapshot(cid):
+        return [
+            ClaimRecord(claim_id=cid, subject=cid, referents=(cid,), assertion={"expected": "high"})
+        ]
+
     class Mutating:
         def claims(self):
             calls["n"] += 1
             cid = "c-A" if calls["n"] == 1 else "c-B"
-            return [
-                ClaimRecord(
-                    claim_id=cid, subject=cid, referents=(cid,), assertion={"expected": "high"}
-                )
-            ]
+            return _snapshot(cid)
 
         def claim_fingerprint(self):
-            return "fp"
+            # Commit to the FIRST snapshot (c-A) — the one the engine materializes and scores.
+            # #F-001 enforces this commitment; the test's point (#95) is that a later mutation to
+            # c-B is never scored, not that the source lies about its fingerprint.
+            from assay_engine.contracts.claims import claim_set_fingerprint
+
+            return claim_set_fingerprint(_snapshot("c-A"))
 
     src = ref.write_source(tmp_path / "c.json")
     plan = ref.make_plan(src, modes=ADJUDICATE)
@@ -252,23 +262,26 @@ def test_duplicate_claim_ids_are_rejected(tmp_path):
 
 
 def test_recorded_claim_fingerprint_is_engine_computed_over_scored_claims(tmp_path):
-    # #137: the recorded claim_fingerprint must be the engine's own hash of the EXACT claims
-    # scored — not the source's unverified self-report. A source lying about its fingerprint must
-    # not corrupt the trail's claim identity.
-    from assay_engine.contracts.claims import ClaimRecord
+    # #137 + #F-001: the recorded claim_fingerprint is the engine's own canonical hash of the
+    # EXACT claims scored, AND it must agree with the source's self-report (an honest source
+    # commits to its claims via claim_set_fingerprint). The engine records its own computation.
+    from assay_engine.contracts.claims import ClaimRecord, claim_set_fingerprint
     from assay_engine.pipeline import _engine_claim_fingerprint
 
     records = [
         ClaimRecord(claim_id="c1", subject="c1", referents=("c1",), assertion={"e": "high"}),
         ClaimRecord(claim_id="c2", subject="c2", referents=("c2",), assertion={"e": "low"}),
     ]
-    lying = type(
-        "Lying",
+    honest = type(
+        "Honest",
         (),
-        {"claims": lambda self: list(records), "claim_fingerprint": lambda self: "0" * 64},
+        {
+            "claims": lambda self: list(records),
+            "claim_fingerprint": lambda self: claim_set_fingerprint(records),
+        },
     )()
     plan = ref.make_plan(ref.write_source(tmp_path / "c.json"), modes=ADJUDICATE)
-    plan = replace(plan, definition=replace(plan.definition, claims_source=lying))
+    plan = replace(plan, definition=replace(plan.definition, claims_source=honest))
     seen = {}
 
     def handler(review):
@@ -277,8 +290,28 @@ def test_recorded_claim_fingerprint_is_engine_computed_over_scored_claims(tmp_pa
 
     run_study(plan, gate_handler=handler)
     assert seen["claim_fingerprint"] == _engine_claim_fingerprint(records)  # engine-computed
-    assert seen["source_reported_claim_fingerprint"] == "0" * 64  # self-report kept for cross-check
-    assert seen["claim_fingerprint_matches_source"] is False  # mismatch surfaced, not hidden
+    assert seen["source_reported_claim_fingerprint"] == claim_set_fingerprint(records)
+    assert seen["claim_fingerprint_matches_source"] is True
+
+
+def test_lying_claim_fingerprint_is_rejected_not_merely_recorded(tmp_path):
+    # #F-001: a source whose claim_fingerprint() disagrees with the canonical hash of the claims
+    # it actually yields is a provenance-integrity breach. Pass-2 #137 surfaced the mismatch in
+    # the gate payload but auto_approve would proceed regardless; the engine must now REFUSE the
+    # run, not defer the breach to a human who may rubber-stamp it.
+    from assay_engine.contracts.claims import ClaimRecord
+    from assay_engine.methodology.firewalls import FirewallViolation
+
+    records = [ClaimRecord(claim_id="c1", subject="c1", referents=("c1",), assertion={"e": "high"})]
+    lying = type(
+        "Lying",
+        (),
+        {"claims": lambda self: list(records), "claim_fingerprint": lambda self: "0" * 64},
+    )()
+    plan = ref.make_plan(ref.write_source(tmp_path / "c.json"), modes=ADJUDICATE)
+    plan = replace(plan, definition=replace(plan.definition, claims_source=lying))
+    with pytest.raises(FirewallViolation, match="attested fingerprint"):
+        run_study(plan, gate_handler=auto_approve)  # auto_approve must NOT launder the breach
 
 
 def test_empty_claims_source_fails_loud(tmp_path):
@@ -411,6 +444,10 @@ def test_tracker_receives_run_and_metrics_and_failures_dont_abort(tmp_path):
     assert res.experiment_run_id == "run-1"
     assert ("start", "reference-study") in t.calls and ("end", "run-1", "FINISHED") in t.calls
     assert any(c[0] == "metric" and c[1] == "alignment_rate" for c in t.calls)
+    # #F-029: SLO-relevant scale + latency metrics are logged so corpus-size↔latency regressions
+    # are analysable from the experiment store, not just the provenance trail.
+    metric_keys = {c[1] for c in t.calls if c[0] == "metric"}
+    assert {"n_units", "n_claims", "run_duration_s"} <= metric_keys
 
     class BoomTracker(FakeTracker):
         def log_metric(self, *a):
@@ -419,6 +456,89 @@ def test_tracker_receives_run_and_metrics_and_failures_dont_abort(tmp_path):
     res2 = _run(tmp_path, ADJUDICATE, tracker=BoomTracker())  # must NOT abort the run
     assert res2.scorecard is not None
     assert any(e.kind == "tracking_error" for e in res2.provenance)
+
+
+def test_versioner_failure_is_wrapped_as_ingestion_error(tmp_path):
+    # #F-008: a storage failure in the optional versioner seam must surface as the documented
+    # IngestionError, not a raw untyped exception the caller cannot distinguish from a firewall
+    # breach. Pre-fix: versioner.put() was called bare and PermissionError propagated raw.
+    from assay_engine.pipeline import IngestionError
+
+    class BoomVersioner:
+        def put(self, ref_str):
+            raise PermissionError("read-only store")
+
+        def path_for(self, version):  # pragma: no cover - not reached
+            raise AssertionError
+
+    with pytest.raises(IngestionError, match="data versioner failed"):
+        _run(tmp_path, DISCOVERY, versioner=BoomVersioner())
+
+
+def test_confirm_held_out_returning_none_raises_firewall_violation(tmp_path):
+    # #F-021: a confirmer that forgets to `return` yields None; the runner must raise a typed
+    # FirewallViolation, not die on an opaque AttributeError at verdict.hypothesis_id.
+    plan = ref.make_plan(ref.write_source(tmp_path / "c.json"), modes=DISCOVERY)
+    with pytest.raises(FirewallViolation, match="expected a Verdict"):
+        run_study(replace(plan, confirm_held_out=lambda h, c: None), gate_handler=auto_approve)
+
+
+def test_empty_discover_in_pipeline_raises(tmp_path):
+    # #F-042: a discover() returning no hypotheses is a vacuous run; the pipeline must fail loud
+    # rather than complete with zero verdicts (indistinguishable from a broken callable).
+    plan = ref.make_plan(ref.write_source(tmp_path / "c.json"), modes=DISCOVERY)
+    with pytest.raises(FirewallViolation, match="no corpus units|no hypotheses|discover"):
+        run_study(replace(plan, discover=lambda c: []), gate_handler=auto_approve)
+
+
+def test_tracker_start_run_failure_warns_and_continues(tmp_path, caplog):
+    # #F-028: if start_run fails, run_id stays None and ALL metrics silently no-op. The engine
+    # must emit a structured warning (and a trail entry) so an operator seeing no MLflow run
+    # knows why, instead of guessing. The run itself still completes.
+    import logging
+
+    class StartBoomTracker:
+        def start_run(self, name, params):
+            raise RuntimeError("tracker unreachable")
+
+        def log_metric(self, *a):  # pragma: no cover - never reached (run_id is None)
+            raise AssertionError
+
+        def log_artifact(self, *a):  # pragma: no cover
+            raise AssertionError
+
+        def end_run(self, *a, **k):  # pragma: no cover - skipped when run_id is None
+            raise AssertionError
+
+    with caplog.at_level(logging.WARNING, logger="assay_engine.pipeline"):
+        res = _run(tmp_path, DISCOVERY, tracker=StartBoomTracker())
+    assert res.experiment_run_id is None
+    assert any(e.kind == "tracking_error" for e in res.provenance)
+    assert any("start_run failed" in r.message for r in caplog.records)
+
+
+def test_run_failed_record_failure_is_logged_not_swallowed(tmp_path, caplog):
+    # #F-030: if recording the terminal run_failed entry itself raises, the failure reason must
+    # not vanish silently — a structured warning preserves it in the logs even though it is
+    # absent from the trail. The original exception is still re-raised.
+    import logging
+
+    from assay_engine.provenance import ProvenanceTrail
+
+    class HostileTrail(ProvenanceTrail):
+        def record(self, kind, summary, **payload):
+            if kind == "run_failed":
+                raise RuntimeError("cannot serialize failure")
+            return super().record(kind, summary, **payload)
+
+    def reject(r):
+        return GateDecision(approved=False, gate=r.gate, reason="halt")
+
+    plan = ref.make_plan(ref.write_source(tmp_path / "c.json"), modes=DISCOVERY)
+    with caplog.at_level(logging.WARNING, logger="assay_engine.pipeline"):
+        with pytest.raises(GateError):  # original failure still surfaces
+            run_study(plan, gate_handler=reject, trail=HostileTrail())
+    assert any("could not record run_failed" in r.message for r in caplog.records)
 
 
 def test_failed_run_records_failure_entry_and_marks_tracker_failed(tmp_path):
@@ -554,6 +674,74 @@ def test_secret_keys_the_provenance_trail(tmp_path):
     verify_records(res.provenance, secret=secret)  # verifies with the key
     with pytest.raises(ProvenanceError):
         verify_records(res.provenance)  # and not without it
+
+
+def test_run_study_warns_when_trail_is_unkeyed(tmp_path):
+    # #F-049: an engine-created unkeyed trail is tamper-evident but not forgery-resistant; the
+    # insecure default must be flagged, not silent. (Other tests suppress this via filterwarnings.)
+    import warnings
+
+    src = ref.write_source(tmp_path / "c.json")
+    with warnings.catch_warnings():
+        warnings.simplefilter("always")
+        with pytest.warns(UserWarning, match="UNKEYED"):
+            run_study(ref.make_plan(src, modes=DISCOVERY), gate_handler=auto_approve)
+
+
+def test_verify_trail_can_be_opted_out(monkeypatch, tmp_path):
+    # #F-036: end-of-run re-verification is O(N) and redundant for an in-memory trail the run
+    # built and never mutated; a perf-sensitive caller may skip it. Discriminating: spy on
+    # ProvenanceTrail.verify and assert it is NOT called when verify_trail=False (a no-op opt-out
+    # that still verified would pass a chain-validity-only check, so we pin the SKIP directly).
+    from assay_engine.provenance import ProvenanceTrail
+
+    calls = {"n": 0}
+    orig = ProvenanceTrail.verify
+
+    def counting_verify(self):
+        calls["n"] += 1
+        return orig(self)
+
+    monkeypatch.setattr(ProvenanceTrail, "verify", counting_verify)
+    src = ref.write_source(tmp_path / "c.json")
+    res = run_study(
+        ref.make_plan(src, modes=DISCOVERY), gate_handler=auto_approve, verify_trail=False
+    )
+    assert calls["n"] == 0  # run_study skipped the redundant re-walk
+    verify_records(
+        res.provenance
+    )  # still an intact chain even though run_study skipped the re-walk
+
+
+def test_verify_trail_default_still_verifies(monkeypatch, tmp_path):
+    # #F-036: the default must remain verify-on (safety net) — assert trail.verify() is invoked.
+    from assay_engine.provenance import ProvenanceTrail
+
+    calls = {"n": 0}
+    orig = ProvenanceTrail.verify
+
+    def counting_verify(self):
+        calls["n"] += 1
+        return orig(self)
+
+    monkeypatch.setattr(ProvenanceTrail, "verify", counting_verify)
+    _run(tmp_path, DISCOVERY)
+    assert calls["n"] == 1  # verified once by default
+
+
+def test_persist_trail_writes_a_reverifiable_chain(tmp_path):
+    # #F-045: the in-memory trail must be persistable to a durable, re-verifiable artifact.
+    import json
+
+    from assay_engine.provenance import from_records, verify_records
+
+    res = _run(tmp_path, DISCOVERY)
+    out = res.persist_trail(tmp_path / "trail.json")
+    assert out.exists()
+    records = json.loads(out.read_text())
+    entries = from_records(records)
+    verify_records(entries)  # the persisted chain re-verifies intact
+    assert [e.kind for e in entries] == [e.kind for e in res.provenance]
 
 
 def test_secret_and_trail_are_mutually_exclusive(tmp_path):

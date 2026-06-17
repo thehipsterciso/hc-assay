@@ -27,7 +27,7 @@ from assay_engine import __version__ as _ENGINE_VERSION
 # imports re-export them at their historical home so existing call sites keep working.
 from assay_engine._canonical import canonical_plain as _plain  # noqa: F401
 from assay_engine._canonical import hash_bytes as hash_bytes  # noqa: F401  (re-export)
-from assay_engine._canonical import hash_text
+from assay_engine._canonical import hash_text as hash_text  # noqa: F401  (re-export, historical home)
 from assay_engine._canonical import hash_value as hash_value  # re-export (baseline public API)
 from assay_engine._canonical import keytag as _keytag  # noqa: F401
 from assay_engine._frozen import freeze_mapping
@@ -42,7 +42,14 @@ from assay_engine.contracts.schema import Corpus
 
 
 def corpus_fingerprint(corpus: Corpus) -> str:
-    """Deterministic content hash of a corpus (order-independent across units/relations)."""
+    """Deterministic content hash of a corpus (order-independent across units/relations).
+
+    The fingerprint is SHA-256 over the canonical JSON of the corpus payload. The JSON is
+    streamed into the hash via ``JSONEncoder.iterencode`` rather than materialized as one giant
+    string (pass 3, #F-016): for a large corpus this avoids holding the full serialized payload
+    in RAM on top of the row dicts at hash time. ``iterencode`` with the same options yields the
+    identical byte stream ``json.dumps`` would, so the fingerprint is byte-for-byte unchanged.
+    """
     units = [
         {"id": u.unit_id, "text": u.text, "attrs": _plain(u.attributes)}
         for u in sorted(corpus.units, key=lambda u: u.unit_id)
@@ -52,7 +59,11 @@ def corpus_fingerprint(corpus: Corpus) -> str:
         for r in sorted(corpus.relations, key=lambda r: (r.source_id, r.target_id, r.kind))
     ]
     payload = {"units": units, "relations": relations, "metadata": _plain(corpus.metadata)}
-    return hash_text(json.dumps(payload, sort_keys=True, allow_nan=False))
+    h = hashlib.sha256()
+    encoder = json.JSONEncoder(sort_keys=True, allow_nan=False)
+    for chunk in encoder.iterencode(payload):
+        h.update(chunk.encode("utf-8"))
+    return h.hexdigest()
 
 
 def stable_seed(*parts: str, bits: int = 32) -> int:

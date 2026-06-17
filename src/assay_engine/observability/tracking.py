@@ -71,8 +71,19 @@ class MlflowExperimentTracker:
         client = self._client()
         run = client.create_run(self._experiment_id(client), run_name=name)
         run_id = str(run.info.run_id)
-        for k, v in dict(params).items():
-            client.log_param(run_id, k, v)
+        # The run now exists in the store. If param-logging fails partway (network blip, server
+        # error), the run would otherwise be orphaned permanently in RUNNING state — phantom runs
+        # accumulate over time (pass 3, #F-023). Terminate it FAILED on any param-logging error
+        # before re-raising, so a created run is never left dangling.
+        try:
+            for k, v in dict(params).items():
+                client.log_param(run_id, k, v)
+        except Exception:
+            try:
+                client.set_terminated(run_id, status="FAILED")
+            except Exception:  # noqa: BLE001,S110 - best-effort cleanup; original error re-raised
+                pass
+            raise
         return run_id
 
     def log_metric(self, run_id: str, key: str, value: float) -> None:
