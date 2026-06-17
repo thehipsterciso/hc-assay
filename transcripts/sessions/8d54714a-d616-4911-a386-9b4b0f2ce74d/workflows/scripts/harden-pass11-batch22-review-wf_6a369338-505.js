@@ -13,7 +13,7 @@ const VERDICT = {
   },
   required: ['unit', 'resolves', 'introduces_regression', 'confidence', 'severity_if_problem', 'findings', 'recommended_action'],
 }
-const REPO = '/Users/thomasjones/hc-grc'
+const REPO = '/Users/[REDACTED]/hc-grc'
 const UNITS = [
   { unit: 'ANTHROPIC_AUTH_TOKEN scrub (HIGH, ADR-0016)', files: 'src/reasoning_client.py (_scrubbed_env, _METERED_CREDENTIAL_ENV)', intent: '_scrubbed_env now strips BOTH ANTHROPIC_API_KEY and ANTHROPIC_AUTH_TOKEN (both are metered SDK auth) while keeping CLAUDE_CODE_OAUTH_TOKEN (subscription auth).', verify: 'Confirm via the installed anthropic SDK source that ANTHROPIC_AUTH_TOKEN is indeed read for auth; confirm CLAUDE_CODE_OAUTH_TOKEN is NOT scrubbed (it must remain for the CLI); check there is no OTHER metered-credential env var the SDK reads that is still missed (e.g. ANTHROPIC_BASE_URL is not a credential). Confirm _scrubbed_env is actually used in the T3 subprocess path. Check the test covers both tokens + OAuth retention.' },
   { unit: 'timeout clamp (medium)', files: 'src/reasoning_client.py:95-96', intent: 'T2_TIMEOUT/T3_TIMEOUT clamped to max(1.0, float(...)) so a negative/zero override cannot raise "Timeout value out of range" at result()/wait_for().', verify: 'Confirm both clamped; defaults unchanged (120/300); 1.0 floor is sane; subprocess test sets negative env before import and asserts >=1.0. Any other unclamped numeric env that feeds a timeout/sleep?' },

@@ -3,8 +3,8 @@ export const meta = {
   description: 'Pass 2: 7 retrospective-informed adversarial assessors -> dedup -> 2 independent verifiers per finding',
   phases: [{ title: 'Assess' }, { title: 'Verify' }],
 }
-const REPO = '/Users/thomasjones/hc-assay'
-const VENV = '/Users/thomasjones/hc-assay/.venv/bin/python'
+const REPO = '/Users/[REDACTED]/hc-assay'
+const VENV = '/Users/[REDACTED]/hc-assay/.venv/bin/python'
 const FINDINGS_SCHEMA = {
   type: 'object', additionalProperties: false,
   properties: {

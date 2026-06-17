@@ -21,7 +21,7 @@ const VERDICT = {
   required: ['unit', 'resolves', 'introduces_regression', 'confidence', 'severity_if_problem', 'findings', 'recommended_action'],
 }
 
-const REPO = '/Users/thomasjones/hc-grc'
+const REPO = '/Users/[REDACTED]/hc-grc'
 
 const UNITS = [
   { unit: '#1 timeout-pool leak on submit() failure', files: 'src/reasoning_client.py (_submit_bounded)', intent: 'Increment _inflight, then submit() inside try/except that decrements on failure (and the done_callback decrements on normal completion). Prevents a leaked slot when pool.submit raises (e.g. after shutdown).', verify: 'Confirm no double-decrement (submit-failure path vs done-callback are mutually exclusive — callback only attached after successful submit), no underflow, lock held correctly, and BaseException (not just Exception) is caught. Check the new test test_submit_bounded_decrements_on_submit_failure actually proves it.' },

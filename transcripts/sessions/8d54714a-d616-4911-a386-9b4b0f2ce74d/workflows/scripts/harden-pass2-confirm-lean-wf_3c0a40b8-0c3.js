@@ -4,7 +4,7 @@ export const meta = {
   phases: [{ title: 'Confirm', detail: 'one worktree-isolated confirmer per subsystem batch' }],
 }
 
-const REPO = '/Users/thomasjones/hc-assay'
+const REPO = '/Users/[REDACTED]/hc-assay'
 const FINDINGS = '/tmp/pass2_items.json'
 
 const BATCHES = [

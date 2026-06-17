@@ -4,8 +4,8 @@ export const meta = {
   phases: [{ title: 'Confirm' }],
 }
 
-const REPO = '/Users/thomasjones/hc-assay'
-const VENV = '/Users/thomasjones/hc-assay/.venv/bin/python'
+const REPO = '/Users/[REDACTED]/hc-assay'
+const VENV = '/Users/[REDACTED]/hc-assay/.venv/bin/python'
 const N = 22
 const ITEMS = '/tmp/pass1_confirm.json'
 

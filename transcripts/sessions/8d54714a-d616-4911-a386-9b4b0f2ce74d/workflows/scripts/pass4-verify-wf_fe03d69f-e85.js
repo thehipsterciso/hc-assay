@@ -4,7 +4,7 @@ export const meta = {
   description: 'Pass-4: 2-agent blind verification of 24 findings',
   phases: [{ title: 'Verify', detail: '2 agents per finding' }, { title: 'Triage', detail: 'collect verdicts' }],
 }
-const ROOT = '/Users/thomasjones/hc-assay'
+const ROOT = '/Users/[REDACTED]/hc-assay'
 const FINDINGS = args
 
 const VERDICT_SCHEMA = {

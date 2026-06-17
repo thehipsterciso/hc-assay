@@ -1,5 +1,5 @@
 commit 6f96d0ffd1fcad095911007039bca67a0dd41436
-Author: Thomas Jones <thomasjones@hc-macmini.local>
+Author: Thomas Jones <[REDACTED]>
 Date:   Mon Jun 15 09:33:22 2026 -0400
 
     fix(hardening-p4): batch 15 — clear the remaining tail (12 issues, all reviewed)
@@ -37,7 +37,7 @@ Date:   Mon Jun 15 09:33:22 2026 -0400
     
     108 tests passing, ruff clean. Pass 4 now 30/30.
     
-    Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
+    Co-Authored-By: Claude Opus 4.8 (1M context) <[REDACTED]>
 
 diff --git a/.github/workflows/test.yml b/.github/workflows/test.yml
 index 9aacee3..c36fbb0 100644

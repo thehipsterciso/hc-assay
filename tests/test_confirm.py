@@ -271,6 +271,25 @@ def test_locked_alpha_cannot_be_overridden_at_confirm_time():
     assert v.label is VerdictLabel.SUPPORTED
 
 
+def test_locked_stability_threshold_is_honored_without_restating_it():
+    # #CV-M-1: a hypothesis that locked stability_threshold != 0.9 must be confirmable WITHOUT the
+    # caller restating it. The confirm-time default is a None sentinel (not 0.9), so the locked
+    # value is used rather than spuriously "contradicting" the 0.9 default.
+    h = _locked(HypothesisKind.WHOLE_CORPUS, predicted_direction="greater")
+    object.__setattr__(h, "stability_threshold", 0.6)  # locked a non-default bar
+    # 60% of resamples reproduce the effect → below 0.9 but meets the locked 0.6
+    resamples = [100.0] * 6 + [-100.0] * 4
+    v = confirm_whole_corpus(
+        h,
+        observed=10.0,
+        null_distribution=[0.0] * 100,
+        alpha=0.05,
+        resample_statistics=resamples,
+    )  # NOTE: stability_threshold NOT passed — the locked 0.6 must govern, not the 0.9 default
+    assert v.evidence["stability_threshold"] == 0.6
+    assert v.label is VerdictLabel.SUPPORTED  # 0.6 stability >= locked 0.6 bar
+
+
 def test_locked_stability_threshold_cannot_be_overridden_at_confirm_time():
     # #H-001: the stability bar is decision-bearing too — a pre-registered stability_threshold
     # cannot be lowered post-hoc to flip indeterminate->supported.

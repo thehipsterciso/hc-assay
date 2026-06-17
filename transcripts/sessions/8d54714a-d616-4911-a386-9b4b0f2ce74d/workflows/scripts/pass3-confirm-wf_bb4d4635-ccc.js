@@ -8,7 +8,7 @@ export const meta = {
   ],
 }
 
-const ROOT = '/Users/thomasjones/hc-assay'
+const ROOT = '/Users/[REDACTED]/hc-assay'
 
 // Implemented fixes this pass (id, file, summary, test). Reclassifications/declines included so
 // confirmers can challenge them too.

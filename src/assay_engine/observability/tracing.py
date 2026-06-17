@@ -27,7 +27,22 @@ _log = logging.getLogger("assay_engine.observability")
 
 # Local collector endpoint (loopback-enforced).
 TRACING_HOST = os.environ.get("ASSAY_TRACING_HOST", "localhost")
-TRACING_PORT = int(os.environ.get("ASSAY_TRACING_PORT", "6006"))
+
+
+def _int_env(name: str, default: str) -> int:
+    """Parse an int env var with a clear error naming the var (#CV-S-1, same class as #H-022).
+
+    A bare ``int(os.environ[...])`` at import time raises an opaque "invalid literal for int()"
+    that names neither the var nor fires inside any handler.
+    """
+    raw = os.environ.get(name, default)
+    try:
+        return int(raw)
+    except (ValueError, TypeError) as exc:
+        raise ValueError(f"{name} must be an integer; got {raw!r}") from exc
+
+
+TRACING_PORT = _int_env("ASSAY_TRACING_PORT", "6006")
 PROJECT_NAME = os.environ.get("ASSAY_TRACING_PROJECT", "assay")
 
 _provider: Any = None

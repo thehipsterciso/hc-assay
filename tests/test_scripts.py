@@ -100,6 +100,29 @@ def test_transcript_scrub_redacts_username_in_project_dir_slug():
     assert "-Users-[REDACTED]-hc-grc" in out and "-home-[REDACTED]-proj" in out
 
 
+def test_copy_scrubbed_scrubs_non_jsonl_text_files(tmp_path):
+    # #CV-O-1: the session subtree holds .json workflow/subagent transcripts; redaction must apply
+    # to EVERY text file, not only .jsonl, or operator PII + secrets leak into committed files.
+    cap = _load("scripts/capture_transcripts.py", "capture_transcripts_nonjsonl")
+    src = tmp_path / "wf.json"  # a .json (NOT .jsonl) workflow transcript
+    src.write_text('{"path": "/Users/somebody/x", "tok": "Bearer abcdefghijklmnopqrstuv"}', "utf-8")
+    dst = tmp_path / "out" / "wf.json"
+    cap._copy_scrubbed(src, dst)
+    out = dst.read_text("utf-8")
+    assert "somebody" not in out and "/Users/[REDACTED]/x" in out  # path username scrubbed
+    assert "abcdefghijklmnopqrstuv" not in out  # bearer token scrubbed
+
+
+def test_copy_scrubbed_copies_binary_verbatim(tmp_path):
+    # #CV-O-1: a genuinely binary file (undecodable) is copied unchanged, not corrupted.
+    cap = _load("scripts/capture_transcripts.py", "capture_transcripts_bin")
+    src = tmp_path / "blob.bin"
+    src.write_bytes(b"\xff\xfe\x00\x01binary")
+    dst = tmp_path / "out" / "blob.bin"
+    cap._copy_scrubbed(src, dst)
+    assert dst.read_bytes() == b"\xff\xfe\x00\x01binary"
+
+
 def test_example_uses_no_hardcoded_hmac_secret():
     # #F-048: the example must not carry a shippable, publicly-known HMAC secret a user could copy
     # into production. It derives a fresh random secret per run instead.

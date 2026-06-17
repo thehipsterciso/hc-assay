@@ -20,6 +20,13 @@ from assay_engine.observability.tracking import (
 # ---- tracing ----
 
 
+def test_tracing_int_env_names_the_bad_var():
+    # #CV-S-1: a malformed ASSAY_TRACING_PORT must raise an error NAMING the var, not an opaque
+    # import-time int() error (same class as the vectorstore #H-022 fix).
+    with pytest.raises(ValueError, match="ASSAY_TRACING_PORT must be an integer"):
+        tr._int_env("ASSAY_TRACING_PORT", "not-a-port")
+
+
 def test_bootstrap_returns_none_when_disabled(monkeypatch):
     monkeypatch.setenv("ASSAY_DISABLE_TRACING", "1")
     assert bootstrap_tracing() is None

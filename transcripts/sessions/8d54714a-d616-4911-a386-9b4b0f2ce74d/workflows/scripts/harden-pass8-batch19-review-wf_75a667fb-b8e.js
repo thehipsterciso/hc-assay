@@ -13,7 +13,7 @@ const VERDICT = {
   },
   required: ['unit', 'resolves', 'introduces_regression', 'confidence', 'severity_if_problem', 'findings', 'recommended_action'],
 }
-const REPO = '/Users/thomasjones/hc-grc'
+const REPO = '/Users/[REDACTED]/hc-grc'
 const UNITS = [
   { unit: 'negative-backoff clamp', files: 'src/reasoning_client.py:107-111', intent: 'BACKOFF_BASE and RATE_LIMIT_BACKOFF clamped to max(0.0, float(...)) at config load, like MAX_RETRIES, so a negative env override cannot feed time.sleep() a negative value (uncaught ValueError).', verify: 'Confirm both are clamped, defaults unchanged (1.5 / 30), and the subprocess test genuinely sets negative env before import and asserts >=0. No other negative-arithmetic path remains (e.g. sleep call sites).' },
   { unit: 'is_available T2 loopback guard', files: 'src/reasoning_client.py is_available(Tier.T2)', intent: 'is_available probes T2_BASE_URL/api/tags; now require_local_uri(T2_BASE_URL) runs before the urlopen, mirroring _t2_complete (ADR-0002).', verify: 'Confirm the guard precedes the network call, raises on a remote host (not silently swallowed by the try/except around urlopen — it is OUTSIDE that try), and loopback default still returns normally. Check the new test.' },

@@ -16,7 +16,7 @@ const VERDICT = {
   },
   required: ['unit', 'resolves', 'introduces_regression', 'confidence', 'severity_if_problem', 'findings', 'recommended_action'],
 }
-const REPO = '/Users/thomasjones/hc-grc'
+const REPO = '/Users/[REDACTED]/hc-grc'
 const UNITS = [
   { unit: '#27 CI runs full suite', files: '.github/workflows/test.yml', intent: 'CI now runs pytest tests/ (was tests/test_phase0/ only), so reasoning_client/observability/infrastructure tests gate merges. Backend-dependent tests are importorskip-guarded; Postgres service is provisioned.', verify: 'Confirm no test would HARD-FAIL in the lean CI env (requirements-ci.txt has no langchain-ollama/claude-agent-sdk/mlflow/phoenix). Check every test file under tests/ that lacks an importorskip guard imports only CI-available deps. Flag any that would error at collection/run in CI.' },
   { unit: '#7/#9/#8/#10 hypothesis_id dedup', files: 'src/state.py (_merge_hypotheses, _hypothesis_key)', intent: 'Reducer now keys on hypothesis_id then id, robust to None/non-dict.', verify: 'Confirm canonical field really is hypothesis_id (check src/agents), dedup now fires, non-dict/None entries preserved, latest-wins + order kept. Check the walrus usage is valid.' },
