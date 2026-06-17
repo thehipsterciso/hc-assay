@@ -5,6 +5,12 @@ on:
     branches: [main]
   pull_request:
 
+# Least privilege (#H-008): the default GITHUB_TOKEN can be repo-write; this workflow only reads
+# the code and uploads artifacts, so pin the token to read-only at the top level. Any job needing
+# more must opt in explicitly with its own `permissions:`.
+permissions:
+  contents: read
+
 jobs:
   # Dependency-free core: the engine must lint, type-check, and test with NO extras installed
   # (optional backends are import-guarded; integration tests skip). This guards ADR-0006.
@@ -74,6 +80,22 @@ jobs:
           pip install --no-deps -e .
       - name: Type-check against real backend types (mypy)
         run: mypy
+      - name: Verify service containers are reachable (no silent skip)
+        # #H-009: the live Postgres/Qdrant tests SKIP when the service is unreachable, so a
+        # misconfigured/never-started container would let the integration job report GREEN without
+        # actually exercising the backends. Fail loudly here if either service isn't up, so the
+        # gate cannot pass vacuously.
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 30); do
+            pg_isready -h localhost -p 5432 -U postgres && break || sleep 2
+            [ "$i" = "30" ] && { echo "::error::Postgres service never became ready"; exit 1; }
+          done
+          for i in $(seq 1 30); do
+            curl -fsS http://localhost:6333/readyz && break || sleep 2
+            [ "$i" = "30" ] && { echo "::error::Qdrant service never became ready"; exit 1; }
+          done
+          echo "postgres + qdrant reachable"
       # Real backends now run: langgraph graph + interrupt/resume, mlflow lifecycle, OTel,
       # numpy primitives, the T3 drain/classification (synthetic SDK, no metered call), AND —
       # via the service containers — the live Postgres checkpointer + Qdrant vector store.

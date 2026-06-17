@@ -44,6 +44,11 @@ def test_unfreeze_frozenset_of_unorderable_types_is_deterministic():
     # #G-004: unfreeze sorts a frozenset for reproducible output; for unorderable mixed types it
     # must fall back to a STABLE key (type name, repr), NOT raw set iteration order (hash-seed
     # dependent → non-reproducible across processes). By (type name, repr), ints precede strs.
+    #
+    # #H-024: this in-process assertion is ILLUSTRATIVE, not the discriminating guard — under the
+    # buggy raw-iteration code it still passes on ~1/3 of hash seeds. The deterministic guard is
+    # test_unfreeze_frozenset_order_is_seed_independent_subprocess below (pinned PYTHONHASHSEED),
+    # which fails on a revert every run.
     assert unfreeze(frozenset({1, "a", 2, "b"})) == [1, 2, "a", "b"]
     assert unfreeze(frozenset({"b", 2, "a", 1})) == [1, 2, "a", "b"]
 

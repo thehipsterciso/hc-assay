@@ -30,16 +30,32 @@ def main(path: str = "licenses.json") -> int:
     with open(path, encoding="utf-8") as f:  # context manager — no leaked fd (#F-050)
         packages = json.load(f)
     bad = []
+    unknown = []
     for pkg in packages:
-        lic = (pkg.get("License") or "").upper()
+        raw = (pkg.get("License") or "").strip()
+        lic = raw.upper()
+        # A package whose license is empty / UNKNOWN / unspecified could be hiding a copyleft the
+        # deny-substring scan can't see. Don't fail on it (pip-licenses reports UNKNOWN for many
+        # legitimate packages with incomplete metadata), but SURFACE it as a CI warning so a
+        # reviewer checks it instead of it passing silently (#H-007).
+        if not raw or lic in ("UNKNOWN", "UNKNOWN LICENSE", "NONE"):
+            unknown.append(f"{pkg.get('Name')} {pkg.get('Version')}")
+            continue
         if "LGPL" in lic:  # weak copyleft — permitted for dynamically-linked libraries
             continue
         if any(tok in lic for tok in _DENY):
             bad.append(f"{pkg.get('Name')} {pkg.get('Version')}: {pkg.get('License')}")
+    if unknown:
+        print(
+            "::warning::license gate: "
+            + str(len(unknown))
+            + " package(s) report no/UNKNOWN license — review for hidden copyleft: "
+            + ", ".join(sorted(unknown))
+        )
     if bad:
         print("::error::strong-copyleft licenses found:\n" + "\n".join(bad))
         return 1
-    print(f"license gate OK ({len(packages)} packages checked)")
+    print(f"license gate OK ({len(packages)} packages checked, {len(unknown)} unknown)")
     return 0
 
 

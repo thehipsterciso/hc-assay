@@ -452,6 +452,11 @@ def test_tracker_receives_run_and_metrics_and_failures_dont_abort(tmp_path):
     # so an auditor opening the run can retrieve the provenance behind its metrics.
     artifacts = [c for c in t.calls if c[0] == "artifact"]
     assert artifacts and any(str(c[1]).endswith("_provenance.json") for c in artifacts)
+    # #H-013: the scratch temp file is cleaned up after the tracker copies it (no leak per run).
+    import os as _os
+
+    trail_paths = [c[1] for c in artifacts if str(c[1]).endswith("_provenance.json")]
+    assert trail_paths and not any(_os.path.exists(p) for p in trail_paths)
 
     class BoomTracker(FakeTracker):
         def log_metric(self, *a):

@@ -401,6 +401,20 @@ def test_bulk_complete_classifies_404_as_permanent_by_status(monkeypatch):
         rc._bulk_complete("p", None, 0.0, "gremlin")
 
 
+def test_malformed_params_raise_typed_permanent_error(monkeypatch):
+    # #H-004: a malformed numeric param (e.g. temperature='hot') must surface as the typed
+    # PermanentReasoningError the public API documents, not a raw ValueError/TypeError leaking out.
+    monkeypatch.delenv("ASSAY_DISABLE_REASONING", raising=False)
+    req = ReasoningRequest(
+        prompt="p", tier=StakesTier.BULK, purpose="t", params={"temperature": "hot"}
+    )
+    with pytest.raises(PermanentReasoningError, match="malformed reasoning params"):
+        rc._attempt(req)
+    req2 = ReasoningRequest(prompt="p", tier=StakesTier.BULK, purpose="t", params={"_seed": "x"})
+    with pytest.raises(PermanentReasoningError, match="malformed reasoning params"):
+        rc._attempt(req2)
+
+
 def test_run_json_varies_seed_and_never_lowers_temperature(monkeypatch):
     monkeypatch.delenv("ASSAY_DISABLE_REASONING", raising=False)
     monkeypatch.setattr(rc, "JSON_REROLLS", 2)
