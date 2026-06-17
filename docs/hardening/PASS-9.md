@@ -48,7 +48,17 @@ were **2-agent verified TRUE_POSITIVE**.
 
 ## 5. Confirmation (2 agents per fix)
 
-CONFIRM-OUTCOME-PLACEHOLDER
+10 agents: **4/5 BOTH-CONFIRMED first round** (K-SEC-9-1, CI-1, P9-MO-1, P9-MO-2), all
+revert-discriminated. **P9-PII-1 returned a CONCERN from both reviewers** — a sharp catch: the
+one-shot re-scrub cleaned `hc-grc.local`, but the pre-commit hook re-captured the active session
+*without* `ASSAY_SCRUB_HOSTS`, so `_hostname_patterns()` emitted no namespace rule and the host was
+**re-introduced on the very commit** (the machine hostname auto-derives, so it stayed clean — the
+asymmetry was the tell). Remediated by exporting `ASSAY_SCRUB_HOSTS` in `.githooks/pre-commit`
+before capture and re-scrubbing; round-2 re-confirmation was **BOTH-CONFIRMED**, both reviewers
+verifying the corpus stays 0 through a live re-capture and the bare project token is preserved.
+
+Lesson recorded: a scrub rule gated on an env var must wire that var into the capture hook, or
+re-capture silently re-leaks it.
 
 ## 6. Final state
 
