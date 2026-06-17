@@ -90,6 +90,16 @@ def test_transcript_scrub_redacts_bare_operator_username():
     assert name not in out  # bare handle masked everywhere, not only in a /Users path
 
 
+def test_transcript_scrub_redacts_username_in_project_dir_slug():
+    # #H-018: the Claude project-dir slug (-Users-<name>-...) must have its username redacted at
+    # ANY length (the bare-token rule skips short handles to avoid over-redaction, but the slug
+    # form is unambiguous PII).
+    cap = _load("scripts/capture_transcripts.py", "capture_transcripts_slug")
+    out = cap._scrub("dir: -Users-tj-hc-grc and -home-ci-proj")  # short names
+    assert "-Users-tj-" not in out and "-home-ci-" not in out
+    assert "-Users-[REDACTED]-hc-grc" in out and "-home-[REDACTED]-proj" in out
+
+
 def test_example_uses_no_hardcoded_hmac_secret():
     # #F-048: the example must not carry a shippable, publicly-known HMAC secret a user could copy
     # into production. It derives a fresh random secret per run instead.

@@ -15,7 +15,22 @@ from typing import Any, Protocol, Sequence
 from assay_engine._local import require_loopback_host
 
 VECTOR_HOST = os.environ.get("ASSAY_VECTOR_HOST", "localhost")
-VECTOR_HTTP_PORT = int(os.environ.get("ASSAY_VECTOR_HTTP_PORT", "6333"))
+
+
+def _int_env(name: str, default: str) -> int:
+    """Parse an int env var with a clear error naming the var (#H-022).
+
+    A bare ``int(os.environ[...])`` at import time raises an opaque ``ValueError: invalid literal
+    for int()`` that doesn't say WHICH var was misconfigured, and it fires during import.
+    """
+    raw = os.environ.get(name, default)
+    try:
+        return int(raw)
+    except (ValueError, TypeError) as exc:
+        raise ValueError(f"{name} must be an integer; got {raw!r}") from exc
+
+
+VECTOR_HTTP_PORT = _int_env("ASSAY_VECTOR_HTTP_PORT", "6333")
 
 # Stable namespace for mapping the engine's string ids onto Qdrant point UUIDs.
 _POINT_NS = uuid.UUID("a55a9e00-0000-4000-8000-000000000001")
@@ -108,7 +123,17 @@ class QdrantVectorStore:
             self._client.upsert(self._collection, points=batch)
 
     def query(self, vector: Sequence[float], k: int) -> list[tuple[str, float]]:
+        if k <= 0:
+            raise ValueError(f"k must be a positive integer; got {k}")  # #H-021
         res = self._client.query_points(
             self._collection, query=list(vector), limit=k, with_payload=True
         )
-        return [(p.payload["ref"], float(p.score)) for p in res.points]
+        # A returned point without our 'ref' payload (e.g. inserted by another writer) would raise
+        # an opaque KeyError/TypeError; skip such points defensively rather than crash the query
+        # (#H-021). The store only ever upserts points carrying 'ref', so this is belt-and-braces.
+        out: list[tuple[str, float]] = []
+        for p in res.points:
+            ref = (p.payload or {}).get("ref")
+            if ref is not None:
+                out.append((ref, float(p.score)))
+        return out

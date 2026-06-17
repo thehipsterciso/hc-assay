@@ -509,11 +509,18 @@ def _attempt(request: ReasoningRequest) -> str:
         raise ReasoningError("reasoning is disabled (ASSAY_DISABLE_REASONING)")
     p = request.params
     system = p.get("system")
-    temperature = float(p.get("temperature", 0.0))
     model = p.get("model")
     json_mode = bool(p.get("_json_mode", False))
-    seed = p.get("_seed")
     json_schema = p.get("json_schema")  # optional caller schema → constrained JSON decoding
+    # Coerce numeric params behind the typed error contract (#H-004): a malformed temperature/seed
+    # (e.g. "hot") would otherwise raise a raw ValueError/TypeError that escapes run()/run_json,
+    # which document only ReasoningError. A bad param is a caller bug, not transient → permanent.
+    try:
+        temperature = float(p.get("temperature", 0.0))
+        seed_raw = p.get("_seed")
+        seed = int(seed_raw) if seed_raw is not None else None
+    except (ValueError, TypeError) as exc:
+        raise PermanentReasoningError(f"malformed reasoning params: {exc}") from exc
     if request.tier is StakesTier.BULK:
         return cast(
             str,
@@ -524,7 +531,7 @@ def _attempt(request: ReasoningRequest) -> str:
                     temperature,
                     model or BULK_MODEL,
                     json_mode,
-                    seed=int(seed) if seed is not None else None,
+                    seed=seed,  # already coerced to int|None above (#H-004)
                     json_schema=json_schema,
                 ),
                 BULK_TIMEOUT + 10,

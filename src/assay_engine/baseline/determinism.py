@@ -69,8 +69,12 @@ def corpus_fingerprint(corpus: Corpus) -> str:
 def stable_seed(*parts: str, bits: int = 32) -> int:
     """A deterministic non-negative integer seed derived from ``parts``.
 
-    Derived from a hash so the same inputs always yield the same seed — reproducible without a
-    hard-coded magic number, and distinct inputs get distinct seeds.
+    Derived from a SHA-256 hash so the same inputs always yield the same seed — reproducible
+    without a hard-coded magic number. The result is truncated to ``bits`` (default 32) to fit a
+    typical RNG seed, so distinct inputs get distinct seeds only up to the birthday bound of that
+    space (≈1 in 2**bits per pair) — NOT a guarantee of uniqueness (pass 5, #H-010). The full
+    content hash (``corpus_fingerprint`` / ``hash_value``) is the collision-resistant identity;
+    this seed is only for reproducible RNG initialization, where a rare collision is harmless.
     """
     digest = hashlib.sha256("\x1f".join(parts).encode("utf-8")).hexdigest()
     return int(digest, 16) % (1 << bits)

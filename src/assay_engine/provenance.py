@@ -215,6 +215,13 @@ def entries_to_records(
 
     The same shape :meth:`ProvenanceTrail.to_records` produces, so a caller holding only the
     returned entries — not the trail object — can still persist a re-checkable trail.
+
+    Keying is NOT embedded (pass 5, #H-017): a keyed (HMAC) trail and an unkeyed (SHA-256) trail
+    serialize identically — the records carry no key material and no trusted algorithm marker (one
+    would be spoofable since it is not itself part of the per-entry digest). The verifier must
+    therefore know out-of-band whether the trail was keyed and supply the same ``secret`` to
+    :func:`from_records` / :func:`verify_records`; that is deliberate key management, not a gap —
+    ``verify_records`` fails closed under the wrong/absent secret.
     """
     return tuple(
         {
