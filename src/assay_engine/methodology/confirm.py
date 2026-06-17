@@ -200,9 +200,28 @@ def _resample_stability(
     resample distribution clearing the null median by an epsilon would satisfy while reproducing
     nothing of the observed magnitude (audit pass 2, #139). The closer to 1.0, the more
     consistently the effect's significance reproduces across resamples.
+
+    The default path is O(R·N) pure Python (one null pass per resample). When numpy is available
+    (the optional ``baseline`` extra) the whole R×N comparison runs as a single vectorized op
+    (pass 3, #F-017). The numpy path computes the IDENTICAL integer extreme-counts and the same
+    ``(extreme + 1) / (n + 1) <= alpha`` test, so its result is exactly equal to the Python path;
+    it is purely a speed optimization for large R·N, never a semantic change.
     """
-    significant = sum(1 for r in resamples if _empirical_p(null, r, tail) <= alpha)
-    return significant / len(resamples)
+    n = len(null)
+    try:
+        import numpy as np
+
+        null_arr = np.asarray(null, dtype=np.float64)
+        res_arr = np.asarray(resamples, dtype=np.float64)
+        if tail == "greater":
+            extreme = (null_arr[None, :] >= res_arr[:, None]).sum(axis=1)
+        else:
+            extreme = (null_arr[None, :] <= res_arr[:, None]).sum(axis=1)
+        p = (extreme + 1) / (n + 1)
+        return float(int((p <= alpha).sum()) / len(resamples))
+    except ImportError:
+        significant = sum(1 for r in resamples if _empirical_p(null, r, tail) <= alpha)
+        return significant / len(resamples)
 
 
 _VALID_DIRECTIONS = ("greater", "less")

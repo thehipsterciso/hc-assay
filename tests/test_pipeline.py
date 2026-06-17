@@ -688,6 +688,36 @@ def test_run_study_warns_when_trail_is_unkeyed(tmp_path):
             run_study(ref.make_plan(src, modes=DISCOVERY), gate_handler=auto_approve)
 
 
+def test_verify_trail_can_be_opted_out(tmp_path):
+    # #F-036: end-of-run re-verification is O(N) and redundant for an in-memory trail the run
+    # built and never mutated; a perf-sensitive caller may skip it. The produced trail is still a
+    # valid chain (the entries were hashed correctly when appended) — verify_trail only controls
+    # whether run_study re-walks it before returning.
+    src = ref.write_source(tmp_path / "c.json")
+    res = run_study(
+        ref.make_plan(src, modes=DISCOVERY), gate_handler=auto_approve, verify_trail=False
+    )
+    verify_records(
+        res.provenance
+    )  # still an intact chain even though run_study skipped the re-walk
+
+
+def test_verify_trail_default_still_verifies(monkeypatch, tmp_path):
+    # #F-036: the default must remain verify-on (safety net) — assert trail.verify() is invoked.
+    from assay_engine.provenance import ProvenanceTrail
+
+    calls = {"n": 0}
+    orig = ProvenanceTrail.verify
+
+    def counting_verify(self):
+        calls["n"] += 1
+        return orig(self)
+
+    monkeypatch.setattr(ProvenanceTrail, "verify", counting_verify)
+    _run(tmp_path, DISCOVERY)
+    assert calls["n"] == 1  # verified once by default
+
+
 def test_persist_trail_writes_a_reverifiable_chain(tmp_path):
     # #F-045: the in-memory trail must be persistable to a durable, re-verifiable artifact.
     import json
