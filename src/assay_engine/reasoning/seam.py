@@ -40,6 +40,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Callable, Iterator, Mapping, Protocol, cast
 
+from assay_engine._envparse import float_env, int_env
 from assay_engine._frozen import freeze_mapping
 from assay_engine._local import require_loopback_url
 
@@ -91,23 +92,23 @@ BULK_MODEL = _env("ASSAY_BULK_MODEL", "llama3.1:8b")
 BULK_BASE_URL = _env("ASSAY_BULK_BASE_URL", "http://localhost:11434")
 HIGH_STAKES_MODEL = os.environ.get("ASSAY_HIGH_STAKES_MODEL") or None
 
-BULK_TIMEOUT = max(1.0, float(_env("ASSAY_BULK_TIMEOUT", "120")))
+BULK_TIMEOUT = max(1.0, float_env("ASSAY_BULK_TIMEOUT", "120"))
 # Cap BULK generation length. ChatOllama/Ollama default to unbounded (-1); without a cap a
 # local model can run away to context exhaustion, and the wall-clock timeout cannot interrupt a
 # call already blocked in the backend (a leaked pool slot). Bounding output tokens is the real
 # guard (LangChain's own ChatOllama example sets num_predict explicitly).
-BULK_NUM_PREDICT = max(1, int(_env("ASSAY_BULK_NUM_PREDICT", "2048")))
-HIGH_STAKES_TIMEOUT = max(1.0, float(_env("ASSAY_HIGH_STAKES_TIMEOUT", "300")))
+BULK_NUM_PREDICT = max(1, int_env("ASSAY_BULK_NUM_PREDICT", "2048"))
+HIGH_STAKES_TIMEOUT = max(1.0, float_env("ASSAY_HIGH_STAKES_TIMEOUT", "300"))
 
-MAX_RETRIES = max(0, int(_env("ASSAY_REASONING_RETRIES", "2")))
-BACKOFF_BASE = max(0.0, float(_env("ASSAY_REASONING_BACKOFF", "1.5")))
-RATE_LIMIT_BACKOFF = max(0.0, float(_env("ASSAY_RATELIMIT_BACKOFF", "30")))
-RATE_LIMIT_MAX_RETRIES = max(0, int(_env("ASSAY_RATELIMIT_RETRIES", "5")))
+MAX_RETRIES = max(0, int_env("ASSAY_REASONING_RETRIES", "2"))
+BACKOFF_BASE = max(0.0, float_env("ASSAY_REASONING_BACKOFF", "1.5"))
+RATE_LIMIT_BACKOFF = max(0.0, float_env("ASSAY_RATELIMIT_BACKOFF", "30"))
+RATE_LIMIT_MAX_RETRIES = max(0, int_env("ASSAY_RATELIMIT_RETRIES", "5"))
 # run_json re-rolls on a PARSE failure. This is independent of the transient/rate-limit retry
 # budget above (which applies per generation) so the two do not multiply into a retry storm; an
 # overall wall-clock deadline bounds the total regardless (#102).
-JSON_REROLLS = max(0, int(_env("ASSAY_JSON_REROLLS", "2")))
-RUN_JSON_DEADLINE = max(1.0, float(_env("ASSAY_RUN_JSON_DEADLINE", "600")))
+JSON_REROLLS = max(0, int_env("ASSAY_JSON_REROLLS", "2"))
+RUN_JSON_DEADLINE = max(1.0, float_env("ASSAY_RUN_JSON_DEADLINE", "600"))
 
 # OAuth subscription token name (external CLI contract — not renamed).
 OAUTH_TOKEN_ENV = "CLAUDE_CODE_OAUTH_TOKEN"

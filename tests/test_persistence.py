@@ -174,6 +174,26 @@ def test_require_local_uri_accepts_unix_domain_socket(dsn):
     assert require_local_uri(dsn, what="x") == dsn
 
 
+@pytest.mark.parametrize(
+    "dsn",
+    [
+        "host=/tmp,evil.com",  # multi-host: socket THEN off-box TCP
+        "host=/var/run/postgresql,10.0.0.5",
+        "postgresql:///db?host=/var/run/postgresql,evil.com",
+        "postgresql:///db?host=/tmp,evil.com",
+    ],
+)
+def test_require_local_uri_rejects_multihost_socket_bypass(dsn):
+    # #K-SEC-9-1: libpq accepts a COMMA-SEPARATED multi-host value; the pass-8 socket allowance
+    # checked the whole string, so a leading-"/" waved through an off-box host after the comma
+    # (libpq tries the socket then falls back to the TCP host → off-box exfiltration). Every
+    # element must be validated; any non-local element rejects.
+    from assay_engine._local import require_local_uri
+
+    with pytest.raises(NonLocalEndpointError):
+        require_local_uri(dsn, what="x")
+
+
 @pytest.mark.parametrize("dsn", ["host=//evil/share", "host=/\\evil/share"])
 def test_require_local_uri_still_rejects_unc_socket_lookalikes(dsn):
     # #K-SEC-1 guard: a UNC double-separator prefix (//server, /\server) resolves to a remote SMB

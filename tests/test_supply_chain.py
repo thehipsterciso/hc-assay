@@ -336,6 +336,47 @@ def test_ci_license_gate_scopes_to_dependency_set():
     )
 
 
+def test_merge_gate_compensating_control_exists():
+    # #CI-1: branch protection is unavailable on this plan, so the all-checks job is not enforced
+    # by the platform. The compensating control must exist: a pre-merge CI-gate script + a policy
+    # doc, and the workflow comment must be HONEST that enforcement is procedural, not platform.
+    script = _ROOT / "scripts" / "require_green_ci.sh"
+    assert script.exists(), "missing pre-merge CI gate script (#CI-1)"
+    body = script.read_text(encoding="utf-8")
+    assert "gh run list" in body and "conclusion" in body and "exit 1" in body
+    policy = _ROOT / "docs" / "MERGE-POLICY.md"
+    assert policy.exists() and "branch protection" in policy.read_text(encoding="utf-8").lower()
+    ci = _ci_text()
+    assert "#CI-1" in ci, "all-checks comment does not flag the unenforced-gate caveat"
+
+
+def test_numeric_env_parsing_names_the_bad_var():
+    # #P9-MO-2: numeric env vars must be parsed via the shared helpers that name the offending var,
+    # not bare int()/float() that raise an opaque "invalid literal" at import. Verify the helpers
+    # AND that seam.py/checkpoint.py no longer carry bare numeric parses of os.environ.
+    import importlib
+
+    ep = importlib.import_module("assay_engine._envparse")
+    with pytest.raises(ValueError, match="ASSAY_X must be an integer"):
+        import os as _os
+
+        _os.environ["ASSAY_X"] = "not-an-int"
+        try:
+            ep.int_env("ASSAY_X", "5")
+        finally:
+            del _os.environ["ASSAY_X"]
+    seam = (_ROOT / "src/assay_engine/reasoning/seam.py").read_text(encoding="utf-8")
+    chk = (_ROOT / "src/assay_engine/persistence/checkpoint.py").read_text(encoding="utf-8")
+    import re as _re
+
+    for src, name in ((seam, "seam.py"), (chk, "checkpoint.py")):
+        assert "_envparse import" in src, f"{name} does not use the shared env-parse helpers"
+        # no bare int(/float( wrapping an os.environ/_env(...) read
+        assert not _re.search(r"\b(?:int|float)\(\s*(?:os\.environ|_env\()", src), (
+            f"{name} still has a bare numeric parse of an env var (#P9-MO-2)"
+        )
+
+
 def test_github_actions_are_sha_pinned():
     # #F-037: every `uses:` third-party action must be pinned to a 40-char commit SHA (a mutable
     # tag can be force-pushed to malicious code). A version tag is allowed only as a comment.

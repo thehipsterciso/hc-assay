@@ -220,10 +220,17 @@ jobs:
           path: licenses.json
           if-no-files-found: warn
 
-  # Single required status check (#F-014): branch protection should require ONLY `all-checks`.
+  # Single required status check (#F-014): branch protection SHOULD require ONLY `all-checks`.
   # It fans in every other job, so adding a new job automatically gates merges without anyone
   # remembering to update the branch-protection rule — and `audit`/`integration` can never be
   # silently dropped from the merge gate by requiring just `core`.
+  #
+  # CAVEAT (#CI-1): branch protection is UNAVAILABLE on this repo's plan (private + free tier →
+  # the protection API returns 403), so NOTHING here actually blocks merging a red PR — this job's
+  # result is computed but not enforced by the platform. That gap let CI go silently red across
+  # passes. Until the repo is public (out of scope — would publish transcripts) or on a plan with
+  # protection, the compensating control is `scripts/require_green_ci.sh` (run before every merge)
+  # + the documented policy in docs/MERGE-POLICY.md. Do NOT --admin-merge past a red `all-checks`.
   all-checks:
     if: always()
     needs: [core, integration, audit]
