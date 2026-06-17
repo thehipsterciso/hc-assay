@@ -65,7 +65,19 @@ class MlflowExperimentTracker:
         exp = client.get_experiment_by_name(self._experiment)
         if exp is not None:
             return str(exp.experiment_id)
-        return str(client.create_experiment(self._experiment))
+        # check-then-create is a TOCTOU (#J-004): two concurrent first-time start_run calls (the
+        # 8-thread reasoning pool, or multiple study processes on one shared local store) can both
+        # see None and both create_experiment; MLflow rejects the loser with RESOURCE_ALREADY_EXISTS
+        # and the exception would propagate out of start_run, leaving run_id=None and silently
+        # dropping ALL metrics + the provenance artifact for the whole study. On a create race,
+        # re-fetch the now-existing experiment instead of failing.
+        try:
+            return str(client.create_experiment(self._experiment))
+        except Exception:  # noqa: BLE001 - normalize the concurrent-create race to a re-fetch
+            exp = client.get_experiment_by_name(self._experiment)
+            if exp is not None:
+                return str(exp.experiment_id)
+            raise
 
     def start_run(self, name: str, params: Mapping[str, Any]) -> str:
         client = self._client()

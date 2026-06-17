@@ -32,7 +32,8 @@ jobs:
           # core lock carries only the `dev` extra (no backends), preserving the ADR-0006 guard.
           python -m pip install --upgrade pip
           pip install --require-hashes -r requirements-core.lock
-          pip install --no-deps -e .
+          pip install --require-hashes -r requirements-build.lock  # hashed build backend (#J-003)
+          pip install --no-build-isolation --no-deps -e .
       - name: Lint (ruff)
         run: ruff check src tests
       - name: Format check (ruff)
@@ -77,7 +78,8 @@ jobs:
           # release within a pyproject range could run during the real-backend tests (#F-004).
           python -m pip install --upgrade pip
           pip install --require-hashes -r requirements.lock
-          pip install --no-deps -e .
+          pip install --require-hashes -r requirements-build.lock  # hashed build backend (#J-003)
+          pip install --no-build-isolation --no-deps -e .
       - name: Type-check against real backend types (mypy)
         run: mypy
       - name: Verify service containers are reachable (no silent skip)
@@ -136,6 +138,12 @@ jobs:
           uv pip compile pyproject.toml --extra dev --universal --generate-hashes -o /tmp/requirements-core.regen.lock
           diff <(grep -v '^#' requirements-core.lock) <(grep -v '^#' /tmp/requirements-core.regen.lock) \
             || { echo "::error::requirements-core.lock is stale — run: uv pip compile pyproject.toml --extra dev --universal --generate-hashes -o requirements-core.lock"; exit 1; }
+          # the build-backend lockfile (hatchling etc.) backs the hash-pinned --no-build-isolation
+          # editable install (#J-003) and must stay in sync.
+          printf 'hatchling\neditables\n' > /tmp/build-reqs.in
+          uv pip compile /tmp/build-reqs.in --universal --generate-hashes -o /tmp/requirements-build.regen.lock
+          diff <(grep -v '^#' requirements-build.lock) <(grep -v '^#' /tmp/requirements-build.regen.lock) \
+            || { echo "::error::requirements-build.lock is stale — run: uv pip compile <(printf 'hatchling\\neditables\\n') --universal --generate-hashes -o requirements-build.lock"; exit 1; }
       - name: pip-audit (reproducible known-vulnerability scan)
         run: |
           set -euo pipefail
@@ -188,9 +196,10 @@ jobs:
           # live `pip install -e .[all]` resolution that could pull different versions than the
           # lockfile pins (#F-013). Advisory monitoring of the rest is handled by Dependabot.
           pip install --require-hashes -r requirements.lock
-          pip install --no-deps -e .
+          pip install --require-hashes -r requirements-build.lock  # hashed build backend (#J-003)
+          pip install --no-build-isolation --no-deps -e .
           python -m pip install pip-licenses==5.5.5  # pinned for reproducible license output (#G-022)
-          pip-licenses --format=json --with-system > licenses.json
+          pip-licenses --format=json > licenses.json  # scan the dep set, not system tooling (#J-006)
           python scripts/license_gate.py licenses.json
       - name: Upload license report
         if: always()

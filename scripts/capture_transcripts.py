@@ -73,7 +73,40 @@ def _username_pattern() -> re.Pattern[str] | None:
     return re.compile(re.escape(name))
 
 
+def _display_name_patterns() -> list[re.Pattern[str]]:
+    """Redactions for the operator's full DISPLAY NAME (#J-002).
+
+    The username/email rules leave the real name (e.g. a git ``user.name`` like "Thomas Jones")
+    in cleartext — distinct operator PII that appears in git author strings, ``pyproject``
+    ``authors=``, and prose, often right beside an already-redacted email. Derive candidate names
+    from ``git config user.name`` and the ``ASSAY_SCRUB_NAMES`` env (comma-separated), redact each
+    (and, for a multi-word name, its whitespace-flexible form). Length-guarded to avoid
+    over-redacting common words.
+    """
+    names: list[str] = []
+    extra = os.environ.get("ASSAY_SCRUB_NAMES", "")
+    names.extend(n.strip() for n in extra.split(",") if n.strip())
+    try:
+        import subprocess
+
+        out = subprocess.run(
+            ["git", "config", "user.name"], capture_output=True, text=True, timeout=5
+        )
+        if out.returncode == 0 and out.stdout.strip():
+            names.append(out.stdout.strip())
+    except Exception:  # noqa: BLE001 - git absent/misconfigured must never break capture
+        pass
+    pats: list[re.Pattern[str]] = []
+    for n in names:
+        if len(n) < 4:
+            continue  # too short → risks over-redacting common words
+        # match the name with flexible inter-token whitespace (e.g. "Thomas   Jones")
+        pats.append(re.compile(r"\b" + r"\s+".join(re.escape(t) for t in n.split()) + r"\b"))
+    return pats
+
+
 _USERNAME_RE = _username_pattern()
+_DISPLAY_NAME_RES = _display_name_patterns()
 
 
 def _scrub(text: str) -> str:
@@ -88,6 +121,10 @@ def _scrub(text: str) -> str:
     # don't re-expose it. Done last so it also catches it inside project-dir slugs / git authors.
     if _USERNAME_RE is not None:
         text = _USERNAME_RE.sub("[REDACTED]", text)
+    # Redact the operator's full display name too (#J-002) — distinct PII the username/email rules
+    # leave in cleartext (git author strings, pyproject authors=, prose).
+    for pat in _DISPLAY_NAME_RES:
+        text = pat.sub("[REDACTED]", text)
     return text
 
 
@@ -104,13 +141,18 @@ def _copy_scrubbed(srcf: Path, dstf: Path) -> dict | None:
         # Scrub EVERY text file, not only .jsonl (#CV-O-1): the session subtree also holds .json
         # workflow/subagent transcripts that carry the same operator PII + credential-shaped
         # secrets — the old suffix==".jsonl" gate copied those RAW, bypassing redaction entirely.
-        # Decode strictly to classify: text → scrub; genuinely binary (rare here) → copy verbatim.
-        try:
-            text = raw.decode("utf-8")
-        except UnicodeDecodeError:
-            data = raw  # binary blob — nothing to scrub
+        #
+        # FAIL CLOSED on redaction (#J-001): classify binary by an actual binary SIGNAL (a NUL
+        # byte), NOT by UTF-8 validity. A transcript routinely embeds arbitrary subprocess stdout
+        # (latin-1 dumps, truncated multibyte) inside JSONL strings; gating on strict decode meant
+        # a single stray byte routed the WHOLE file to the verbatim branch and re-leaked it (the
+        # CV-O-1 fix had turned an always-redact path into a fail-open one). Decode with
+        # errors="replace" so redaction ALWAYS runs on text; only a genuinely binary blob (NUL
+        # present) is copied verbatim.
+        if b"\x00" in raw:
+            data = raw  # genuinely binary — nothing to scrub
         else:
-            data = _scrub(text).encode("utf-8")
+            data = _scrub(raw.decode("utf-8", errors="replace")).encode("utf-8")
         if dstf.exists() and dstf.read_bytes() == data:
             pass  # unchanged — still report it in the manifest
         else:

@@ -140,10 +140,20 @@ def test_t3_hung_subprocess_is_cancelled_not_leaked(fake_sdk, monkeypatch):
     assert _t.monotonic() - t0 < 5  # cancelled promptly near the 0.3s inner timeout, not hung
 
 
+def _assert_transient(excinfo):
+    # #J-005: RateLimitError and PermanentReasoningError both SUBCLASS ReasoningError, so
+    # `pytest.raises(ReasoningError)` does NOT discriminate a transient mapping from a rate-limit
+    # or permanent one. Assert the exception is the transient class itself, not a decisive subclass.
+    assert not isinstance(excinfo.value, (RateLimitError, PermanentReasoningError)), (
+        f"expected a transient ReasoningError, got {type(excinfo.value).__name__}"
+    )
+
+
 def test_t3_empty_reply_raises_transient(fake_sdk):
     fake_sdk.append(_AssistantMessage([]))  # no text blocks -> empty
-    with pytest.raises(ReasoningError):
+    with pytest.raises(ReasoningError) as ei:
         _run()
+    _assert_transient(ei)
 
 
 def test_t3_rate_limit_event_rejected_maps_to_ratelimit(fake_sdk):
@@ -167,8 +177,9 @@ def test_t3_auth_error_maps_to_permanent(fake_sdk):
 
 def test_t3_generic_error_maps_to_transient(fake_sdk):
     fake_sdk.append(_ResultMessage(is_error=True, api_error_status=500, errors=["boom"]))
-    with pytest.raises(ReasoningError):
+    with pytest.raises(ReasoningError) as ei:
         _run()
+    _assert_transient(ei)  # a 500 must be transient, NOT permanent/rate-limit (#J-005)
 
 
 def test_t3_429_not_clobbered_by_trailing_result_error(fake_sdk):
@@ -202,8 +213,9 @@ def test_t3_top_level_rejected_status_maps_to_ratelimit(fake_sdk):
 def test_t3_sdk_raises_mid_stream_maps_to_transient(fake_sdk):
     # the SDK/transport raising (rather than completing the stream) is a transient failure
     fake_sdk.append(RuntimeError("connection reset"))
-    with pytest.raises(ReasoningError):
+    with pytest.raises(ReasoningError) as ei:
         _run()
+    _assert_transient(ei)  # transport raise must be transient, not permanent/rate-limit (#J-005)
 
 
 def test_t3_missing_auth_fails_loud(monkeypatch, fake_sdk):

@@ -314,6 +314,28 @@ def test_ci_integration_verifies_services_are_reachable():
     assert "pg_isready" in text and "/readyz" in text
 
 
+def test_ci_pins_build_backend_and_disables_live_build_isolation():
+    # #J-003: the editable install must use the hashed build backend (requirements-build.lock) with
+    # --no-build-isolation, so hatchling isn't fetched live/un-hashed from PyPI (an unscanned,
+    # non-reproducible build-time code-exec window).
+    text = _ci_text()
+    assert "--no-build-isolation --no-deps -e ." in text, "build isolation still live (#J-003)"
+    assert "requirements-build.lock" in text
+    assert (_ROOT / "requirements-build.lock").exists()
+    build = (_ROOT / "requirements-build.lock").read_text(encoding="utf-8")
+    assert "hatchling==" in build and "--hash=sha256:" in build
+    assert "pip install --no-deps -e .\n" not in text  # the old live-isolation install is gone
+
+
+def test_ci_license_gate_scopes_to_dependency_set():
+    # #J-006: the license gate must scan the dependency set, not entire site-packages
+    # (--with-system pulls system tooling that can spuriously fail or mask the gate).
+    text = _ci_text()
+    assert "pip-licenses --format=json --with-system" not in text, (
+        "license gate still --with-system"
+    )
+
+
 def test_github_actions_are_sha_pinned():
     # #F-037: every `uses:` third-party action must be pinned to a 40-char commit SHA (a mutable
     # tag can be force-pushed to malicious code). A version tag is allowed only as a comment.
