@@ -27,6 +27,7 @@ with none of them installed. Install the optional ``reasoning`` extra to run rea
 
 from __future__ import annotations
 
+import atexit
 import json
 import os
 import threading
@@ -184,6 +185,10 @@ def scrubbed_env() -> dict[str, str]:
 # --------------------------------------------------------------------------------------
 _POOL_WORKERS = 8
 _pool = ThreadPoolExecutor(max_workers=_POOL_WORKERS, thread_name_prefix="reasoning-timeout")
+# Shut the pool down at interpreter exit (#F-043). wait=False avoids blocking exit on in-flight
+# backend calls (already bounded by _with_timeout); without this, module globals can be torn down
+# while a worker is mid-call, leaving behavior undefined. Mirrors checkpoint.py's atexit cleanup.
+atexit.register(_pool.shutdown, wait=False)
 _inflight = 0
 _inflight_lock = threading.Lock()
 
@@ -218,7 +223,15 @@ def _submit_bounded(fn: Callable[[], Any]) -> Any:
         with _inflight_lock:
             _inflight -= 1
         raise
-    future.add_done_callback(_release)
+    # Register the slot-release callback under its own guard (#F-032): if a BaseException
+    # (KeyboardInterrupt/SystemExit) fires while attaching the callback, release the slot
+    # explicitly so a permanent leak can't accumulate and brick the pool with spurious
+    # RateLimitErrors. _release is idempotent for a given future (the callback runs at most once).
+    try:
+        future.add_done_callback(_release)
+    except BaseException:
+        _release(future)
+        raise
     return future
 
 
@@ -523,12 +536,22 @@ def _sleep_bounded(secs: float, deadline: float | None) -> None:
 def _run_with_retries(request: ReasoningRequest, *, deadline: float | None = None) -> str:
     """Execute with independent transient and rate-limit retry budgets.
 
-    ``deadline`` (monotonic seconds) bounds the cumulative backoff so the retry budgets cannot
-    block a caller past its overall deadline (#102).
+    ``deadline`` (monotonic seconds) bounds both the cumulative backoff AND entry into each
+    retry: once the deadline has passed, no further ``_attempt`` is started (#102, #F-022). It
+    does not interrupt an attempt already in flight — that is bounded by the per-call timeout —
+    so total wall-clock is at most ``deadline`` plus one in-flight attempt's timeout, not
+    ``deadline`` plus the full retry budget of per-call timeouts.
     """
     transient = 0
     rate = 0
+    attempted = False
     while True:
+        # Gate retry ENTRY on the deadline (#F-022): the first attempt always runs, but a retry is
+        # not started once the deadline is past — otherwise the per-attempt timeouts could stack
+        # well beyond the overall budget even though the backoff sleeps were bounded.
+        if attempted and deadline is not None and time.monotonic() >= deadline:
+            raise ReasoningError("reasoning deadline exceeded before retry")
+        attempted = True
         try:
             return _attempt(request)
         except PermanentReasoningError:
