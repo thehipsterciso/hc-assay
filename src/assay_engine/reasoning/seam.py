@@ -135,13 +135,14 @@ def is_metered_anthropic_credential(key: str) -> bool:
 # metered provider, defeating ADR-0003 / "no metered API". The claude CLI honours all of these.
 _UNSAFE_SUBPROCESS_VARS = frozenset(
     {
-        "ANTHROPIC_BASE_URL",
-        "ANTHROPIC_BEDROCK_BASE_URL",
-        "ANTHROPIC_VERTEX_BASE_URL",
         "CLAUDE_CODE_USE_BEDROCK",
         "CLAUDE_CODE_USE_VERTEX",
         "CLAUDE_CODE_API_KEY_HELPER",
         "GOOGLE_APPLICATION_CREDENTIALS",
+        # TLS-trust / egress-interception knobs the Node-based CLI honours: a custom CA or disabled
+        # cert verification enables a transparent off-box MITM proxy (pass 4, #G-018).
+        "NODE_EXTRA_CA_CERTS",
+        "NODE_TLS_REJECT_UNAUTHORIZED",
     }
 )
 
@@ -150,12 +151,16 @@ def is_unsafe_subprocess_var(key: str) -> bool:
     """True for any env var that must not reach the high-stakes subprocess (#101).
 
     Covers metered credentials, off-box/metered-provider redirects, proxies (which redirect
-    egress), and cloud-provider credentials (AWS_*/GOOGLE_*). The subscription OAuth token is
-    deliberately NOT matched.
+    egress), cloud-provider credentials (AWS_*/GOOGLE_*), and TLS-trust overrides. The ENTIRE
+    ``ANTHROPIC_*`` namespace is scrubbed (#G-018): any such var configures the SDK's endpoint /
+    auth / headers and could redirect off-box or onto a metered provider — the subscription token
+    is ``CLAUDE_CODE_OAUTH_TOKEN`` (no ``ANTHROPIC_`` prefix) and is deliberately NOT matched.
     """
     ku = key.upper()
     return (
-        is_metered_anthropic_credential(key)
+        ku.startswith(
+            "ANTHROPIC_"
+        )  # whole namespace: endpoint/auth/headers/custom-headers (#G-018)
         or ku in _UNSAFE_SUBPROCESS_VARS
         or ku.endswith("_PROXY")  # HTTP_PROXY/HTTPS_PROXY/ALL_PROXY/NO_PROXY (any case)
         or ku.startswith("AWS_")
@@ -341,12 +346,27 @@ def _bulk_complete(
             "bulk tier requires the 'reasoning' extra (langchain-ollama) — not installed"
         ) from exc
 
+    # BULK's INNER bound (#G-003): the sync-tier counterpart to HIGH_STAKES's anyio.fail_after.
+    # A ThreadPoolExecutor worker blocked in client.invoke() cannot be interrupted by the outer
+    # _with_timeout, so the HTTP client timeout is what actually frees the slot on a hung backend.
+    # A bare float sets EVERY httpx phase (connect/read/write/pool) to BULK_TIMEOUT, so a slow
+    # connect THEN a slow read could total ~2*BULK_TIMEOUT — past the outer BULK_TIMEOUT+10 bound,
+    # leaking the slot. Use an explicit Timeout so the TOTAL stays ~BULK_TIMEOUT (+ a small connect)
+    # and aligns with the outer headroom. Fall back to the float if httpx is absent.
+    try:
+        import httpx
+
+        _bulk_timeout: Any = httpx.Timeout(
+            BULK_TIMEOUT, connect=min(10.0, BULK_TIMEOUT), pool=min(10.0, BULK_TIMEOUT)
+        )
+    except ImportError:  # pragma: no cover - httpx ships with the reasoning extra
+        _bulk_timeout = BULK_TIMEOUT
     kwargs: dict[str, Any] = dict(
         model=model,
         base_url=BULK_BASE_URL,
         temperature=temperature,
         num_predict=BULK_NUM_PREDICT,  # bound generation length (H1)
-        client_kwargs={"timeout": BULK_TIMEOUT},
+        client_kwargs={"timeout": _bulk_timeout},
     )
     if seed is not None:
         kwargs["seed"] = seed

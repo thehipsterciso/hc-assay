@@ -85,6 +85,14 @@ class Gate:
                 f"{self.frm.name} -> {self.to.name}"
             )
         decision = self.precondition(context)
+        # A precondition returning a non-GateDecision (e.g. None — forgot to return) would raise an
+        # opaque AttributeError on decision.approved; surface a typed GateError naming the contract
+        # instead (pass 4, #G-019 — the gate analogue of the #F-021 Verdict guards).
+        if not isinstance(decision, GateDecision):
+            raise GateError(
+                f"gate {self.name!r} precondition returned {type(decision).__name__} — "
+                "expected a GateDecision"
+            )
         if not decision.approved:
             raise GateError(f"gate {self.name!r} blocked transition: {decision.reason}")
         if self.requires_human and record is None:

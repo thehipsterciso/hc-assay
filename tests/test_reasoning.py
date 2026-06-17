@@ -62,6 +62,10 @@ def test_is_metered_credential_matches_shape(key, metered):
         ("https_proxy", True),  # case-insensitive
         ("AWS_SECRET_ACCESS_KEY", True),
         ("GOOGLE_APPLICATION_CREDENTIALS", True),
+        ("ANTHROPIC_CUSTOM_HEADERS", True),  # #G-018: whole ANTHROPIC_ namespace scrubbed
+        ("anthropic_base_url", True),  # #G-018: lowercase namespace too
+        ("NODE_EXTRA_CA_CERTS", True),  # #G-018: custom CA enables off-box MITM
+        ("NODE_TLS_REJECT_UNAUTHORIZED", True),  # #G-018: disabling cert checks
         ("CLAUDE_CODE_OAUTH_TOKEN", False),  # subscription auth — keep
         ("PATH", False),
         ("HOME", False),
@@ -354,6 +358,25 @@ def test_bulk_complete_bounds_generation_and_passes_seed_and_schema(monkeypatch)
     assert kw["num_predict"] == rc.BULK_NUM_PREDICT  # generation is bounded (H1)
     assert kw["seed"] == 3  # seed threaded for deterministic re-rolls (M3)
     assert kw["format"] == schema  # schema-constrained JSON decoding (M2), not loose "json"
+
+
+def test_bulk_complete_sets_a_total_bounded_http_timeout(monkeypatch):
+    # #G-003: BULK's inner bound is the HTTP client timeout (sync-tier counterpart to HIGH_STAKES's
+    # anyio.fail_after). A bare float sets every httpx phase to BULK_TIMEOUT (connect+read can total
+    # ~2x, past the outer BULK_TIMEOUT+10 bound, leaking the worker slot). Assert an explicit
+    # httpx.Timeout whose read==BULK_TIMEOUT and connect is small, so the TOTAL stays ~BULK_TIMEOUT.
+    import httpx
+
+    monkeypatch.delenv("ASSAY_DISABLE_REASONING", raising=False)
+    captured: list[dict] = []
+    _fake_ollama(monkeypatch, captured)
+    rc._bulk_complete("p", None, 0.0, "m")
+    timeout = captured[0]["client_kwargs"]["timeout"]
+    assert isinstance(timeout, httpx.Timeout)
+    assert timeout.read == rc.BULK_TIMEOUT
+    assert timeout.connect is not None and timeout.connect <= 10.0
+    # total worst case (connect + read) must not exceed the outer _with_timeout headroom
+    assert timeout.connect + timeout.read <= rc.BULK_TIMEOUT + 10
 
 
 def test_bulk_complete_classifies_404_as_permanent_by_status(monkeypatch):

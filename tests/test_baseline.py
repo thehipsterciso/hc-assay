@@ -131,6 +131,13 @@ def test_build_artifact_records_full_determinism_and_is_reproducible():
     assert hash(a1) is not None  # frozen + hashable (FrozenDict contents/determinism)
 
 
+def test_build_artifact_names_the_bad_extra_input():
+    # #G-021: a non-canonicalizable extra input must raise an error NAMING the offending key, not
+    # an opaque raw ValueError/TypeError from hash_value with no context.
+    with pytest.raises((ValueError, TypeError), match="extra_input 'cfg'"):
+        build_baseline_artifact(_corpus(), {}, extra_inputs={"cfg": object()})
+
+
 def test_build_artifact_extra_inputs_change_seed():
     c = _corpus()
     base = build_baseline_artifact(c, {}, extra_inputs={"cfg": {"alpha": 0.05}})
@@ -234,21 +241,35 @@ def test_cosine_matrix_empty():
     assert cosine_similarity_matrix([]) == []
 
 
-def test_cosine_matrix_scale_uses_fast_path():
-    # guards against a regression to the pure O(n²·d) path at corpus scale: a 300x64 matrix
-    # must compute correctly and (with numpy installed) effectively instantly.
+def test_cosine_matrix_uses_numpy_fast_path_and_agrees_with_pure(monkeypatch):
+    # #G-013: the old test asserted only the numeric result + a timing bound, which the pure path
+    # also satisfies — so deleting/breaking the numpy fast path left it green. Discriminate two
+    # ways: (1) the numpy and pure paths agree to tolerance (fast-path correctness), and (2)
+    # cosine_similarity_matrix actually DISPATCHES to the numpy path (spy) — a revert to
+    # always-pure makes (2) fail.
     import importlib.util
-    import time as _t
+
+    from assay_engine.baseline import primitives as P
 
     if importlib.util.find_spec("numpy") is None:
         pytest.skip("numpy not installed — vectorized path unavailable")
-    rng = [[float((i * 7 + j * 13) % 97) for j in range(64)] for i in range(300)]
-    start = _t.perf_counter()
-    m = cosine_similarity_matrix(rng)
-    elapsed = _t.perf_counter() - start
-    assert len(m) == 300 and len(m[0]) == 300
-    assert m[0][0] == pytest.approx(1.0)  # non-zero self-similarity exact
-    assert elapsed < 2.0  # numpy path; the pure path would take far longer at this size
+    rng = [[float((i * 7 + j * 13) % 97) for j in range(8)] for i in range(12)]
+    fast = P._cosine_matrix_numpy(rng)
+    pure = P._cosine_matrix_pure(rng)
+    for fr, pr in zip(fast, pure):
+        for x, y in zip(fr, pr):
+            assert x == pytest.approx(y)  # the optimized branch matches the reference
+    called = {"n": 0}
+    real = P._cosine_matrix_numpy
+
+    def spy(rows):
+        called["n"] += 1
+        return real(rows)
+
+    monkeypatch.setattr(P, "_cosine_matrix_numpy", spy)
+    m = P.cosine_similarity_matrix(rng)
+    assert called["n"] == 1  # dispatched to the numpy fast path, not the pure fallback
+    assert len(m) == 12 and m[0][0] == pytest.approx(1.0)
 
 
 def test_cosine_rejects_non_finite_inputs():

@@ -240,6 +240,40 @@ def test_ci_pins_uv_version():
     assert "pip install --upgrade uv\n" not in text, "unpinned uv upgrade reintroduced"
 
 
+def test_sbom_step_applies_the_allowlist():
+    # #G-015: the SBOM pip-audit (which exits non-zero on ANY finding) must apply the same
+    # allowlist as the gate, or an ACCEPTED advisory fails SBOM generation under set -euo pipefail
+    # even though the gate passed.
+    text = _ci_text()
+    sbom = text[text.index("SBOM (CycloneDX)") : text.index("Upload SBOM artifact")]
+    assert "--ignore-vuln" in sbom and ".pip-audit-ignore" in sbom, (
+        "SBOM step does not apply the allowlist (#G-015)"
+    )
+    assert 'cyclonedx-json -o sbom.cyclonedx.json "${IGNORES[@]}"' in sbom
+
+
+def test_audit_tooling_is_version_pinned():
+    # #G-022: pip-audit and pip-licenses must be pinned so the supply-chain gate is reproducible
+    # run-to-run (a tooling bump can't silently change advisory/license results).
+    text = _ci_text()
+    assert "pip-audit==" in text, "pip-audit not version-pinned (#G-022)"
+    assert "pip-licenses==" in text, "pip-licenses not version-pinned (#G-022)"
+    assert "install --upgrade pip pip-audit\n" not in text, (
+        "unpinned pip-audit install reintroduced"
+    )
+
+
+def test_dependabot_lockfile_regen_is_documented():
+    # #G-016: Dependabot can't regenerate the uv lockfiles, so the manual regen path must be
+    # documented + scripted, or every Dependabot PR is stuck on the stale-lock gate.
+    regen = _ROOT / "scripts" / "regenerate_lockfiles.sh"
+    assert regen.exists(), "no scripts/regenerate_lockfiles.sh (#G-016)"
+    body = regen.read_text(encoding="utf-8")
+    assert "uv pip compile" in body and "requirements-core.lock" in body
+    db = (_ROOT / ".github" / "dependabot.yml").read_text(encoding="utf-8")
+    assert "regenerate_lockfiles.sh" in db, "dependabot.yml does not point at the regen script"
+
+
 def test_github_actions_are_sha_pinned():
     # #F-037: every `uses:` third-party action must be pinned to a 40-char commit SHA (a mutable
     # tag can be force-pushed to malicious code). A version tag is allowed only as a comment.

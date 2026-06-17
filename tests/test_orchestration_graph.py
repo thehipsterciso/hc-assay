@@ -137,6 +137,20 @@ def test_gate_node_bridges_decision_into_provenance_trail(fake_langgraph):
     assert gates and gates[0].payload["decision"] == "approved"
 
 
+def test_gate_node_recorder_failure_raises_not_silently_diverges(fake_langgraph):
+    # #G-020: if the recorder (provenance write) fails, the node must raise a clear GateError and
+    # NOT return the state update — so the decision can't be applied to graph state while absent
+    # from the tamper-evident trail (a silent divergence).
+    fake_langgraph["resumes"] = [{"gate_id": "gate_2", "decision": "approved", "rationale": "ok"}]
+
+    def boom_recorder(rec):
+        raise RuntimeError("trail write failed")
+
+    node = make_gate_node(_gate(), lambda state: {}, recorder=boom_recorder)
+    with pytest.raises(GateError, match="could NOT be recorded"):
+        node({})
+
+
 def test_gate_node_reprompts_on_bad_resume_then_recovers(fake_langgraph):
     # issue #G1: a mis-correlated then malformed resume must re-fire interrupt, not raise/brick
     fake_langgraph["resumes"] = [

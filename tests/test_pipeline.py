@@ -448,6 +448,10 @@ def test_tracker_receives_run_and_metrics_and_failures_dont_abort(tmp_path):
     # are analysable from the experiment store, not just the provenance trail.
     metric_keys = {c[1] for c in t.calls if c[0] == "metric"}
     assert {"n_units", "n_claims", "run_duration_s"} <= metric_keys
+    # #G-009: the hash-chained provenance trail is persisted + correlated to the run as an artifact,
+    # so an auditor opening the run can retrieve the provenance behind its metrics.
+    artifacts = [c for c in t.calls if c[0] == "artifact"]
+    assert artifacts and any(str(c[1]).endswith("_provenance.json") for c in artifacts)
 
     class BoomTracker(FakeTracker):
         def log_metric(self, *a):

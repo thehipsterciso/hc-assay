@@ -294,6 +294,14 @@ def get_checkpointer(use_memory: bool = False) -> Any:
                         conn.execute("SELECT pg_advisory_unlock(%s)", (_MIGRATION_LOCK_KEY,))
                     except Exception:
                         pass
+                    # Reset the session lock_timeout GUC (#G-002): the autocommit connection set it
+                    # at SESSION scope for the bootstrap, then returns to the pool and is reused for
+                    # all later checkpoint reads/writes — which would otherwise silently inherit a
+                    # non-default lock_timeout the operator never configured for normal ops.
+                    try:
+                        conn.execute("RESET lock_timeout")
+                    except Exception:
+                        pass
             with _init_lock:
                 _POOLS_BY_CONN[conn_str] = pool  # cache for reuse on later calls (#144)
             return PostgresSaver(cast(Any, pool))  # dict-rowed pool (row_factory=dict_row)

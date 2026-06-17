@@ -122,8 +122,10 @@ def cosine_similarity_matrix_array(rows: Sequence[Vector]) -> Any:
 
     For large corpora the nested-list form of :func:`cosine_similarity_matrix` multiplies peak
     memory several-fold; a builder operating at scale should keep the ndarray and store it in the
-    baseline's ``contents`` (the determinism freeze keeps an array opaque/O(1), unlike a nested
-    list). Requires numpy (the ``baseline`` extra).
+    baseline's ``contents``. The determinism freeze still copies the array's bytes once
+    (``freeze`` -> ``tobytes()`` into a ``(kind, shape, bytes)`` descriptor, O(size)) — far cheaper
+    than freezing a deep nested list element-by-element, but NOT zero-copy/O(1) (pass 4, #G-024).
+    Requires numpy (the ``baseline`` extra).
     """
     try:
         import numpy as np

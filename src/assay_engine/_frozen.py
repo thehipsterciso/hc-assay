@@ -151,11 +151,14 @@ def unfreeze(value: Any) -> Any:
     if isinstance(value, (FrozenDict, Mapping)):
         return {k: unfreeze(v) for k, v in value.items()}
     if isinstance(value, frozenset):
-        # sort when elements are mutually orderable; otherwise keep insertion-free stable repr
+        # sort for reproducible output; when elements are not mutually orderable (mixed types),
+        # fall back to a STABLE key — (type name, repr) — rather than raw set iteration order, which
+        # is hash-seed/insertion dependent and would make serialized output non-reproducible across
+        # processes (pass 4, #G-004).
         try:
             return [unfreeze(v) for v in sorted(value)]
         except TypeError:
-            return [unfreeze(v) for v in value]
+            return [unfreeze(v) for v in sorted(value, key=lambda x: (type(x).__name__, repr(x)))]
     if isinstance(value, (list, tuple)):
         return [unfreeze(v) for v in value]
     return value
