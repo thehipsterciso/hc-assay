@@ -177,15 +177,23 @@ def test_scrub_redacts_github_handle(monkeypatch):
     # #J-008: the operator's repo owner / GitHub handle leaks in PR/issue URLs and `gh --repo
     # <handle>/...` commands — operator PII no email/username rule covers. It is redacted while the
     # repo name is preserved (legitimate provenance).
-    monkeypatch.setenv("ASSAY_SCRUB_HANDLES", "theoctocatx")
+    monkeypatch.setenv("ASSAY_SCRUB_HANDLES", "theninjacoder")
     cap = _load("scripts/capture_transcripts.py", "capture_transcripts_handle")
     out = cap._scrub(
-        "gh issue list --repo theoctocatx/hc-assay; "
-        "https://github.com/TheOctocatX/hc-assay/pull/28; skill octocatx-audience-profiles"
+        "gh issue list --repo theninjacoder/hc-assay; "
+        "https://github.com/TheNinjaCoder/hc-assay/pull/28; "
+        "skill ninjacoder-audience-profiles; brand: The Ninja Coder writes; "
+        "a normal coder reviews and the ninja stays."
     )
-    assert "theoctocatx" not in out.lower()  # handle redacted everywhere, case-insensitively
-    assert "octocatx" not in out.lower()  # the distinctive STEM (handle minus "the") too (#J-008)
+    assert "theninjacoder" not in out.lower()  # handle redacted everywhere, case-insensitively
+    assert "ninjacoder" not in out.lower()  # the distinctive STEM (handle minus "the") too (#J-008)
+    assert (
+        "The Ninja Coder" not in out
+    )  # the SPACED source brand, reconstructable by concat (#J-008 r3)
     assert "hc-assay" in out  # repo name (not PII) preserved
+    # NO over-redaction: a standalone common token that merely appears inside the handle's letters
+    # is preserved — the whole ordered sequence must be present for the separator-flexible rule.
+    assert "a normal coder reviews" in out and "the ninja stays" in out
 
 
 def test_example_uses_no_hardcoded_hmac_secret():

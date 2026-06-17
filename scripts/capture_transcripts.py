@@ -169,10 +169,22 @@ def _repo_handle_patterns() -> list[re.Pattern[str]]:
     pats: list[re.Pattern[str]] = []
     seen: set[str] = set()
     for h in expanded:
-        if len(h) < 4 or h.lower() in seen:
+        key = h.lower()
+        if len(h) < 4 or key in seen:
             continue  # too short → risks over-redacting common words; or already added
-        seen.add(h.lower())
-        pats.append(re.compile(re.escape(h), re.IGNORECASE))
+        seen.add(key)
+        if len(h) >= 8:
+            # SEPARATOR-FLEXIBLE (#J-008 confirm-concern round 3): a GitHub handle is usually a
+            # de-spaced brand ("thehipsterciso" = "The Hipster CISO"); the SPACED source brand
+            # appears in prose/links and lets a reader reconstruct the redacted handle/email by
+            # concatenation. Allow punctuation/whitespace between each character so the spaced,
+            # hyphenated, and dotted forms all redact — while the de-spaced form (empty separators)
+            # still matches. The separator class is space/._- ONLY, so unrelated prose cannot
+            # accidentally spell out the handle, and common single tokens (e.g. "CISO") are NOT
+            # redacted because the WHOLE letter sequence (…hipsterciso) must be present in order.
+            pats.append(re.compile(r"[\s._-]*".join(re.escape(c) for c in h), re.IGNORECASE))
+        else:
+            pats.append(re.compile(re.escape(h), re.IGNORECASE))
     return pats
 
 
