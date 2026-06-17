@@ -701,17 +701,25 @@ def test_pool_size_and_connect_timeout_are_env_tunable(fake_pg, monkeypatch):
 
 
 def test_close_all_pools_snapshots_under_lock(fake_pg):
-    # #F-020: _close_all_pools must iterate a SNAPSHOT taken under _init_lock, so a pool whose
-    # close() mutates _OPEN_POOLS (or a concurrent append on a free-threaded build) cannot raise
-    # "list changed size during iteration" / corrupt the iteration.
+    # #F-020: _close_all_pools must iterate a SNAPSHOT taken under _init_lock. Discriminating: each
+    # pool's close() REMOVES itself from _OPEN_POOLS (the same kind of mutation the real failure-
+    # cleanup path performs). Iterating the live list while removing the current element makes a
+    # plain `for p in _OPEN_POOLS` SKIP elements, so not every pool gets closed; iterating a
+    # snapshot closes all of them. We assert every pool was closed exactly once — this FAILS if the
+    # snapshot is removed (reverted to direct iteration), so the test genuinely guards the fix.
     cp, _ = fake_pg
+    closed = []
 
-    class MutatingPool:
-        def close(self_):
-            cp._OPEN_POOLS.append(object())  # mutate the list mid-cleanup
+    class SelfRemovingPool:
+        def close(self):
+            closed.append(id(self))
+            cp._OPEN_POOLS.remove(self)  # mutate the list mid-cleanup, like the real cleanup path
 
-    cp._OPEN_POOLS[:] = [MutatingPool(), MutatingPool()]
-    cp._close_all_pools()  # must not raise despite the mutation (snapshot was taken)
+    pools = [SelfRemovingPool() for _ in range(4)]
+    cp._OPEN_POOLS[:] = list(pools)
+    cp._close_all_pools()
+    assert sorted(closed) == sorted(id(p) for p in pools)  # ALL closed, none skipped
+    assert cp._OPEN_POOLS == []  # every pool removed itself
 
 
 def test_pool_atexit_shutdown_registered_for_reasoning_pool():
@@ -735,10 +743,22 @@ def test_submit_bounded_releases_slot_if_callback_registration_is_interrupted(mo
     monkeypatch.setattr(seam, "_inflight", 0)
 
     class _Fut:
-        def add_done_callback(self, cb):
-            raise KeyboardInterrupt  # interrupt in the attach window
+        def __init__(self):
+            self.cb = None
 
-    monkeypatch.setattr(seam._pool, "submit", lambda fn: _Fut())
+        def add_done_callback(self, cb):
+            # mimic CPython: the callback IS appended (will fire on completion) and THEN the
+            # interrupt lands before returning — so both the explicit fallback _release and the
+            # later callback target this same future (the double-release window).
+            self.cb = cb
+            raise KeyboardInterrupt
+
+    fut = _Fut()
+    monkeypatch.setattr(seam._pool, "submit", lambda fn: fut)
     with pytest.raises(KeyboardInterrupt):
         seam._submit_bounded(lambda: None)
     assert seam._inflight == 0  # slot released despite the interrupted callback registration
+    # #F-032 follow-up: the appended callback firing later must NOT double-decrement (over-release)
+    # — _release is per-future idempotent. Simulate the future completing and the callback running.
+    fut.cb(fut)
+    assert seam._inflight == 0  # still 0, not -1
