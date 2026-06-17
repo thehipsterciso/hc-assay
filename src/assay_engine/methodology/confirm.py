@@ -152,6 +152,20 @@ def confirm_unit_level(
     """
     if hypothesis.kind is not HypothesisKind.UNIT_LEVEL:
         raise ValueError("confirm_unit_level requires a UNIT_LEVEL hypothesis")
+    # Defense-in-depth direction validation (pass 3, #F-002): the unit-level path takes the
+    # deciding direction as a trusted caller flag (``direction_supports_claim``) and so never
+    # routed through ``_resolve_direction`` — which left a locked-but-invalid
+    # ``predicted_direction`` (e.g. "UP") entirely unchecked here. ``Hypothesis.__post_init__``
+    # now rejects such values at construction, but re-validate any pre-registered direction here
+    # so a hypothesis constructed by an unusual path (or a future field mutation) cannot confirm
+    # against an unrecognized tail.
+    if hypothesis.predicted_direction is not None and (
+        hypothesis.predicted_direction not in _VALID_DIRECTIONS
+    ):
+        raise ValueError(
+            f"predicted_direction must be one of {_VALID_DIRECTIONS}; got "
+            f"{hypothesis.predicted_direction!r}"
+        )
     _gate_preregistration(hypothesis, authority)
     split.assert_confirm_only(evaluated_ids)  # Firewall B (rejects empty / discovery ids)
     return verdict_from_pvalue(
