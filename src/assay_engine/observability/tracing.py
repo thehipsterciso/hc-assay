@@ -81,8 +81,16 @@ def bootstrap_tracing() -> Any:
             _instrument_langchain()
             _install_flush_on_exit(provider)
             return _provider
-        except Exception:
-            # Missing extra / collector down / registration race — run untraced.
+        except Exception as exc:
+            # Missing extra / collector down / registration race — run untraced. Graceful
+            # degradation, but no longer SILENT (pass 3, #F-044): a misconfigured
+            # ASSAY_TRACING_HOST/PORT or a missing observability extra now leaves a diagnosable
+            # warning instead of an inexplicably untraced run.
+            _log.warning(
+                "assay tracing: setup failed, running untraced (%s: %s)",
+                type(exc).__name__,
+                exc,
+            )
             return None
 
 
@@ -195,6 +203,10 @@ class OtelTracer:
             yield
             return
         tracer = trace.get_tracer("assay_engine")
+        # start_as_current_span defaults record_exception=True and set_status_on_exception=True,
+        # so an exception escaping the body is automatically recorded as a span event and the span
+        # status is set to ERROR with the exception text (verified in test_observability) — #F-005
+        # was a false positive; no manual error-recording is needed here.
         with tracer.start_as_current_span(name) as sp:
             sp.set_attribute(_OPENINFERENCE_SPAN_KIND, kind)
             for k, v in (attributes or {}).items():
