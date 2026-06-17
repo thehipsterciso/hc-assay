@@ -360,8 +360,10 @@ def fake_pg(monkeypatch):
     state = {
         "setup_on": [],
         "lock_on": [],
+        "unlock_on": [],
         "lock_timeout_on": [],
         "pools": [],
+        "pool_kwargs": [],
         "atexit_registered": 0,
     }
 
@@ -369,7 +371,11 @@ def fake_pg(monkeypatch):
         def execute(self, sql, params=None):
             if "lock_timeout" in sql:
                 state["lock_timeout_on"].append(params)
-            if "pg_advisory_lock" in sql:
+            # pg_advisory_unlock contains the substring "pg_advisory_lock", so test unlock FIRST
+            # (#F-047): the explicit best-effort unlock in the finally was previously untested.
+            if "pg_advisory_unlock" in sql:
+                state["unlock_on"].append(id(self))
+            elif "pg_advisory_lock" in sql:
                 state["lock_on"].append(id(self))
 
     class FakePool:
@@ -379,6 +385,7 @@ def fake_pg(monkeypatch):
             self.conn_str = conn_str
             self._conn = FakeConn()
             state["pools"].append(self)
+            state["pool_kwargs"].append(kw)  # capture min/max_size + connection kwargs (#F-040)
 
         def connection(self):
             conn = self._conn
@@ -418,7 +425,6 @@ def fake_pg(monkeypatch):
     _mod("psycopg_pool", ConnectionPool=FakePool)
 
     # reset process-local bootstrap bookkeeping
-    monkeypatch.setattr(cp, "_INITIALIZED_CONN_STRS", set())
     monkeypatch.setattr(cp, "_OPEN_POOLS", [])
     monkeypatch.setattr(cp, "_atexit_registered", False)
     monkeypatch.setattr(cp, "_CONN_INIT_LOCKS", {})
@@ -436,17 +442,22 @@ def fake_pg(monkeypatch):
     return cp, state
 
 
-def test_setup_runs_once_per_conn_and_on_locked_connection(fake_pg):
+def test_setup_dedups_sequentially_and_runs_ddl_on_the_locked_connection(fake_pg):
+    # #F-054: renamed to state honestly what this proves. Sequential calls dedup via the pool
+    # CACHE (the 2nd call returns early before any lock), so this does NOT exercise the per-conn
+    # bootstrap lock — that is covered by the discriminating concurrent test below. What it DOES
+    # prove: setup() runs once across two sequential calls, and the advisory lock + DDL run on the
+    # same connection (the lock-collocation invariant pg_advisory_lock requires).
     cp, state = fake_pg
     cp.get_checkpointer()
-    cp.get_checkpointer()  # second call, same conn_str
-    # setup() ran exactly once despite two factory calls (once-per-conn guard)
+    cp.get_checkpointer()  # second call, same conn_str — served from the pool cache
     assert len(state["setup_on"]) == 1
-    # the advisory lock and the DDL ran on the SAME connection object
     assert state["lock_on"] == state["setup_on"]
+    # the same connection that took the lock also released it (the best-effort unlock; #F-047)
+    assert state["unlock_on"] == state["lock_on"]
 
 
-def test_pool_is_cached_and_reused_per_conn_str(fake_pg):
+def test_pool_is_cached_and_reused_per_conn_str(fake_pg, monkeypatch):
     # #144: repeated calls for the SAME conn_str must reuse one pool (not open a new pool +
     # worker thread each time); a DIFFERENT conn_str gets its own pool.
     cp, state = fake_pg
@@ -454,9 +465,9 @@ def test_pool_is_cached_and_reused_per_conn_str(fake_pg):
     cp.get_checkpointer()
     assert len(state["pools"]) == 1  # one pool reused, not two (#144)
     assert len(cp._OPEN_POOLS) == 1
-    import os
-
-    os.environ["ASSAY_POSTGRES_URL"] = "postgresql://localhost:5433/other"
+    # monkeypatch.setenv (not direct os.environ) so the change is auto-restored on teardown and
+    # cannot pollute later tests in the same process (#F-026).
+    monkeypatch.setenv("ASSAY_POSTGRES_URL", "postgresql://localhost:5433/other")
     cp.get_checkpointer()  # distinct conn_str → its own pool
     assert len(state["pools"]) == 2
 
@@ -478,7 +489,6 @@ def test_concurrent_init_of_distinct_conn_strs_does_not_serialize(fake_pg, monke
     # We make conn_A's advisory lock block on an Event; conn_B (different conn_str) must still
     # complete. The pre-#129 code held a single process-global mutex across the advisory wait, so
     # conn_B would be blocked behind conn_A — this test discriminates that regression.
-    import os
     import sys
     import threading
 
@@ -504,21 +514,33 @@ def test_concurrent_init_of_distinct_conn_strs_does_not_serialize(fake_pg, monke
 
     monkeypatch.setattr(sys.modules["psycopg_pool"], "ConnectionPool", _PoolWrap)
 
+    # Resolve the conn_str by THREAD identity rather than racing on a shared os.environ key
+    # (#F-026 / C-7): both threads previously mutated ASSAY_POSTGRES_URL, so B's write could land
+    # before A read it, making both use one conn_str and the serialization assertion pass
+    # vacuously. A per-thread resolver makes the two conn_strs deterministic and independent.
+    conn_by_thread = {
+        "init-a": "postgresql://localhost:5432/assay",
+        "init-b": "postgresql://localhost:5433/other_db",
+    }
+    monkeypatch.setattr(
+        cp,
+        "get_postgres_connection_string",
+        lambda: conn_by_thread[threading.current_thread().name],
+    )
+
     results: dict = {}
 
     def init_a():
-        os.environ["ASSAY_POSTGRES_URL"] = "postgresql://localhost:5432/assay"
         cp.get_checkpointer()
         results["a"] = True
 
     def init_b():
         a_in_lock.wait(5)  # ensure A is parked inside its advisory-lock wait
-        os.environ["ASSAY_POSTGRES_URL"] = "postgresql://localhost:5433/other_db"
         cp.get_checkpointer()
         results["b"] = True
 
-    ta = threading.Thread(target=init_a)
-    tb = threading.Thread(target=init_b)
+    ta = threading.Thread(target=init_a, name="init-a")
+    tb = threading.Thread(target=init_b, name="init-b")
     ta.start()
     tb.start()
     tb.join(5)
@@ -528,12 +550,10 @@ def test_concurrent_init_of_distinct_conn_strs_does_not_serialize(fake_pg, monke
     assert results.get("a") is True
 
 
-def test_atexit_pool_cleanup_registered_once(fake_pg):
+def test_atexit_pool_cleanup_registered_once(fake_pg, monkeypatch):
     cp, state = fake_pg
-    import os
-
     cp.get_checkpointer()
-    os.environ["ASSAY_POSTGRES_URL"] = "postgresql://localhost:5433/second"
+    monkeypatch.setenv("ASSAY_POSTGRES_URL", "postgresql://localhost:5433/second")  # (#F-026)
     cp.get_checkpointer()  # distinct conn_str → a second pool
     # two pools opened and tracked, but only one shared atexit handler registered
     assert len(state["pools"]) == 2
@@ -636,3 +656,89 @@ def test_versioner_publish_leaves_no_temp_files(tmp_path):
     assert v.path_for(digest).is_file()
     leftovers = [p.name for p in store.rglob(".tmp-*")]
     assert leftovers == []
+
+
+# ---- pass-3: checkpoint pool/lock hardening ----
+
+
+def test_initialized_conn_strs_dead_state_removed(fake_pg):
+    # #F-025: the write-only _INITIALIZED_CONN_STRS set was never read as a guard (the pool cache
+    # is the real idempotency guard); it must be gone so it cannot mislead concurrency reasoning.
+    cp, _ = fake_pg
+    assert not hasattr(cp, "_INITIALIZED_CONN_STRS")
+
+
+def test_migration_lock_timeout_is_read_fresh_from_env(fake_pg, monkeypatch):
+    # #F-033: the bound must be re-read on each bootstrap so an env var set after import takes
+    # effect, instead of being frozen at the import-time module value.
+    cp, state = fake_pg
+    monkeypatch.setenv("ASSAY_MIGRATION_LOCK_TIMEOUT_MS", "12345")
+    cp.get_checkpointer()
+    assert state["lock_timeout_on"] and int(state["lock_timeout_on"][0][0]) == 12345
+
+
+def test_migration_lock_timeout_zero_skips_set_config(fake_pg, monkeypatch):
+    # #F-033: the 0 (disable-bound) branch must skip set_config('lock_timeout', ...) entirely and
+    # still take the advisory lock — previously this branch was untested.
+    cp, state = fake_pg
+    monkeypatch.setenv("ASSAY_MIGRATION_LOCK_TIMEOUT_MS", "0")
+    cp.get_checkpointer()
+    assert state["lock_timeout_on"] == []  # no lock_timeout set
+    assert state["lock_on"]  # but the advisory lock was still acquired
+
+
+def test_pool_size_and_connect_timeout_are_env_tunable(fake_pg, monkeypatch):
+    # #F-040: pool bounds + per-connect timeout must be tunable via env (no hardcoded 8 / no
+    # unbounded connect against a black-holed host).
+    cp, state = fake_pg
+    monkeypatch.setenv("ASSAY_POOL_MIN_SIZE", "2")
+    monkeypatch.setenv("ASSAY_POOL_MAX_SIZE", "32")
+    monkeypatch.setenv("ASSAY_POOL_CONNECT_TIMEOUT", "7")
+    cp.get_checkpointer()
+    (kw,) = state["pool_kwargs"]
+    assert kw["min_size"] == 2 and kw["max_size"] == 32
+    assert kw["kwargs"]["connect_timeout"] == 7
+
+
+def test_close_all_pools_snapshots_under_lock(fake_pg):
+    # #F-020: _close_all_pools must iterate a SNAPSHOT taken under _init_lock, so a pool whose
+    # close() mutates _OPEN_POOLS (or a concurrent append on a free-threaded build) cannot raise
+    # "list changed size during iteration" / corrupt the iteration.
+    cp, _ = fake_pg
+
+    class MutatingPool:
+        def close(self_):
+            cp._OPEN_POOLS.append(object())  # mutate the list mid-cleanup
+
+    cp._OPEN_POOLS[:] = [MutatingPool(), MutatingPool()]
+    cp._close_all_pools()  # must not raise despite the mutation (snapshot was taken)
+
+
+def test_pool_atexit_shutdown_registered_for_reasoning_pool():
+    # #F-043: the reasoning ThreadPoolExecutor must register an atexit shutdown so workers aren't
+    # torn down mid-call at interpreter finalization. Guard the source wiring (atexit fires only at
+    # real interpreter exit, which a test cannot trigger).
+    import inspect
+
+    from assay_engine.reasoning import seam
+
+    src = inspect.getsource(seam)
+    assert "atexit.register(_pool.shutdown" in src
+
+
+def test_submit_bounded_releases_slot_if_callback_registration_is_interrupted(monkeypatch):
+    # #F-032: if add_done_callback raises (e.g. a KeyboardInterrupt landing in that window), the
+    # in-flight slot must be released, not leaked — a leak would eventually brick the pool with
+    # spurious RateLimitErrors.
+    from assay_engine.reasoning import seam
+
+    monkeypatch.setattr(seam, "_inflight", 0)
+
+    class _Fut:
+        def add_done_callback(self, cb):
+            raise KeyboardInterrupt  # interrupt in the attach window
+
+    monkeypatch.setattr(seam._pool, "submit", lambda fn: _Fut())
+    with pytest.raises(KeyboardInterrupt):
+        seam._submit_bounded(lambda: None)
+    assert seam._inflight == 0  # slot released despite the interrupted callback registration
