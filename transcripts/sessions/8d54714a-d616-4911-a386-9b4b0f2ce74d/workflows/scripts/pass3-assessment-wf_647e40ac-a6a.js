@@ -8,7 +8,7 @@ export const meta = {
   ],
 }
 
-const ROOT = '/Users/thomasjones/hc-assay'
+const ROOT = '/Users/[REDACTED]/hc-assay'
 
 const DIMENSIONS = [
   {

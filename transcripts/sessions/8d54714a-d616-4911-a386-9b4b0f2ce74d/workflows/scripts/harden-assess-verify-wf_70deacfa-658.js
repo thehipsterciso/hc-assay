@@ -7,8 +7,8 @@ export const meta = {
   ],
 }
 
-const REPO = '/Users/thomasjones/hc-assay'
-const VENV = '/Users/thomasjones/hc-assay/.venv/bin/python'
+const REPO = '/Users/[REDACTED]/hc-assay'
+const VENV = '/Users/[REDACTED]/hc-assay/.venv/bin/python'
 
 const FINDINGS_SCHEMA = {
   type: 'object',

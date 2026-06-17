@@ -1,611 +1,611 @@
-/Users/thomasjones/hc-grc/src/graph.py-  hypothesis_formalize ← HypothesisFormalizerAgent
-/Users/thomasjones/hc-grc/src/graph.py-      ↓
-/Users/thomasjones/hc-grc/src/graph.py:  gate_2              ← interrupt() — SAP lock, hypothesis pre-registration
-/Users/thomasjones/hc-grc/src/graph.py-      ↓ [approved]
-/Users/thomasjones/hc-grc/src/graph.py:  confirmatory_entry  ← Phase 2 stub (route_after_gate_2 → "confirmatory_entry")
-/Users/thomasjones/hc-grc/src/graph.py-      ↓ [rejected]
-/Users/thomasjones/hc-grc/src/graph.py-  exploratory_phase   ← loop back to re-run EDA with revised hypotheses
---
-/Users/thomasjones/hc-grc/src/graph.py-)
-/Users/thomasjones/hc-grc/src/graph.py-from .nodes.data_split import data_split_node
-/Users/thomasjones/hc-grc/src/graph.py:from .nodes.gates import gate_1_node, gate_2_node
-/Users/thomasjones/hc-grc/src/graph.py:from .nodes.orchestrator import route_after_gate_1, route_after_gate_2, t00_orchestrator_node
-/Users/thomasjones/hc-grc/src/graph.py-from .nodes.phase1 import (
-/Users/thomasjones/hc-grc/src/graph.py-    confirmatory_entry_node,
---
-/Users/thomasjones/hc-grc/src/graph.py-    builder.add_node("exploratory_phase", exploratory_phase_node)
-/Users/thomasjones/hc-grc/src/graph.py-    builder.add_node("hypothesis_formalize", hypothesis_formalize_node)
-/Users/thomasjones/hc-grc/src/graph.py:    builder.add_node("gate_2", gate_2_node)
-/Users/thomasjones/hc-grc/src/graph.py-
-/Users/thomasjones/hc-grc/src/graph.py-    # ── Phase 2 stub ────────────────────────────────────────────────────────────
---
-/Users/thomasjones/hc-grc/src/graph.py-    builder.add_edge("data_pipeline", "exploratory_phase")
-/Users/thomasjones/hc-grc/src/graph.py-    builder.add_edge("exploratory_phase", "hypothesis_formalize")
-/Users/thomasjones/hc-grc/src/graph.py:    builder.add_edge("hypothesis_formalize", "gate_2")
-/Users/thomasjones/hc-grc/src/graph.py-
-/Users/thomasjones/hc-grc/src/graph.py-    builder.add_conditional_edges(
-/Users/thomasjones/hc-grc/src/graph.py:        "gate_2",
-/Users/thomasjones/hc-grc/src/graph.py:        route_after_gate_2,
-/Users/thomasjones/hc-grc/src/graph.py-        {
-/Users/thomasjones/hc-grc/src/graph.py-            "confirmatory_entry": "confirmatory_entry",  # approved → Phase 2
---
-/Users/thomasjones/hc-grc/src/graph.py-def run_phase1_dry_run(run_id: str | None = None, checkpointer=None) -> dict[str, Any]:
-/Users/thomasjones/hc-grc/src/graph.py-    """
-/Users/thomasjones/hc-grc/src/graph.py:    Execute a Phase 1 dry run through Gate 2.
-/Users/thomasjones/hc-grc/src/graph.py-
-/Users/thomasjones/hc-grc/src/graph.py:    Gate 1 and Gate 2 will pause for operator input. Data pipeline and P1-P5
-/Users/thomasjones/hc-grc/src/graph.py-    nodes will record stub_pending statuses (NotImplementedError caught). This
-/Users/thomasjones/hc-grc/src/graph.py-    verifies the Phase 1 graph topology before real SCF data is loaded.
-/Users/thomasjones/hc-grc/src/nodes/__init__.py-from .data_split import compute_data_split, data_split_node, derive_seed
-/Users/thomasjones/hc-grc/src/nodes/__init__.py-from .gate_coordinator import gate_coordinator_node
-/Users/thomasjones/hc-grc/src/nodes/__init__.py:from .gates import gate_1_node, gate_2_node, gate_3_node, gate_4_node, gate_5_node
-/Users/thomasjones/hc-grc/src/nodes/__init__.py:from .orchestrator import route_after_gate_1, route_after_gate_2, t00_orchestrator_node
-/Users/thomasjones/hc-grc/src/nodes/__init__.py-
-/Users/thomasjones/hc-grc/src/nodes/__init__.py-__all__ = [
---
-/Users/thomasjones/hc-grc/src/nodes/__init__.py-    "gate_coordinator_node",
-/Users/thomasjones/hc-grc/src/nodes/__init__.py-    "gate_1_node",
-/Users/thomasjones/hc-grc/src/nodes/__init__.py:    "gate_2_node",
-/Users/thomasjones/hc-grc/src/nodes/__init__.py-    "gate_3_node",
-/Users/thomasjones/hc-grc/src/nodes/__init__.py-    "gate_4_node",
-/Users/thomasjones/hc-grc/src/nodes/__init__.py-    "gate_5_node",
-/Users/thomasjones/hc-grc/src/nodes/__init__.py-    "route_after_gate_1",
-/Users/thomasjones/hc-grc/src/nodes/__init__.py:    "route_after_gate_2",
-/Users/thomasjones/hc-grc/src/nodes/__init__.py-    "t00_orchestrator_node",
-/Users/thomasjones/hc-grc/src/nodes/__init__.py-]
-/Users/thomasjones/hc-grc/src/nodes/phase1.py-  hypothesis_formalize   ← HypothesisFormalizerAgent
-/Users/thomasjones/hc-grc/src/nodes/phase1.py-      ↓
-/Users/thomasjones/hc-grc/src/nodes/phase1.py:  gate_2                 ← (in gates.py)
-/Users/thomasjones/hc-grc/src/nodes/phase1.py-      ↓
-/Users/thomasjones/hc-grc/src/nodes/phase1.py-  [approved: confirmatory_entry | rejected: exploratory_phase loop]
---
-/Users/thomasjones/hc-grc/src/nodes/phase1.py-    update dict with eda_artifacts appended.
-/Users/thomasjones/hc-grc/src/nodes/phase1.py-
-/Users/thomasjones/hc-grc/src/nodes/phase1.py:    Gate 2 is NOT required here — this is exploratory phase. Each agent internally
-/Users/thomasjones/hc-grc/src/nodes/phase1.py-    enforces the EXP_ artifact naming convention and no p-value decision language.
-/Users/thomasjones/hc-grc/src/nodes/phase1.py-    """
---
-/Users/thomasjones/hc-grc/src/nodes/phase1.py-
-/Users/thomasjones/hc-grc/src/nodes/phase1.py-    # exploratory_complete = True only if at least one agent returned real results.
-/Users/thomasjones/hc-grc/src/nodes/phase1.py:    # In Phase 1 dry-run (all stubs), stays False — Gate 2 checklist will surface this.
-/Users/thomasjones/hc-grc/src/nodes/phase1.py-    return {
-/Users/thomasjones/hc-grc/src/nodes/phase1.py-        "phase": "phase_1",
---
-/Users/thomasjones/hc-grc/src/nodes/phase1.py-
-/Users/thomasjones/hc-grc/src/nodes/phase1.py-    Runs after exploratory analysis completes. Output populates state["hypothesis_set"]
-/Users/thomasjones/hc-grc/src/nodes/phase1.py:    with FormalHypothesis dicts. This is the set that gets locked at Gate 2.
-/Users/thomasjones/hc-grc/src/nodes/phase1.py-
-/Users/thomasjones/hc-grc/src/nodes/phase1.py-    HypothesisFormalizerAgent is PROTECTED. Its run_exploratory() builds hypotheses
-/Users/thomasjones/hc-grc/src/nodes/phase1.py:    from EDA outputs and HARKing validation stub. Output is the Gate 2 input.
-/Users/thomasjones/hc-grc/src/nodes/phase1.py-    """
-/Users/thomasjones/hc-grc/src/nodes/phase1.py-    run_id = state["run_id"]
---
-/Users/thomasjones/hc-grc/src/nodes/phase1.py-    Entry point for Phase 2 confirmatory analysis subgraph.
-/Users/thomasjones/hc-grc/src/nodes/phase1.py-
-/Users/thomasjones/hc-grc/src/nodes/phase1.py:    Gate 2 approval is required before this node runs (enforced by
-/Users/thomasjones/hc-grc/src/nodes/phase1.py:    route_after_gate_2 in orchestrator.py). The confirmatory subgraph
-/Users/thomasjones/hc-grc/src/nodes/phase1.py-    (statistical-analyst + P1-P5 confirmatory runs) is Phase 2 mechanism work.
-/Users/thomasjones/hc-grc/src/nodes/phase1.py-    """
-/Users/thomasjones/hc-grc/src/nodes/phase1.py-    return {
-/Users/thomasjones/hc-grc/src/nodes/phase1.py:        "phase": "phase_2",
-/Users/thomasjones/hc-grc/src/nodes/phase1.py-        "prov_activities": [
-/Users/thomasjones/hc-grc/src/nodes/phase1.py-            _prov(
-/Users/thomasjones/hc-grc/src/state.py-# ── Phase labels ────────────────────────────────────────────────────────────
-/Users/thomasjones/hc-grc/src/state.py-
-/Users/thomasjones/hc-grc/src/state.py:Phase = Literal["phase_0", "phase_1", "phase_2"]
-/Users/thomasjones/hc-grc/src/state.py-
-/Users/thomasjones/hc-grc/src/state.py-# Gate identifiers 1–5
-/Users/thomasjones/hc-grc/src/state.py:GateID = Literal["gate_1", "gate_2", "gate_3", "gate_4", "gate_5"]
-/Users/thomasjones/hc-grc/src/state.py-
-/Users/thomasjones/hc-grc/src/state.py-# Only these three decisions ever exist: the operator-response validator
---
-/Users/thomasjones/hc-grc/src/state.py-
-/Users/thomasjones/hc-grc/src/state.py-    # ── Data pipeline provenance ──────────────────────────────────────────────
-/Users/thomasjones/hc-grc/src/state.py:    # Written by EmbeddingAgent after embedding run completes. Required at Gate 2
-/Users/thomasjones/hc-grc/src/state.py-    # to confirm which model produced the embeddings used in exploratory analysis.
-/Users/thomasjones/hc-grc/src/state.py-    # Keys: model_name, model_hash, corpus_dvc_hash, timestamp_utc
---
-/Users/thomasjones/hc-grc/src/state.py-
-/Users/thomasjones/hc-grc/src/state.py-    # ── Formalized hypothesis set (append, deduped by id) ─────────────────────
-/Users/thomasjones/hc-grc/src/state.py:    # Written by HypothesisFormalizerAgent before Gate 2.
-/Users/thomasjones/hc-grc/src/state.py-    # Each entry is a FormalHypothesis dict (see src/agents/hypothesis_formalizer).
-/Users/thomasjones/hc-grc/src/state.py-    # Deduped by hypothesis id (latest wins) so a Gate-2 reject → re-formalize loop
-/Users/thomasjones/hc-grc/src/state.py:    # cannot accumulate duplicate hypotheses into the set Gate 2 locks (pass-4 #2).
-/Users/thomasjones/hc-grc/src/state.py-    hypothesis_set: Annotated[list[dict[str, Any]], lambda a, b: _merge_hypotheses(a, b)]
-/Users/thomasjones/hc-grc/src/state.py-
-/Users/thomasjones/hc-grc/src/nodes/gates.py-Gate definitions:
-/Users/thomasjones/hc-grc/src/nodes/gates.py-  Gate 1 — Pre-data checkpoint (Phase 0 complete, all prerequisites verified)
-/Users/thomasjones/hc-grc/src/nodes/gates.py:  Gate 2 — Exploratory → Confirmatory (hypothesis lock, test data unlock)
-/Users/thomasjones/hc-grc/src/nodes/gates.py-  Gate 3 — Finding significance review (before publication pipeline)
-/Users/thomasjones/hc-grc/src/nodes/gates.py-  Gate 4 — Manuscript submission approval
---
-/Users/thomasjones/hc-grc/src/nodes/gates.py-    downstream effects on top of a terminal decision (#177). A 'rejected' record
-/Users/thomasjones/hc-grc/src/nodes/gates.py-    is deliberately NOT terminal: the Gate-2 reject → revise → re-review loop
-/Users/thomasjones/hc-grc/src/nodes/gates.py:    (route_after_gate_2 → exploratory → … → gate_2) must re-fire the interrupt so
-/Users/thomasjones/hc-grc/src/nodes/gates.py-    the operator is re-prompted, otherwise the gate short-circuits to {} and the
-/Users/thomasjones/hc-grc/src/nodes/gates.py-    graph spins until GraphRecursionError (pass-2 #184/#187). The loop-back path
---
-/Users/thomasjones/hc-grc/src/nodes/gates.py-        "LEDGER-0002: Diversity anchor model candidates logged (T-01 — 3 general + 2 anchors)",
-/Users/thomasjones/hc-grc/src/nodes/gates.py-        "LEDGER-0003: Fleiss kappa path selection logged (path 1: recruit raters | path 2: acknowledge unestimated)",
-/Users/thomasjones/hc-grc/src/nodes/gates.py:        # ── NOTE: DIVERGENCE-01 is a Gate 2 prerequisite, NOT Gate 1 ──────────────
-/Users/thomasjones/hc-grc/src/nodes/gates.py-        # DIVERGENCE-01 (operationalization of model-STRM divergence) requires the
-/Users/thomasjones/hc-grc/src/nodes/gates.py-        # STRM label distribution from EDA — which has not run yet at Gate 1.
-/Users/thomasjones/hc-grc/src/nodes/gates.py-        # Decision framework is defined in SAP §10. Specific operationalization is
-/Users/thomasjones/hc-grc/src/nodes/gates.py:        # selected post-EDA, logged to Preregistration Ledger before Gate 2.
-/Users/thomasjones/hc-grc/src/nodes/gates.py-        # Confirmed: SAP §10 DIVERGENCE-01 decision framework understood and acknowledged",
-/Users/thomasjones/hc-grc/src/nodes/gates.py-    ]
---
-/Users/thomasjones/hc-grc/src/nodes/gates.py-
-/Users/thomasjones/hc-grc/src/nodes/gates.py-
-/Users/thomasjones/hc-grc/src/nodes/gates.py:# ── Gate 2 ────────────────────────────────────────────────────────────────────
-/Users/thomasjones/hc-grc/src/nodes/gates.py-
-/Users/thomasjones/hc-grc/src/nodes/gates.py-
-/Users/thomasjones/hc-grc/src/nodes/gates.py:def gate_2_node(state: HCGRCState) -> dict[str, Any]:
-/Users/thomasjones/hc-grc/src/nodes/gates.py-    """
-/Users/thomasjones/hc-grc/src/nodes/gates.py:    Gate 2 — Exploratory → Confirmatory transition.
-/Users/thomasjones/hc-grc/src/nodes/gates.py-
-/Users/thomasjones/hc-grc/src/nodes/gates.py-    The most consequential gate. The operator reviews the pre-registered
---
-/Users/thomasjones/hc-grc/src/nodes/gates.py-      - Data split idempotency verified (data_split_verified == True)
-/Users/thomasjones/hc-grc/src/nodes/gates.py-    """
-/Users/thomasjones/hc-grc/src/nodes/gates.py:    # Verify hard prerequisites before surfacing this irreversible gate. Gate 2
-/Users/thomasjones/hc-grc/src/nodes/gates.py-    # unlocks the test split, so the machine-checkable preconditions for a sound
-/Users/thomasjones/hc-grc/src/nodes/gates.py-    # exploratory→confirmatory transition are ALL enforced here, not just the data
---
-/Users/thomasjones/hc-grc/src/nodes/gates.py-    if not state.get("hypothesis_set"):
-/Users/thomasjones/hc-grc/src/nodes/gates.py-        hard_failures.append(
-/Users/thomasjones/hc-grc/src/nodes/gates.py:            "hypothesis_set is empty — no pre-registered hypotheses to lock at Gate 2")
-/Users/thomasjones/hc-grc/src/nodes/gates.py-
-/Users/thomasjones/hc-grc/src/nodes/gates.py-    if hard_failures:
-/Users/thomasjones/hc-grc/src/nodes/gates.py-        # Write an authoritative gate_status record so the router and operator see
-/Users/thomasjones/hc-grc/src/nodes/gates.py-        # the failure (#164/#178). Decision is DEFERRED, not rejected: a system
-/Users/thomasjones/hc-grc/src/nodes/gates.py:        # prerequisite failure must PARK the run (route_after_gate_2 deferred→END),
-/Users/thomasjones/hc-grc/src/nodes/gates.py-        # not feed it into the operator reject→revise→re-review loop, which would
-/Users/thomasjones/hc-grc/src/nodes/gates.py-        # spin forever because re-running exploratory cannot satisfy an unmet
-/Users/thomasjones/hc-grc/src/nodes/gates.py-        # prerequisite (pass-3 #20). The operator re-triggers once prereqs are met.
-/Users/thomasjones/hc-grc/src/nodes/gates.py-        rationale = "Hard prerequisite failure: " + "; ".join(hard_failures)
-/Users/thomasjones/hc-grc/src/nodes/gates.py:        # 'deferred' is non-terminal, so this path re-runs whenever gate_2 is
-/Users/thomasjones/hc-grc/src/nodes/gates.py-        # re-entered (operator re-trigger after the park, or the reject→exploratory
-/Users/thomasjones/hc-grc/src/nodes/gates.py:        # →…→gate_2 loop) while prereqs are still unmet. failure_events has a plain
-/Users/thomasjones/hc-grc/src/nodes/gates.py-        # append reducer (state.py:86), so re-appending an identical
-/Users/thomasjones/hc-grc/src/nodes/gates.py-        # gate_prerequisite_failure on every re-entry duplicates the audit record
-/Users/thomasjones/hc-grc/src/nodes/gates.py-        # and biases the Agent Evolution failure-count signal. Only append when this
-/Users/thomasjones/hc-grc/src/nodes/gates.py-        # exact deferred prerequisite failure is not already recorded (#267).
-/Users/thomasjones/hc-grc/src/nodes/gates.py:        prior = state.get("gate_status", {}).get("gate_2") or {}
-/Users/thomasjones/hc-grc/src/nodes/gates.py-        already_recorded = (
-/Users/thomasjones/hc-grc/src/nodes/gates.py-            prior.get("decision") == "deferred" and prior.get("rationale") == rationale
---
-/Users/thomasjones/hc-grc/src/nodes/gates.py-                {
-/Users/thomasjones/hc-grc/src/nodes/gates.py-                    "event_type": "gate_prerequisite_failure",
-/Users/thomasjones/hc-grc/src/nodes/gates.py:                    "gate_id": "gate_2",
-/Users/thomasjones/hc-grc/src/nodes/gates.py-                    "failures": hard_failures,
-/Users/thomasjones/hc-grc/src/nodes/gates.py-                    "run_id": state["run_id"],
---
-/Users/thomasjones/hc-grc/src/nodes/gates.py-        from .gate_coordinator import gate_coordinator_node
-/Users/thomasjones/hc-grc/src/nodes/gates.py-        update.update(
-/Users/thomasjones/hc-grc/src/nodes/gates.py:            gate_coordinator_node(state, "gate_2", "deferred", rationale, reviewer="system")
-/Users/thomasjones/hc-grc/src/nodes/gates.py-        )
-/Users/thomasjones/hc-grc/src/nodes/gates.py-        return update
---
-/Users/thomasjones/hc-grc/src/nodes/gates.py-
-/Users/thomasjones/hc-grc/src/nodes/gates.py-    proposal = _build_gate_proposal(
-/Users/thomasjones/hc-grc/src/nodes/gates.py:        gate_id="gate_2",
-/Users/thomasjones/hc-grc/src/nodes/gates.py:        title="Gate 2 — Exploratory → Confirmatory Transition",
-/Users/thomasjones/hc-grc/src/nodes/gates.py-        summary=(
-/Users/thomasjones/hc-grc/src/nodes/gates.py-            "Exploratory analysis is complete. Hypotheses are pre-registered. "
-/Users/thomasjones/hc-grc/src/nodes/gates.py-            "Approving this gate unlocks the test split for confirmatory analysis. "
-/Users/thomasjones/hc-grc/src/nodes/gates.py:            "This action is irreversible — test data cannot be re-locked after Gate 2 approves."
-/Users/thomasjones/hc-grc/src/nodes/gates.py-        ),
-/Users/thomasjones/hc-grc/src/nodes/gates.py-        checklist=checklist,
---
-/Users/thomasjones/hc-grc/src/nodes/gates.py-    )
-/Users/thomasjones/hc-grc/src/nodes/gates.py-
-/Users/thomasjones/hc-grc/src/nodes/gates.py:    return _run_gate(state, "gate_2", proposal)
-/Users/thomasjones/hc-grc/src/nodes/gates.py-
-/Users/thomasjones/hc-grc/src/nodes/gates.py-
---
-/Users/thomasjones/hc-grc/src/nodes/gates.py-    P1-P5 exploratory outputs and the formalized hypothesis set before any
-/Users/thomasjones/hc-grc/src/nodes/gates.py-    confirmatory test runs. Approving this gate:
-/Users/thomasjones/hc-grc/src/nodes/gates.py:      - Unlocks the test split (in addition to Gate 2 — DataStewardAgent
-/Users/thomasjones/hc-grc/src/nodes/gates.py:        requires BOTH gate_2 AND gate_3 approved before test split access)
-/Users/thomasjones/hc-grc/src/nodes/gates.py-      - Confirms that DIVERGENCE-01 operationalization is final
-/Users/thomasjones/hc-grc/src/nodes/gates.py-      - Confirms the hypothesis set is complete for pre-registration
---
-/Users/thomasjones/hc-grc/src/nodes/gates.py-        "No analysis agent has received test split paths — all EDA artifacts reference "
-/Users/thomasjones/hc-grc/src/nodes/gates.py-        "train/val splits only. Test split data_steward access log shows zero test reads",
-/Users/thomasjones/hc-grc/src/nodes/gates.py:        "Data split seed hash unchanged since Gate 2",
-/Users/thomasjones/hc-grc/src/nodes/gates.py-        # ── License compliance ─────────────────────────────────────────────────
-/Users/thomasjones/hc-grc/src/nodes/gates.py-        "No SCF-derived embeddings, derived datasets, or analysis results have left the machine",
---
-/Users/thomasjones/hc-grc/src/nodes/gates.py-        "No SCF-derived data in any external-facing artifact (CC BY-ND 4.0)",
-/Users/thomasjones/hc-grc/src/nodes/gates.py-        "All statistical outputs reference data/splits/test/ DVC hash — "
-/Users/thomasjones/hc-grc/src/nodes/gates.py:        "confirms correct test set was used (seed_hash unchanged from Gate 2)",
-/Users/thomasjones/hc-grc/src/nodes/gates.py-        # ── Documentation triggers ─────────────────────────────────────────────
-/Users/thomasjones/hc-grc/src/nodes/gates.py-        "Orchestrator has triggered Repo Documentation Agent for finding documentation "
-/Users/thomasjones/hc-grc/src/nodes/orchestrator.py-    "phase_1": (
-/Users/thomasjones/hc-grc/src/nodes/orchestrator.py-        "Phase 1 (current): data_pipeline → exploratory P1-P5 → "
-/Users/thomasjones/hc-grc/src/nodes/orchestrator.py:        "hypothesis_formalize → Gate 2 (exploratory→confirmatory; locks the "
-/Users/thomasjones/hc-grc/src/nodes/orchestrator.py-        "pre-registered hypothesis set and unlocks the test split — irreversible)."
-/Users/thomasjones/hc-grc/src/nodes/orchestrator.py-    ),
-/Users/thomasjones/hc-grc/src/nodes/orchestrator.py:    "phase_2": (
-/Users/thomasjones/hc-grc/src/nodes/orchestrator.py-        "Phase 2 (current): confirmatory subgraph → Gate 3/4/5. Test split is "
-/Users/thomasjones/hc-grc/src/nodes/orchestrator.py:        "live only after Gate 2 approval; every confirmatory script carries a "
-/Users/thomasjones/hc-grc/src/nodes/orchestrator.py-        "SAP header."
-/Users/thomasjones/hc-grc/src/nodes/orchestrator.py-    ),
---
-/Users/thomasjones/hc-grc/src/nodes/orchestrator.py-
-/Users/thomasjones/hc-grc/src/nodes/orchestrator.py-
-/Users/thomasjones/hc-grc/src/nodes/orchestrator.py:def route_after_gate_2(state: HCGRCState) -> str:
-/Users/thomasjones/hc-grc/src/nodes/orchestrator.py:    """Conditional edge after Gate 2."""
-/Users/thomasjones/hc-grc/src/nodes/orchestrator.py-    gate_status = state.get("gate_status", {})
-/Users/thomasjones/hc-grc/src/nodes/orchestrator.py:    gate_2 = gate_status.get("gate_2")
-/Users/thomasjones/hc-grc/src/nodes/orchestrator.py-
-/Users/thomasjones/hc-grc/src/nodes/orchestrator.py:    if gate_2 is None:
-/Users/thomasjones/hc-grc/src/nodes/orchestrator.py-        return "end"
-/Users/thomasjones/hc-grc/src/nodes/orchestrator.py-
-/Users/thomasjones/hc-grc/src/nodes/orchestrator.py:    decision = gate_2.get("decision", "rejected")
-/Users/thomasjones/hc-grc/src/nodes/orchestrator.py-
-/Users/thomasjones/hc-grc/src/nodes/orchestrator.py-    if decision == "approved":
-/Users/thomasjones/hc-grc/src/agents/base.py-Phase guard:
-/Users/thomasjones/hc-grc/src/agents/base.py-  - Exploratory phase: access train_ids + val_ids only
-/Users/thomasjones/hc-grc/src/agents/base.py:  - Confirmatory phase: access test_ids — only after Gate 2 approval
-/Users/thomasjones/hc-grc/src/agents/base.py:  - Agents check state["gate_status"]["gate_2"].decision == "approved" before
-/Users/thomasjones/hc-grc/src/agents/base.py-    touching test split. Violation is a SAP violation.
-/Users/thomasjones/hc-grc/src/agents/base.py-
---
-/Users/thomasjones/hc-grc/src/agents/base.py-
-/Users/thomasjones/hc-grc/src/agents/base.py-class SAPViolationError(Exception):
-/Users/thomasjones/hc-grc/src/agents/base.py:    """Raised when an agent attempts to access test data before Gate 2."""
-/Users/thomasjones/hc-grc/src/agents/base.py-    pass
-/Users/thomasjones/hc-grc/src/agents/base.py-
---
-/Users/thomasjones/hc-grc/src/agents/base.py-def assert_gate2_approved(state: HCGRCState) -> None:
-/Users/thomasjones/hc-grc/src/agents/base.py-    """
-/Users/thomasjones/hc-grc/src/agents/base.py:    Raise SAPViolationError if Gate 2 has not been approved.
-/Users/thomasjones/hc-grc/src/agents/base.py-
-/Users/thomasjones/hc-grc/src/agents/base.py-    Must be called before any agent accesses test_ids or test split data.
---
-/Users/thomasjones/hc-grc/src/agents/base.py-    """
-/Users/thomasjones/hc-grc/src/agents/base.py-    gate_status = state.get("gate_status", {})
-/Users/thomasjones/hc-grc/src/agents/base.py:    gate_2 = gate_status.get("gate_2")
-/Users/thomasjones/hc-grc/src/agents/base.py:    if gate_2 is None or gate_2.get("decision") != "approved":
-/Users/thomasjones/hc-grc/src/agents/base.py-        raise SAPViolationError(
-/Users/thomasjones/hc-grc/src/agents/base.py:            "Attempted to access test split before Gate 2 approval. "
-/Users/thomasjones/hc-grc/src/agents/base.py:            "This is a SAP violation. Gate 2 status: "
-/Users/thomasjones/hc-grc/src/agents/base.py:            f"{gate_2.get('decision') if gate_2 else 'not_run'}. "
-/Users/thomasjones/hc-grc/src/agents/base.py:            "Do not access test_ids or confirmatory split until gate_2.decision == 'approved'."
-/Users/thomasjones/hc-grc/src/agents/base.py-        )
-/Users/thomasjones/hc-grc/src/agents/base.py-
---
-/Users/thomasjones/hc-grc/src/agents/base.py-
-/Users/thomasjones/hc-grc/src/agents/base.py-        The canonical phase values written by the graph are phase_0 / phase_1 /
-/Users/thomasjones/hc-grc/src/agents/base.py:        phase_2 (see state.Phase). Exploratory analysis runs in phase_0/phase_1;
-/Users/thomasjones/hc-grc/src/agents/base.py:        confirmatory analysis runs in phase_2, where the Gate 2 SAP firewall
-/Users/thomasjones/hc-grc/src/agents/base.py-        (assert_gate2_approved) must hold before any test-split access. The legacy
-/Users/thomasjones/hc-grc/src/agents/base.py-        string aliases "exploratory"/"confirmatory" are accepted defensively.
-/Users/thomasjones/hc-grc/src/agents/base.py:        (Hardening pass 1, #17: phase_2 previously hit the else-branch and raised,
-/Users/thomasjones/hc-grc/src/agents/base.py-        so run_confirmatory and the SAP firewall were unreachable.)
-/Users/thomasjones/hc-grc/src/agents/base.py-        """
---
-/Users/thomasjones/hc-grc/src/agents/base.py-        if phase in ("phase_0", "phase_1", "exploratory"):
-/Users/thomasjones/hc-grc/src/agents/base.py-            return self.run_exploratory(state)
-/Users/thomasjones/hc-grc/src/agents/base.py:        elif phase in ("phase_2", "confirmatory"):
-/Users/thomasjones/hc-grc/src/agents/base.py-            assert_gate2_approved(state)
-/Users/thomasjones/hc-grc/src/agents/base.py-            return self.run_confirmatory(state)
---
-/Users/thomasjones/hc-grc/src/agents/base.py-        Execute confirmatory analysis on test split for one hypothesis.
-/Users/thomasjones/hc-grc/src/agents/base.py-
-/Users/thomasjones/hc-grc/src/agents/base.py:        Gate 2 approval is verified by __call__ before this is invoked.
-/Users/thomasjones/hc-grc/src/agents/base.py-        Every confirmatory script must carry a SAP header:
-/Users/thomasjones/hc-grc/src/agents/base.py-          # SAP header: hypothesis_id=H[x].[n], test=[named test],
-/Users/thomasjones/hc-grc/src/agents/p4_risk_blindspot/agent.py-
-/Users/thomasjones/hc-grc/src/agents/p4_risk_blindspot/agent.py-# Coverage density threshold below which a risk category is a "blindspot"
-/Users/thomasjones/hc-grc/src/agents/p4_risk_blindspot/agent.py:# Pre-registered value — do not change after Gate 2
-/Users/thomasjones/hc-grc/src/agents/p4_risk_blindspot/agent.py-BLINDSPOT_COVERAGE_THRESHOLD = 0.30  # 30% of applicable controls cover the risk
-/Users/thomasjones/hc-grc/src/agents/p4_risk_blindspot/agent.py-
---
-/Users/thomasjones/hc-grc/src/agents/p4_risk_blindspot/agent.py-        EXP_P4_blindspots.json       — risk categories below threshold, by framework combo
-/Users/thomasjones/hc-grc/src/agents/p4_risk_blindspot/agent.py-        EXP_P4_false_coverage.parquet — controls appearing to cover a risk but flagged by P3
-/Users/thomasjones/hc-grc/src/agents/p4_risk_blindspot/agent.py:        H4.x_results.parquet          — confirmatory results (post-Gate 2)
-/Users/thomasjones/hc-grc/src/agents/p4_risk_blindspot/agent.py-    """
-/Users/thomasjones/hc-grc/src/agents/p4_risk_blindspot/agent.py-
---
-/Users/thomasjones/hc-grc/src/agents/p4_risk_blindspot/agent.py-        Execute one pre-registered confirmatory blindspot test on test split.
-/Users/thomasjones/hc-grc/src/agents/p4_risk_blindspot/agent.py-
-/Users/thomasjones/hc-grc/src/agents/p4_risk_blindspot/agent.py:        Gate 2 approval verified by BaseResearchAgent.__call__.
-/Users/thomasjones/hc-grc/src/agents/p4_risk_blindspot/agent.py-        Requires: state["current_hypothesis_id"] == "H4.[n]"
-/Users/thomasjones/hc-grc/src/agents/p4_risk_blindspot/agent.py-        """
-/Users/thomasjones/hc-grc/src/agents/p4_risk_blindspot/agent.py-        raise NotImplementedError(
-/Users/thomasjones/hc-grc/src/agents/p4_risk_blindspot/agent.py-            "P4 confirmatory analysis not yet implemented. "
-/Users/thomasjones/hc-grc/src/agents/p4_risk_blindspot/agent.py:            "Requires: Gate 2 approved, hypothesis_id in state."
-/Users/thomasjones/hc-grc/src/agents/p4_risk_blindspot/agent.py-        )
-/Users/thomasjones/hc-grc/src/agents/p4_risk_blindspot/agent.py-
-/Users/thomasjones/hc-grc/src/agents/p1_strm_nlp/agent.py-PHASE DISCIPLINE:
-/Users/thomasjones/hc-grc/src/agents/p1_strm_nlp/agent.py-  Exploratory: train + val splits. All outputs prefixed EXP_. No p-value decisions.
-/Users/thomasjones/hc-grc/src/agents/p1_strm_nlp/agent.py:  Confirmatory: test split only, after Gate 2. Every script has SAP header.
-/Users/thomasjones/hc-grc/src/agents/p1_strm_nlp/agent.py-
-/Users/thomasjones/hc-grc/src/agents/p1_strm_nlp/agent.py-NIST CLUSTER CONSTRAINT:
---
-/Users/thomasjones/hc-grc/src/agents/p1_strm_nlp/agent.py-        EXP_P1_classification.parquet — predicted relationship types vs. STRM labels
-/Users/thomasjones/hc-grc/src/agents/p1_strm_nlp/agent.py-        EXP_P1_disagreements.md     — high-disagreement mappings for Gate 3 review
-/Users/thomasjones/hc-grc/src/agents/p1_strm_nlp/agent.py:        H1.x_results.parquet       — confirmatory per-hypothesis results (post-Gate 2)
-/Users/thomasjones/hc-grc/src/agents/p1_strm_nlp/agent.py-    """
-/Users/thomasjones/hc-grc/src/agents/p1_strm_nlp/agent.py-
---
-/Users/thomasjones/hc-grc/src/agents/p1_strm_nlp/agent.py-        Execute one pre-registered confirmatory test on the test split.
-/Users/thomasjones/hc-grc/src/agents/p1_strm_nlp/agent.py-
-/Users/thomasjones/hc-grc/src/agents/p1_strm_nlp/agent.py:        Gate 2 approval verified by BaseResearchAgent.__call__ before this runs.
-/Users/thomasjones/hc-grc/src/agents/p1_strm_nlp/agent.py-        Requires: state["current_hypothesis_id"] == "H1.[n]"
-/Users/thomasjones/hc-grc/src/agents/p1_strm_nlp/agent.py-        Writes:   analysis/02-confirmatory/H1.[n]_results.parquet
---
-/Users/thomasjones/hc-grc/src/agents/p1_strm_nlp/agent.py-        raise NotImplementedError(
-/Users/thomasjones/hc-grc/src/agents/p1_strm_nlp/agent.py-            "P1 confirmatory analysis not yet implemented. "
-/Users/thomasjones/hc-grc/src/agents/p1_strm_nlp/agent.py:            "Requires: Gate 2 approved, hypothesis_id in state, "
-/Users/thomasjones/hc-grc/src/agents/p1_strm_nlp/agent.py-            "test split accessible via DataSteward."
-/Users/thomasjones/hc-grc/src/agents/p1_strm_nlp/agent.py-        )
-/Users/thomasjones/hc-grc/src/agents/data_curation/agent.py-@dataclass
-/Users/thomasjones/hc-grc/src/agents/data_curation/agent.py-class CurationReport:
-/Users/thomasjones/hc-grc/src/agents/data_curation/agent.py:    """Summary produced by a curation run. Surfaces in lab notebook and Gate 2 review."""
-/Users/thomasjones/hc-grc/src/agents/data_curation/agent.py-
-/Users/thomasjones/hc-grc/src/agents/data_curation/agent.py-    records_before: int = 0
---
-/Users/thomasjones/hc-grc/src/agents/data_curation/agent.py-
-/Users/thomasjones/hc-grc/src/agents/data_curation/agent.py-        If > 5% of STRM mappings removed: halt and surface to human before analysis
-/Users/thomasjones/hc-grc/src/agents/data_curation/agent.py:        proceeds. This is a Gate 2 blocker.
-/Users/thomasjones/hc-grc/src/agents/data_curation/agent.py-
-/Users/thomasjones/hc-grc/src/agents/data_curation/agent.py-        Returns partial HCGRCState update:
---
-/Users/thomasjones/hc-grc/src/agents/data_curation/agent.py-
-/Users/thomasjones/hc-grc/src/agents/data_curation/agent.py-        Per AGENT.md: > 5% removed triggers human review before analysis proceeds.
-/Users/thomasjones/hc-grc/src/agents/data_curation/agent.py:        Raises ValueError — calling node must propagate to Gate 2 blocker.
-/Users/thomasjones/hc-grc/src/agents/data_curation/agent.py-        """
-/Users/thomasjones/hc-grc/src/agents/data_curation/agent.py-        if report.removal_fraction > _MAX_REMOVAL_FRACTION:
-/Users/thomasjones/hc-grc/src/agents/hypothesis_formalizer/agent.py-SAP-compatible hypotheses (H[module].[n] format). The formalized hypothesis
-/Users/thomasjones/hc-grc/src/agents/hypothesis_formalizer/agent.py-includes: the null, the alternative, the named test, the decision rule, and
-/Users/thomasjones/hc-grc/src/agents/hypothesis_formalizer/agent.py:the effect size threshold. Output is added to the SAP at Gate 2.
-/Users/thomasjones/hc-grc/src/agents/hypothesis_formalizer/agent.py-
-/Users/thomasjones/hc-grc/src/agents/hypothesis_formalizer/agent.py-PROTECTED AGENT: Prompts may not be modified autonomously by Agent Evolution.
---
-/Users/thomasjones/hc-grc/src/agents/hypothesis_formalizer/agent.py-
-/Users/thomasjones/hc-grc/src/agents/hypothesis_formalizer/agent.py-WORKFLOW POSITION:
-/Users/thomasjones/hc-grc/src/agents/hypothesis_formalizer/agent.py:  EDA findings → Hypothesis Formalizer → SAP (Gate 2 package)
-/Users/thomasjones/hc-grc/src/agents/hypothesis_formalizer/agent.py-  → Statistical Analyst (Phase 2 confirmatory tests)
-/Users/thomasjones/hc-grc/src/agents/hypothesis_formalizer/agent.py-
---
-/Users/thomasjones/hc-grc/src/agents/hypothesis_formalizer/agent.py-
-/Users/thomasjones/hc-grc/src/agents/hypothesis_formalizer/agent.py-GATE 2 PACKAGE:
-/Users/thomasjones/hc-grc/src/agents/hypothesis_formalizer/agent.py:  The Gate 2 proposal contains the formalized hypothesis set. The operator
-/Users/thomasjones/hc-grc/src/agents/hypothesis_formalizer/agent.py:  approves the hypothesis set as part of Gate 2. Any post-Gate-2 hypothesis
-/Users/thomasjones/hc-grc/src/agents/hypothesis_formalizer/agent.py-  addition requires a SAP amendment entry in the Preregistration Ledger.
-/Users/thomasjones/hc-grc/src/agents/hypothesis_formalizer/agent.py-
---
-/Users/thomasjones/hc-grc/src/agents/hypothesis_formalizer/agent.py-    A single formalized hypothesis for the SAP.
-/Users/thomasjones/hc-grc/src/agents/hypothesis_formalizer/agent.py-
-/Users/thomasjones/hc-grc/src/agents/hypothesis_formalizer/agent.py:    All fields required before this hypothesis is added to the Gate 2 package.
-/Users/thomasjones/hc-grc/src/agents/hypothesis_formalizer/agent.py-    Field names match the Instructor schema enforced at the output boundary —
-/Users/thomasjones/hc-grc/src/agents/hypothesis_formalizer/agent.py-    see agents/01-research/hypothesis-formalizer/AGENT.md Skills section.
---
-/Users/thomasjones/hc-grc/src/agents/hypothesis_formalizer/agent.py-    Hypothesis formalizer — translates EDA findings to SAP hypotheses.
-/Users/thomasjones/hc-grc/src/agents/hypothesis_formalizer/agent.py-
-/Users/thomasjones/hc-grc/src/agents/hypothesis_formalizer/agent.py:    Runs only in exploratory phase (before Gate 2).
-/Users/thomasjones/hc-grc/src/agents/hypothesis_formalizer/agent.py:    Output is appended to the SAP and included in the Gate 2 package.
-/Users/thomasjones/hc-grc/src/agents/hypothesis_formalizer/agent.py-    """
-/Users/thomasjones/hc-grc/src/agents/hypothesis_formalizer/agent.py-
---
-/Users/thomasjones/hc-grc/src/agents/hypothesis_formalizer/agent.py-    def run_exploratory(self, state: HCGRCState) -> dict[str, Any]:
-/Users/thomasjones/hc-grc/src/agents/hypothesis_formalizer/agent.py-        """
-/Users/thomasjones/hc-grc/src/agents/hypothesis_formalizer/agent.py:        Formalize hypotheses from EDA findings for Gate 2 package.
-/Users/thomasjones/hc-grc/src/agents/hypothesis_formalizer/agent.py-
-/Users/thomasjones/hc-grc/src/agents/hypothesis_formalizer/agent.py:        Must NOT use test data — all hypotheses formalized before Gate 2.
-/Users/thomasjones/hc-grc/src/agents/hypothesis_formalizer/agent.py-        Must NOT use p-values from exploratory analysis to select hypotheses (HARKing).
-/Users/thomasjones/hc-grc/src/agents/hypothesis_formalizer/agent.py-        Effect size thresholds must be grounded in domain knowledge or prior literature,
---
-/Users/thomasjones/hc-grc/src/agents/hypothesis_formalizer/agent.py-            "(2) formalize each research question into H[module].[n] format, "
-/Users/thomasjones/hc-grc/src/agents/hypothesis_formalizer/agent.py-            "(3) specify named test, decision rule, and effect size threshold, "
-/Users/thomasjones/hc-grc/src/agents/hypothesis_formalizer/agent.py:            "(4) append to SAP markdown, (5) return hypothesis list for Gate 2 package."
-/Users/thomasjones/hc-grc/src/agents/hypothesis_formalizer/agent.py-        )
-/Users/thomasjones/hc-grc/src/agents/hypothesis_formalizer/agent.py-
---
-/Users/thomasjones/hc-grc/src/agents/hypothesis_formalizer/agent.py-        Hypothesis Formalizer does not run in confirmatory phase.
-/Users/thomasjones/hc-grc/src/agents/hypothesis_formalizer/agent.py-
-/Users/thomasjones/hc-grc/src/agents/hypothesis_formalizer/agent.py:        Adding hypotheses after Gate 2 requires a SAP amendment — not this agent.
-/Users/thomasjones/hc-grc/src/agents/hypothesis_formalizer/agent.py-        Raises SAPViolationError.
-/Users/thomasjones/hc-grc/src/agents/hypothesis_formalizer/agent.py-        """
-/Users/thomasjones/hc-grc/src/agents/hypothesis_formalizer/agent.py-        raise SAPViolationError(
-/Users/thomasjones/hc-grc/src/agents/hypothesis_formalizer/agent.py:            "Hypothesis Formalizer may not add hypotheses after Gate 2. "
-/Users/thomasjones/hc-grc/src/agents/hypothesis_formalizer/agent.py:            "All pre-registered hypotheses must be formalized before Gate 2 approval. "
-/Users/thomasjones/hc-grc/src/agents/hypothesis_formalizer/agent.py-            "Post-Gate-2 additions require a LEDGER sap-amendment entry and explicit "
-/Users/thomasjones/hc-grc/src/agents/hypothesis_formalizer/agent.py-            "justification that this does not constitute HARKing."
---
-/Users/thomasjones/hc-grc/src/agents/hypothesis_formalizer/agent.py-        If exploratory_p_values are provided, log a warning if the hypothesis
-/Users/thomasjones/hc-grc/src/agents/hypothesis_formalizer/agent.py-        direction matches a significant exploratory finding — this is not a block
-/Users/thomasjones/hc-grc/src/agents/hypothesis_formalizer/agent.py:        but is flagged for Gate 2 human review.
-/Users/thomasjones/hc-grc/src/agents/hypothesis_formalizer/agent.py-        """
-/Users/thomasjones/hc-grc/src/agents/hypothesis_formalizer/agent.py-        if exploratory_p_values:
-/Users/thomasjones/hc-grc/src/agents/hypothesis_formalizer/agent.py:            # Log the association for Gate 2 reviewer — do not block
-/Users/thomasjones/hc-grc/src/agents/hypothesis_formalizer/agent.py-            pass
-/Users/thomasjones/hc-grc/src/agents/embedding_agent/agent.py-Model selection is governed by LEDGER-0002 (model candidates pre-registered) and
-/Users/thomasjones/hc-grc/src/agents/embedding_agent/agent.py-configs/platform.yaml (model_candidates section). Primary model designation is a
-/Users/thomasjones/hc-grc/src/agents/embedding_agent/agent.py:Gate 2 event. All candidates in the LEDGER-0002 race must be evaluated in Phase 1
-/Users/thomasjones/hc-grc/src/agents/embedding_agent/agent.py-before designation.
-/Users/thomasjones/hc-grc/src/agents/embedding_agent/agent.py-
---
-/Users/thomasjones/hc-grc/src/agents/embedding_agent/agent.py-    """
-/Users/thomasjones/hc-grc/src/agents/embedding_agent/agent.py-    Provenance record for an embedding run. Written to state and to disk.
-/Users/thomasjones/hc-grc/src/agents/embedding_agent/agent.py:    Required at Gate 2 to confirm which model produced the embeddings.
-/Users/thomasjones/hc-grc/src/agents/embedding_agent/agent.py-    """
-/Users/thomasjones/hc-grc/src/agents/embedding_agent/agent.py-
---
-/Users/thomasjones/hc-grc/src/agents/embedding_agent/agent.py-          1. Load primary model candidate from configs/platform.yaml
-/Users/thomasjones/hc-grc/src/agents/embedding_agent/agent.py-             (model_candidates section — LEDGER-0002 candidate set)
-/Users/thomasjones/hc-grc/src/agents/embedding_agent/agent.py:             NOTE: primary model is NULL until Gate 2 designation. Phase 1 runs
-/Users/thomasjones/hc-grc/src/agents/embedding_agent/agent.py-             all 5 candidates (3 general + 2 diversity anchors) and records F1
-/Users/thomasjones/hc-grc/src/agents/embedding_agent/agent.py:             scores to inform Gate 2 model selection.
-/Users/thomasjones/hc-grc/src/agents/embedding_agent/agent.py-          2. Batch-encode curated control text (GPU if available, CPU fallback)
-/Users/thomasjones/hc-grc/src/agents/embedding_agent/agent.py-          3. Build Qdrant collection: hcgrc_controls (1,400+ controls)
---
-/Users/thomasjones/hc-grc/src/agents/embedding_agent/agent.py-        If any model achieves F1 < 0.70 on STRM classification (evaluated by
-/Users/thomasjones/hc-grc/src/agents/embedding_agent/agent.py-        P1 agent after EDA), triggers domain fine-tuning via Team 06 + human
-/Users/thomasjones/hc-grc/src/agents/embedding_agent/agent.py:        approval before Gate 2 model designation.
-/Users/thomasjones/hc-grc/src/agents/embedding_agent/agent.py-
-/Users/thomasjones/hc-grc/src/agents/embedding_agent/agent.py-        Returns partial HCGRCState update:
-/Users/thomasjones/hc-grc/src/agents/statistical_analyst/agent.py-    Confirmatory statistical testing agent.
-/Users/thomasjones/hc-grc/src/agents/statistical_analyst/agent.py-
-/Users/thomasjones/hc-grc/src/agents/statistical_analyst/agent.py:    Does not run in exploratory phase — raises SAPViolationError if called before Gate 2.
-/Users/thomasjones/hc-grc/src/agents/statistical_analyst/agent.py-    All tests are pre-specified in the SAP. Any deviation is a SAP violation.
-/Users/thomasjones/hc-grc/src/agents/statistical_analyst/agent.py-    """
---
-/Users/thomasjones/hc-grc/src/agents/statistical_analyst/agent.py-        Statistical Analyst does not run in exploratory phase.
-/Users/thomasjones/hc-grc/src/agents/statistical_analyst/agent.py-
-/Users/thomasjones/hc-grc/src/agents/statistical_analyst/agent.py:        Raises SAPViolationError — confirmatory testing before Gate 2 is a protocol violation.
-/Users/thomasjones/hc-grc/src/agents/statistical_analyst/agent.py-        """
-/Users/thomasjones/hc-grc/src/agents/statistical_analyst/agent.py-        raise SAPViolationError(
-/Users/thomasjones/hc-grc/src/agents/statistical_analyst/agent.py:            "Statistical Analyst may not run before Gate 2 approval. "
-/Users/thomasjones/hc-grc/src/agents/statistical_analyst/agent.py-            "Confirmatory testing before the exploratory/confirmatory split is locked "
-/Users/thomasjones/hc-grc/src/agents/statistical_analyst/agent.py-            "constitutes pre-testing and invalidates the confirmatory analysis. "
-/Users/thomasjones/hc-grc/src/agents/statistical_analyst/agent.py:            "Wait for Gate 2 before calling this agent."
-/Users/thomasjones/hc-grc/src/agents/statistical_analyst/agent.py-        )
-/Users/thomasjones/hc-grc/src/agents/statistical_analyst/agent.py-
---
-/Users/thomasjones/hc-grc/src/agents/statistical_analyst/agent.py-        Execute one pre-registered confirmatory test.
-/Users/thomasjones/hc-grc/src/agents/statistical_analyst/agent.py-
-/Users/thomasjones/hc-grc/src/agents/statistical_analyst/agent.py:        Gate 2 approval verified by BaseResearchAgent.__call__.
-/Users/thomasjones/hc-grc/src/agents/statistical_analyst/agent.py-        Requires: state["current_hypothesis_id"] == "H[module].[n]"
-/Users/thomasjones/hc-grc/src/agents/statistical_analyst/agent.py-        Verifies: hypothesis_id exists in SAP, test matches SAP spec.
-/Users/thomasjones/hc-grc/src/agents/p3_regulatory_convergence/agent.py-        EXP_P3_atlas.json           — structured atlas: genuine, terminological, divergence
-/Users/thomasjones/hc-grc/src/agents/p3_regulatory_convergence/agent.py-        EXP_P3_heatmap.parquet      — input to Visualization Agent
-/Users/thomasjones/hc-grc/src/agents/p3_regulatory_convergence/agent.py:        H3.x_results.parquet        — confirmatory results (post-Gate 2)
-/Users/thomasjones/hc-grc/src/agents/p3_regulatory_convergence/agent.py-    """
-/Users/thomasjones/hc-grc/src/agents/p3_regulatory_convergence/agent.py-
---
-/Users/thomasjones/hc-grc/src/agents/p3_regulatory_convergence/agent.py-        Execute one pre-registered confirmatory convergence test on test split.
-/Users/thomasjones/hc-grc/src/agents/p3_regulatory_convergence/agent.py-
-/Users/thomasjones/hc-grc/src/agents/p3_regulatory_convergence/agent.py:        Gate 2 approval verified by BaseResearchAgent.__call__.
-/Users/thomasjones/hc-grc/src/agents/p3_regulatory_convergence/agent.py-        Requires: state["current_hypothesis_id"] == "H3.[n]"
-/Users/thomasjones/hc-grc/src/agents/p3_regulatory_convergence/agent.py-        """
-/Users/thomasjones/hc-grc/src/agents/p3_regulatory_convergence/agent.py-        raise NotImplementedError(
-/Users/thomasjones/hc-grc/src/agents/p3_regulatory_convergence/agent.py-            "P3 confirmatory analysis not yet implemented. "
-/Users/thomasjones/hc-grc/src/agents/p3_regulatory_convergence/agent.py:            "Requires: Gate 2 approved, hypothesis_id in state."
-/Users/thomasjones/hc-grc/src/agents/p3_regulatory_convergence/agent.py-        )
-/Users/thomasjones/hc-grc/src/agents/p3_regulatory_convergence/agent.py-
-/Users/thomasjones/hc-grc/src/agents/data_steward/agent.py-the train/validation/test split (seed from configs/seeds.yaml), and enforces access
-/Users/thomasjones/hc-grc/src/agents/data_steward/agent.py-control: exploratory agents receive train + val only; test split is unlocked only
-/Users/thomasjones/hc-grc/src/agents/data_steward/agent.py:after BOTH Gate 2 (SAP lock) AND Gate 3 (EDA review) are confirmed.
-/Users/thomasjones/hc-grc/src/agents/data_steward/agent.py-
-/Users/thomasjones/hc-grc/src/agents/data_steward/agent.py-Phase 1 stub: run() and get_split_paths() raise NotImplementedError.
---
-/Users/thomasjones/hc-grc/src/agents/data_steward/agent.py-    Output of the Great Expectations validation suite.
-/Users/thomasjones/hc-grc/src/agents/data_steward/agent.py-
-/Users/thomasjones/hc-grc/src/agents/data_steward/agent.py:    surfaced at Gate 2 for operator review. Critical failures block Gate 2.
-/Users/thomasjones/hc-grc/src/agents/data_steward/agent.py-    """
-/Users/thomasjones/hc-grc/src/agents/data_steward/agent.py-
---
-/Users/thomasjones/hc-grc/src/agents/data_steward/agent.py-@dataclass
-/Users/thomasjones/hc-grc/src/agents/data_steward/agent.py-class SplitRecord:
-/Users/thomasjones/hc-grc/src/agents/data_steward/agent.py:    """Metadata for a completed split operation. Immutable after Gate 2."""
-/Users/thomasjones/hc-grc/src/agents/data_steward/agent.py-
-/Users/thomasjones/hc-grc/src/agents/data_steward/agent.py-    seed: int = 0                  # from configs/seeds.yaml — changing post-Gate-2 is SAP violation
---
-/Users/thomasjones/hc-grc/src/agents/data_steward/agent.py-
-/Users/thomasjones/hc-grc/src/agents/data_steward/agent.py-    The split seed in configs/seeds.yaml is the single most consequential
-/Users/thomasjones/hc-grc/src/agents/data_steward/agent.py:    configuration value in the platform. Changing it after Gate 2 is a
-/Users/thomasjones/hc-grc/src/agents/data_steward/agent.py-    direct SAP violation (equivalent to switching hypothesis tests after
-/Users/thomasjones/hc-grc/src/agents/data_steward/agent.py-    seeing the results). The Steward records the seed hash at split creation
---
-/Users/thomasjones/hc-grc/src/agents/data_steward/agent.py-
-/Users/thomasjones/hc-grc/src/agents/data_steward/agent.py-    Behavioral constraints (per AGENT.md):
-/Users/thomasjones/hc-grc/src/agents/data_steward/agent.py:      - Never provide test-split access before BOTH Gate 2 AND Gate 3 are confirmed
-/Users/thomasjones/hc-grc/src/agents/data_steward/agent.py-      - Never silently resolve a quality failure — all anomalies in codebook
-/Users/thomasjones/hc-grc/src/agents/data_steward/agent.py:      - Never modify the split seed after Gate 2
-/Users/thomasjones/hc-grc/src/agents/data_steward/agent.py:      - Never re-run the split after Gate 2 without a full protocol amendment
-/Users/thomasjones/hc-grc/src/agents/data_steward/agent.py-      - Codebook updated before splits distributed to analysis agents
-/Users/thomasjones/hc-grc/src/agents/data_steward/agent.py-    """
---
-/Users/thomasjones/hc-grc/src/agents/data_steward/agent.py-        Return file paths for the requested split.
-/Users/thomasjones/hc-grc/src/agents/data_steward/agent.py-
-/Users/thomasjones/hc-grc/src/agents/data_steward/agent.py:        Test split access requires BOTH gates confirmed — Gate 2 alone is NOT
-/Users/thomasjones/hc-grc/src/agents/data_steward/agent.py-        sufficient. The Data Steward AGENT.md is explicit: EDA review (Gate 3)
-/Users/thomasjones/hc-grc/src/agents/data_steward/agent.py-        must complete before the test split is unlocked. This is the mechanism
---
-/Users/thomasjones/hc-grc/src/agents/data_steward/agent.py-
-/Users/thomasjones/hc-grc/src/agents/data_steward/agent.py-        Raises SAPViolationError if:
-/Users/thomasjones/hc-grc/src/agents/data_steward/agent.py:          - test split requested before Gate 2 (SAP lock)
-/Users/thomasjones/hc-grc/src/agents/data_steward/agent.py-          - test split requested before Gate 3 (EDA review)
-/Users/thomasjones/hc-grc/src/agents/data_steward/agent.py-
---
-/Users/thomasjones/hc-grc/src/agents/data_steward/agent.py-            gate_status = state.get("gate_status", {})
-/Users/thomasjones/hc-grc/src/agents/data_steward/agent.py-
-/Users/thomasjones/hc-grc/src/agents/data_steward/agent.py:            gate_2 = gate_status.get("gate_2", {})
-/Users/thomasjones/hc-grc/src/agents/data_steward/agent.py:            if gate_2.get("decision") != "approved":
-/Users/thomasjones/hc-grc/src/agents/data_steward/agent.py-                raise SAPViolationError(
-/Users/thomasjones/hc-grc/src/agents/data_steward/agent.py:                    "Test split access attempted before Gate 2 (SAP lock). "
-/Users/thomasjones/hc-grc/src/agents/data_steward/agent.py:                    "Gate 2 must be approved before test split is available. "
-/Users/thomasjones/hc-grc/src/agents/data_steward/agent.py:                    f"Current gate_2 decision: {gate_2.get('decision', 'not_run')}. "
-/Users/thomasjones/hc-grc/src/agents/data_steward/agent.py-                    "This is a SAP violation."
-/Users/thomasjones/hc-grc/src/agents/data_steward/agent.py-                )
---
-/Users/thomasjones/hc-grc/src/agents/data_steward/agent.py-                raise SAPViolationError(
-/Users/thomasjones/hc-grc/src/agents/data_steward/agent.py-                    "Test split access attempted before Gate 3 (EDA review complete). "
-/Users/thomasjones/hc-grc/src/agents/data_steward/agent.py:                    "Both Gate 2 (SAP lock) AND Gate 3 (EDA review) must be approved "
-/Users/thomasjones/hc-grc/src/agents/data_steward/agent.py-                    "before the test split is unlocked. "
-/Users/thomasjones/hc-grc/src/agents/data_steward/agent.py-                    f"Current gate_3 decision: {gate_3.get('decision', 'not_run')}. "
---
-/Users/thomasjones/hc-grc/src/agents/data_steward/agent.py-    def _assert_seed_unchanged(self, current_seed_hash: str, recorded_seed_hash: str) -> None:
-/Users/thomasjones/hc-grc/src/agents/data_steward/agent.py-        """
-/Users/thomasjones/hc-grc/src/agents/data_steward/agent.py:        Verify the split seed has not changed since Gate 2.
-/Users/thomasjones/hc-grc/src/agents/data_steward/agent.py-
-/Users/thomasjones/hc-grc/src/agents/data_steward/agent.py:        Changing the seed after Gate 2 is a SAP violation equivalent to selecting
-/Users/thomasjones/hc-grc/src/agents/data_steward/agent.py-        a different test set after seeing confirmatory results.
-/Users/thomasjones/hc-grc/src/agents/data_steward/agent.py-        Raises RuntimeError if seed hash has changed.
---
-/Users/thomasjones/hc-grc/src/agents/data_steward/agent.py-        if current_seed_hash != recorded_seed_hash:
-/Users/thomasjones/hc-grc/src/agents/data_steward/agent.py-            raise RuntimeError(
-/Users/thomasjones/hc-grc/src/agents/data_steward/agent.py:                "Split seed hash mismatch — seed has changed since Gate 2. "
-/Users/thomasjones/hc-grc/src/agents/data_steward/agent.py:                "This is a SAP violation. The split is frozen at Gate 2. "
-/Users/thomasjones/hc-grc/src/agents/data_steward/agent.py-                "Any re-split requires a full protocol amendment and new pre-registration. "
-/Users/thomasjones/hc-grc/src/agents/data_steward/agent.py-                f"Expected: {recorded_seed_hash}, got: {current_seed_hash}"
-/Users/thomasjones/hc-grc/src/agents/p2_control_topology/agent.py-        EXP_P2_communities.parquet   — community ID, size, intra/inter-community density
-/Users/thomasjones/hc-grc/src/agents/p2_control_topology/agent.py-        EXP_P2_hubs.md               — top 50 most central controls with annotations
-/Users/thomasjones/hc-grc/src/agents/p2_control_topology/agent.py:        H2.x_results.parquet         — confirmatory results (post-Gate 2)
-/Users/thomasjones/hc-grc/src/agents/p2_control_topology/agent.py-    """
-/Users/thomasjones/hc-grc/src/agents/p2_control_topology/agent.py-
---
-/Users/thomasjones/hc-grc/src/agents/p2_control_topology/agent.py-        Execute one pre-registered confirmatory test on test split graph.
-/Users/thomasjones/hc-grc/src/agents/p2_control_topology/agent.py-
-/Users/thomasjones/hc-grc/src/agents/p2_control_topology/agent.py:        Gate 2 approval verified by BaseResearchAgent.__call__.
-/Users/thomasjones/hc-grc/src/agents/p2_control_topology/agent.py-        Requires: state["current_hypothesis_id"] == "H2.[n]"
-/Users/thomasjones/hc-grc/src/agents/p2_control_topology/agent.py-        """
-/Users/thomasjones/hc-grc/src/agents/p2_control_topology/agent.py-        raise NotImplementedError(
-/Users/thomasjones/hc-grc/src/agents/p2_control_topology/agent.py-            "P2 confirmatory analysis not yet implemented. "
-/Users/thomasjones/hc-grc/src/agents/p2_control_topology/agent.py:            "Requires: Gate 2 approved, hypothesis_id in state."
-/Users/thomasjones/hc-grc/src/agents/p2_control_topology/agent.py-        )
-/Users/thomasjones/hc-grc/src/agents/p2_control_topology/agent.py-
-/Users/thomasjones/hc-grc/src/agents/p5_ai_governance/agent.py-  Parameters are tuned during exploratory phase — final values logged to MLflow
-/Users/thomasjones/hc-grc/src/agents/p5_ai_governance/agent.py-  before any confirmatory clustering runs. Parameter decisions are logged to
-/Users/thomasjones/hc-grc/src/agents/p5_ai_governance/agent.py:  the Preregistration Ledger at Gate 2 (part of the model/parameter lock).
-/Users/thomasjones/hc-grc/src/agents/p5_ai_governance/agent.py-
-/Users/thomasjones/hc-grc/src/agents/p5_ai_governance/agent.py-HDBSCAN PARAMETERS:
---
-/Users/thomasjones/hc-grc/src/agents/p5_ai_governance/agent.py-        EXP_P5_umap.parquet             — 2D + 3D UMAP projections
-/Users/thomasjones/hc-grc/src/agents/p5_ai_governance/agent.py-        EXP_P5_taxonomy_comparison.md   — ARI/NMI: empirical clusters vs. SCF domains
-/Users/thomasjones/hc-grc/src/agents/p5_ai_governance/agent.py:        H5.x_results.parquet            — confirmatory results (post-Gate 2)
-/Users/thomasjones/hc-grc/src/agents/p5_ai_governance/agent.py-    """
-/Users/thomasjones/hc-grc/src/agents/p5_ai_governance/agent.py-
---
-/Users/thomasjones/hc-grc/src/agents/p5_ai_governance/agent.py-        Must NOT access test_ids.
-/Users/thomasjones/hc-grc/src/agents/p5_ai_governance/agent.py-        All outputs EXP_-prefixed.
-/Users/thomasjones/hc-grc/src/agents/p5_ai_governance/agent.py:        UMAP parameters tuned here — final values logged to MLflow before Gate 2.
-/Users/thomasjones/hc-grc/src/agents/p5_ai_governance/agent.py-        Noise points (HDBSCAN label = -1) reported as unclustered, never force-assigned.
-/Users/thomasjones/hc-grc/src/agents/p5_ai_governance/agent.py-        """
---
-/Users/thomasjones/hc-grc/src/agents/p5_ai_governance/agent.py-        Execute one pre-registered confirmatory clustering test on test split embeddings.
-/Users/thomasjones/hc-grc/src/agents/p5_ai_governance/agent.py-
-/Users/thomasjones/hc-grc/src/agents/p5_ai_governance/agent.py:        Gate 2 approval verified by BaseResearchAgent.__call__.
-/Users/thomasjones/hc-grc/src/agents/p5_ai_governance/agent.py-        Requires: state["current_hypothesis_id"] == "H5.[n]"
-/Users/thomasjones/hc-grc/src/agents/p5_ai_governance/agent.py:        UMAP + HDBSCAN parameters locked at Gate 2 — must not re-tune on test split.
-/Users/thomasjones/hc-grc/src/agents/p5_ai_governance/agent.py-        """
-/Users/thomasjones/hc-grc/src/agents/p5_ai_governance/agent.py-        raise NotImplementedError(
-/Users/thomasjones/hc-grc/src/agents/p5_ai_governance/agent.py-            "P5 confirmatory analysis not yet implemented. "
-/Users/thomasjones/hc-grc/src/agents/p5_ai_governance/agent.py:            "Requires: Gate 2 approved, parameters locked in state, hypothesis_id set."
-/Users/thomasjones/hc-grc/src/agents/p5_ai_governance/agent.py-        )
-/Users/thomasjones/hc-grc/src/agents/p5_ai_governance/agent.py-
+/Users/[REDACTED]/hc-grc/src/graph.py-  hypothesis_formalize ← HypothesisFormalizerAgent
+/Users/[REDACTED]/hc-grc/src/graph.py-      ↓
+/Users/[REDACTED]/hc-grc/src/graph.py:  gate_2              ← interrupt() — SAP lock, hypothesis pre-registration
+/Users/[REDACTED]/hc-grc/src/graph.py-      ↓ [approved]
+/Users/[REDACTED]/hc-grc/src/graph.py:  confirmatory_entry  ← Phase 2 stub (route_after_gate_2 → "confirmatory_entry")
+/Users/[REDACTED]/hc-grc/src/graph.py-      ↓ [rejected]
+/Users/[REDACTED]/hc-grc/src/graph.py-  exploratory_phase   ← loop back to re-run EDA with revised hypotheses
+--
+/Users/[REDACTED]/hc-grc/src/graph.py-)
+/Users/[REDACTED]/hc-grc/src/graph.py-from .nodes.data_split import data_split_node
+/Users/[REDACTED]/hc-grc/src/graph.py:from .nodes.gates import gate_1_node, gate_2_node
+/Users/[REDACTED]/hc-grc/src/graph.py:from .nodes.orchestrator import route_after_gate_1, route_after_gate_2, t00_orchestrator_node
+/Users/[REDACTED]/hc-grc/src/graph.py-from .nodes.phase1 import (
+/Users/[REDACTED]/hc-grc/src/graph.py-    confirmatory_entry_node,
+--
+/Users/[REDACTED]/hc-grc/src/graph.py-    builder.add_node("exploratory_phase", exploratory_phase_node)
+/Users/[REDACTED]/hc-grc/src/graph.py-    builder.add_node("hypothesis_formalize", hypothesis_formalize_node)
+/Users/[REDACTED]/hc-grc/src/graph.py:    builder.add_node("gate_2", gate_2_node)
+/Users/[REDACTED]/hc-grc/src/graph.py-
+/Users/[REDACTED]/hc-grc/src/graph.py-    # ── Phase 2 stub ────────────────────────────────────────────────────────────
+--
+/Users/[REDACTED]/hc-grc/src/graph.py-    builder.add_edge("data_pipeline", "exploratory_phase")
+/Users/[REDACTED]/hc-grc/src/graph.py-    builder.add_edge("exploratory_phase", "hypothesis_formalize")
+/Users/[REDACTED]/hc-grc/src/graph.py:    builder.add_edge("hypothesis_formalize", "gate_2")
+/Users/[REDACTED]/hc-grc/src/graph.py-
+/Users/[REDACTED]/hc-grc/src/graph.py-    builder.add_conditional_edges(
+/Users/[REDACTED]/hc-grc/src/graph.py:        "gate_2",
+/Users/[REDACTED]/hc-grc/src/graph.py:        route_after_gate_2,
+/Users/[REDACTED]/hc-grc/src/graph.py-        {
+/Users/[REDACTED]/hc-grc/src/graph.py-            "confirmatory_entry": "confirmatory_entry",  # approved → Phase 2
+--
+/Users/[REDACTED]/hc-grc/src/graph.py-def run_phase1_dry_run(run_id: str | None = None, checkpointer=None) -> dict[str, Any]:
+/Users/[REDACTED]/hc-grc/src/graph.py-    """
+/Users/[REDACTED]/hc-grc/src/graph.py:    Execute a Phase 1 dry run through Gate 2.
+/Users/[REDACTED]/hc-grc/src/graph.py-
+/Users/[REDACTED]/hc-grc/src/graph.py:    Gate 1 and Gate 2 will pause for operator input. Data pipeline and P1-P5
+/Users/[REDACTED]/hc-grc/src/graph.py-    nodes will record stub_pending statuses (NotImplementedError caught). This
+/Users/[REDACTED]/hc-grc/src/graph.py-    verifies the Phase 1 graph topology before real SCF data is loaded.
+/Users/[REDACTED]/hc-grc/src/nodes/__init__.py-from .data_split import compute_data_split, data_split_node, derive_seed
+/Users/[REDACTED]/hc-grc/src/nodes/__init__.py-from .gate_coordinator import gate_coordinator_node
+/Users/[REDACTED]/hc-grc/src/nodes/__init__.py:from .gates import gate_1_node, gate_2_node, gate_3_node, gate_4_node, gate_5_node
+/Users/[REDACTED]/hc-grc/src/nodes/__init__.py:from .orchestrator import route_after_gate_1, route_after_gate_2, t00_orchestrator_node
+/Users/[REDACTED]/hc-grc/src/nodes/__init__.py-
+/Users/[REDACTED]/hc-grc/src/nodes/__init__.py-__all__ = [
+--
+/Users/[REDACTED]/hc-grc/src/nodes/__init__.py-    "gate_coordinator_node",
+/Users/[REDACTED]/hc-grc/src/nodes/__init__.py-    "gate_1_node",
+/Users/[REDACTED]/hc-grc/src/nodes/__init__.py:    "gate_2_node",
+/Users/[REDACTED]/hc-grc/src/nodes/__init__.py-    "gate_3_node",
+/Users/[REDACTED]/hc-grc/src/nodes/__init__.py-    "gate_4_node",
+/Users/[REDACTED]/hc-grc/src/nodes/__init__.py-    "gate_5_node",
+/Users/[REDACTED]/hc-grc/src/nodes/__init__.py-    "route_after_gate_1",
+/Users/[REDACTED]/hc-grc/src/nodes/__init__.py:    "route_after_gate_2",
+/Users/[REDACTED]/hc-grc/src/nodes/__init__.py-    "t00_orchestrator_node",
+/Users/[REDACTED]/hc-grc/src/nodes/__init__.py-]
+/Users/[REDACTED]/hc-grc/src/nodes/phase1.py-  hypothesis_formalize   ← HypothesisFormalizerAgent
+/Users/[REDACTED]/hc-grc/src/nodes/phase1.py-      ↓
+/Users/[REDACTED]/hc-grc/src/nodes/phase1.py:  gate_2                 ← (in gates.py)
+/Users/[REDACTED]/hc-grc/src/nodes/phase1.py-      ↓
+/Users/[REDACTED]/hc-grc/src/nodes/phase1.py-  [approved: confirmatory_entry | rejected: exploratory_phase loop]
+--
+/Users/[REDACTED]/hc-grc/src/nodes/phase1.py-    update dict with eda_artifacts appended.
+/Users/[REDACTED]/hc-grc/src/nodes/phase1.py-
+/Users/[REDACTED]/hc-grc/src/nodes/phase1.py:    Gate 2 is NOT required here — this is exploratory phase. Each agent internally
+/Users/[REDACTED]/hc-grc/src/nodes/phase1.py-    enforces the EXP_ artifact naming convention and no p-value decision language.
+/Users/[REDACTED]/hc-grc/src/nodes/phase1.py-    """
+--
+/Users/[REDACTED]/hc-grc/src/nodes/phase1.py-
+/Users/[REDACTED]/hc-grc/src/nodes/phase1.py-    # exploratory_complete = True only if at least one agent returned real results.
+/Users/[REDACTED]/hc-grc/src/nodes/phase1.py:    # In Phase 1 dry-run (all stubs), stays False — Gate 2 checklist will surface this.
+/Users/[REDACTED]/hc-grc/src/nodes/phase1.py-    return {
+/Users/[REDACTED]/hc-grc/src/nodes/phase1.py-        "phase": "phase_1",
+--
+/Users/[REDACTED]/hc-grc/src/nodes/phase1.py-
+/Users/[REDACTED]/hc-grc/src/nodes/phase1.py-    Runs after exploratory analysis completes. Output populates state["hypothesis_set"]
+/Users/[REDACTED]/hc-grc/src/nodes/phase1.py:    with FormalHypothesis dicts. This is the set that gets locked at Gate 2.
+/Users/[REDACTED]/hc-grc/src/nodes/phase1.py-
+/Users/[REDACTED]/hc-grc/src/nodes/phase1.py-    HypothesisFormalizerAgent is PROTECTED. Its run_exploratory() builds hypotheses
+/Users/[REDACTED]/hc-grc/src/nodes/phase1.py:    from EDA outputs and HARKing validation stub. Output is the Gate 2 input.
+/Users/[REDACTED]/hc-grc/src/nodes/phase1.py-    """
+/Users/[REDACTED]/hc-grc/src/nodes/phase1.py-    run_id = state["run_id"]
+--
+/Users/[REDACTED]/hc-grc/src/nodes/phase1.py-    Entry point for Phase 2 confirmatory analysis subgraph.
+/Users/[REDACTED]/hc-grc/src/nodes/phase1.py-
+/Users/[REDACTED]/hc-grc/src/nodes/phase1.py:    Gate 2 approval is required before this node runs (enforced by
+/Users/[REDACTED]/hc-grc/src/nodes/phase1.py:    route_after_gate_2 in orchestrator.py). The confirmatory subgraph
+/Users/[REDACTED]/hc-grc/src/nodes/phase1.py-    (statistical-analyst + P1-P5 confirmatory runs) is Phase 2 mechanism work.
+/Users/[REDACTED]/hc-grc/src/nodes/phase1.py-    """
+/Users/[REDACTED]/hc-grc/src/nodes/phase1.py-    return {
+/Users/[REDACTED]/hc-grc/src/nodes/phase1.py:        "phase": "phase_2",
+/Users/[REDACTED]/hc-grc/src/nodes/phase1.py-        "prov_activities": [
+/Users/[REDACTED]/hc-grc/src/nodes/phase1.py-            _prov(
+/Users/[REDACTED]/hc-grc/src/state.py-# ── Phase labels ────────────────────────────────────────────────────────────
+/Users/[REDACTED]/hc-grc/src/state.py-
+/Users/[REDACTED]/hc-grc/src/state.py:Phase = Literal["phase_0", "phase_1", "phase_2"]
+/Users/[REDACTED]/hc-grc/src/state.py-
+/Users/[REDACTED]/hc-grc/src/state.py-# Gate identifiers 1–5
+/Users/[REDACTED]/hc-grc/src/state.py:GateID = Literal["gate_1", "gate_2", "gate_3", "gate_4", "gate_5"]
+/Users/[REDACTED]/hc-grc/src/state.py-
+/Users/[REDACTED]/hc-grc/src/state.py-# Only these three decisions ever exist: the operator-response validator
+--
+/Users/[REDACTED]/hc-grc/src/state.py-
+/Users/[REDACTED]/hc-grc/src/state.py-    # ── Data pipeline provenance ──────────────────────────────────────────────
+/Users/[REDACTED]/hc-grc/src/state.py:    # Written by EmbeddingAgent after embedding run completes. Required at Gate 2
+/Users/[REDACTED]/hc-grc/src/state.py-    # to confirm which model produced the embeddings used in exploratory analysis.
+/Users/[REDACTED]/hc-grc/src/state.py-    # Keys: model_name, model_hash, corpus_dvc_hash, timestamp_utc
+--
+/Users/[REDACTED]/hc-grc/src/state.py-
+/Users/[REDACTED]/hc-grc/src/state.py-    # ── Formalized hypothesis set (append, deduped by id) ─────────────────────
+/Users/[REDACTED]/hc-grc/src/state.py:    # Written by HypothesisFormalizerAgent before Gate 2.
+/Users/[REDACTED]/hc-grc/src/state.py-    # Each entry is a FormalHypothesis dict (see src/agents/hypothesis_formalizer).
+/Users/[REDACTED]/hc-grc/src/state.py-    # Deduped by hypothesis id (latest wins) so a Gate-2 reject → re-formalize loop
+/Users/[REDACTED]/hc-grc/src/state.py:    # cannot accumulate duplicate hypotheses into the set Gate 2 locks (pass-4 #2).
+/Users/[REDACTED]/hc-grc/src/state.py-    hypothesis_set: Annotated[list[dict[str, Any]], lambda a, b: _merge_hypotheses(a, b)]
+/Users/[REDACTED]/hc-grc/src/state.py-
+/Users/[REDACTED]/hc-grc/src/nodes/gates.py-Gate definitions:
+/Users/[REDACTED]/hc-grc/src/nodes/gates.py-  Gate 1 — Pre-data checkpoint (Phase 0 complete, all prerequisites verified)
+/Users/[REDACTED]/hc-grc/src/nodes/gates.py:  Gate 2 — Exploratory → Confirmatory (hypothesis lock, test data unlock)
+/Users/[REDACTED]/hc-grc/src/nodes/gates.py-  Gate 3 — Finding significance review (before publication pipeline)
+/Users/[REDACTED]/hc-grc/src/nodes/gates.py-  Gate 4 — Manuscript submission approval
+--
+/Users/[REDACTED]/hc-grc/src/nodes/gates.py-    downstream effects on top of a terminal decision (#177). A 'rejected' record
+/Users/[REDACTED]/hc-grc/src/nodes/gates.py-    is deliberately NOT terminal: the Gate-2 reject → revise → re-review loop
+/Users/[REDACTED]/hc-grc/src/nodes/gates.py:    (route_after_gate_2 → exploratory → … → gate_2) must re-fire the interrupt so
+/Users/[REDACTED]/hc-grc/src/nodes/gates.py-    the operator is re-prompted, otherwise the gate short-circuits to {} and the
+/Users/[REDACTED]/hc-grc/src/nodes/gates.py-    graph spins until GraphRecursionError (pass-2 #184/#187). The loop-back path
+--
+/Users/[REDACTED]/hc-grc/src/nodes/gates.py-        "LEDGER-0002: Diversity anchor model candidates logged (T-01 — 3 general + 2 anchors)",
+/Users/[REDACTED]/hc-grc/src/nodes/gates.py-        "LEDGER-0003: Fleiss kappa path selection logged (path 1: recruit raters | path 2: acknowledge unestimated)",
+/Users/[REDACTED]/hc-grc/src/nodes/gates.py:        # ── NOTE: DIVERGENCE-01 is a Gate 2 prerequisite, NOT Gate 1 ──────────────
+/Users/[REDACTED]/hc-grc/src/nodes/gates.py-        # DIVERGENCE-01 (operationalization of model-STRM divergence) requires the
+/Users/[REDACTED]/hc-grc/src/nodes/gates.py-        # STRM label distribution from EDA — which has not run yet at Gate 1.
+/Users/[REDACTED]/hc-grc/src/nodes/gates.py-        # Decision framework is defined in SAP §10. Specific operationalization is
+/Users/[REDACTED]/hc-grc/src/nodes/gates.py:        # selected post-EDA, logged to Preregistration Ledger before Gate 2.
+/Users/[REDACTED]/hc-grc/src/nodes/gates.py-        # Confirmed: SAP §10 DIVERGENCE-01 decision framework understood and acknowledged",
+/Users/[REDACTED]/hc-grc/src/nodes/gates.py-    ]
+--
+/Users/[REDACTED]/hc-grc/src/nodes/gates.py-
+/Users/[REDACTED]/hc-grc/src/nodes/gates.py-
+/Users/[REDACTED]/hc-grc/src/nodes/gates.py:# ── Gate 2 ────────────────────────────────────────────────────────────────────
+/Users/[REDACTED]/hc-grc/src/nodes/gates.py-
+/Users/[REDACTED]/hc-grc/src/nodes/gates.py-
+/Users/[REDACTED]/hc-grc/src/nodes/gates.py:def gate_2_node(state: HCGRCState) -> dict[str, Any]:
+/Users/[REDACTED]/hc-grc/src/nodes/gates.py-    """
+/Users/[REDACTED]/hc-grc/src/nodes/gates.py:    Gate 2 — Exploratory → Confirmatory transition.
+/Users/[REDACTED]/hc-grc/src/nodes/gates.py-
+/Users/[REDACTED]/hc-grc/src/nodes/gates.py-    The most consequential gate. The operator reviews the pre-registered
+--
+/Users/[REDACTED]/hc-grc/src/nodes/gates.py-      - Data split idempotency verified (data_split_verified == True)
+/Users/[REDACTED]/hc-grc/src/nodes/gates.py-    """
+/Users/[REDACTED]/hc-grc/src/nodes/gates.py:    # Verify hard prerequisites before surfacing this irreversible gate. Gate 2
+/Users/[REDACTED]/hc-grc/src/nodes/gates.py-    # unlocks the test split, so the machine-checkable preconditions for a sound
+/Users/[REDACTED]/hc-grc/src/nodes/gates.py-    # exploratory→confirmatory transition are ALL enforced here, not just the data
+--
+/Users/[REDACTED]/hc-grc/src/nodes/gates.py-    if not state.get("hypothesis_set"):
+/Users/[REDACTED]/hc-grc/src/nodes/gates.py-        hard_failures.append(
+/Users/[REDACTED]/hc-grc/src/nodes/gates.py:            "hypothesis_set is empty — no pre-registered hypotheses to lock at Gate 2")
+/Users/[REDACTED]/hc-grc/src/nodes/gates.py-
+/Users/[REDACTED]/hc-grc/src/nodes/gates.py-    if hard_failures:
+/Users/[REDACTED]/hc-grc/src/nodes/gates.py-        # Write an authoritative gate_status record so the router and operator see
+/Users/[REDACTED]/hc-grc/src/nodes/gates.py-        # the failure (#164/#178). Decision is DEFERRED, not rejected: a system
+/Users/[REDACTED]/hc-grc/src/nodes/gates.py:        # prerequisite failure must PARK the run (route_after_gate_2 deferred→END),
+/Users/[REDACTED]/hc-grc/src/nodes/gates.py-        # not feed it into the operator reject→revise→re-review loop, which would
+/Users/[REDACTED]/hc-grc/src/nodes/gates.py-        # spin forever because re-running exploratory cannot satisfy an unmet
+/Users/[REDACTED]/hc-grc/src/nodes/gates.py-        # prerequisite (pass-3 #20). The operator re-triggers once prereqs are met.
+/Users/[REDACTED]/hc-grc/src/nodes/gates.py-        rationale = "Hard prerequisite failure: " + "; ".join(hard_failures)
+/Users/[REDACTED]/hc-grc/src/nodes/gates.py:        # 'deferred' is non-terminal, so this path re-runs whenever gate_2 is
+/Users/[REDACTED]/hc-grc/src/nodes/gates.py-        # re-entered (operator re-trigger after the park, or the reject→exploratory
+/Users/[REDACTED]/hc-grc/src/nodes/gates.py:        # →…→gate_2 loop) while prereqs are still unmet. failure_events has a plain
+/Users/[REDACTED]/hc-grc/src/nodes/gates.py-        # append reducer (state.py:86), so re-appending an identical
+/Users/[REDACTED]/hc-grc/src/nodes/gates.py-        # gate_prerequisite_failure on every re-entry duplicates the audit record
+/Users/[REDACTED]/hc-grc/src/nodes/gates.py-        # and biases the Agent Evolution failure-count signal. Only append when this
+/Users/[REDACTED]/hc-grc/src/nodes/gates.py-        # exact deferred prerequisite failure is not already recorded (#267).
+/Users/[REDACTED]/hc-grc/src/nodes/gates.py:        prior = state.get("gate_status", {}).get("gate_2") or {}
+/Users/[REDACTED]/hc-grc/src/nodes/gates.py-        already_recorded = (
+/Users/[REDACTED]/hc-grc/src/nodes/gates.py-            prior.get("decision") == "deferred" and prior.get("rationale") == rationale
+--
+/Users/[REDACTED]/hc-grc/src/nodes/gates.py-                {
+/Users/[REDACTED]/hc-grc/src/nodes/gates.py-                    "event_type": "gate_prerequisite_failure",
+/Users/[REDACTED]/hc-grc/src/nodes/gates.py:                    "gate_id": "gate_2",
+/Users/[REDACTED]/hc-grc/src/nodes/gates.py-                    "failures": hard_failures,
+/Users/[REDACTED]/hc-grc/src/nodes/gates.py-                    "run_id": state["run_id"],
+--
+/Users/[REDACTED]/hc-grc/src/nodes/gates.py-        from .gate_coordinator import gate_coordinator_node
+/Users/[REDACTED]/hc-grc/src/nodes/gates.py-        update.update(
+/Users/[REDACTED]/hc-grc/src/nodes/gates.py:            gate_coordinator_node(state, "gate_2", "deferred", rationale, reviewer="system")
+/Users/[REDACTED]/hc-grc/src/nodes/gates.py-        )
+/Users/[REDACTED]/hc-grc/src/nodes/gates.py-        return update
+--
+/Users/[REDACTED]/hc-grc/src/nodes/gates.py-
+/Users/[REDACTED]/hc-grc/src/nodes/gates.py-    proposal = _build_gate_proposal(
+/Users/[REDACTED]/hc-grc/src/nodes/gates.py:        gate_id="gate_2",
+/Users/[REDACTED]/hc-grc/src/nodes/gates.py:        title="Gate 2 — Exploratory → Confirmatory Transition",
+/Users/[REDACTED]/hc-grc/src/nodes/gates.py-        summary=(
+/Users/[REDACTED]/hc-grc/src/nodes/gates.py-            "Exploratory analysis is complete. Hypotheses are pre-registered. "
+/Users/[REDACTED]/hc-grc/src/nodes/gates.py-            "Approving this gate unlocks the test split for confirmatory analysis. "
+/Users/[REDACTED]/hc-grc/src/nodes/gates.py:            "This action is irreversible — test data cannot be re-locked after Gate 2 approves."
+/Users/[REDACTED]/hc-grc/src/nodes/gates.py-        ),
+/Users/[REDACTED]/hc-grc/src/nodes/gates.py-        checklist=checklist,
+--
+/Users/[REDACTED]/hc-grc/src/nodes/gates.py-    )
+/Users/[REDACTED]/hc-grc/src/nodes/gates.py-
+/Users/[REDACTED]/hc-grc/src/nodes/gates.py:    return _run_gate(state, "gate_2", proposal)
+/Users/[REDACTED]/hc-grc/src/nodes/gates.py-
+/Users/[REDACTED]/hc-grc/src/nodes/gates.py-
+--
+/Users/[REDACTED]/hc-grc/src/nodes/gates.py-    P1-P5 exploratory outputs and the formalized hypothesis set before any
+/Users/[REDACTED]/hc-grc/src/nodes/gates.py-    confirmatory test runs. Approving this gate:
+/Users/[REDACTED]/hc-grc/src/nodes/gates.py:      - Unlocks the test split (in addition to Gate 2 — DataStewardAgent
+/Users/[REDACTED]/hc-grc/src/nodes/gates.py:        requires BOTH gate_2 AND gate_3 approved before test split access)
+/Users/[REDACTED]/hc-grc/src/nodes/gates.py-      - Confirms that DIVERGENCE-01 operationalization is final
+/Users/[REDACTED]/hc-grc/src/nodes/gates.py-      - Confirms the hypothesis set is complete for pre-registration
+--
+/Users/[REDACTED]/hc-grc/src/nodes/gates.py-        "No analysis agent has received test split paths — all EDA artifacts reference "
+/Users/[REDACTED]/hc-grc/src/nodes/gates.py-        "train/val splits only. Test split data_steward access log shows zero test reads",
+/Users/[REDACTED]/hc-grc/src/nodes/gates.py:        "Data split seed hash unchanged since Gate 2",
+/Users/[REDACTED]/hc-grc/src/nodes/gates.py-        # ── License compliance ─────────────────────────────────────────────────
+/Users/[REDACTED]/hc-grc/src/nodes/gates.py-        "No SCF-derived embeddings, derived datasets, or analysis results have left the machine",
+--
+/Users/[REDACTED]/hc-grc/src/nodes/gates.py-        "No SCF-derived data in any external-facing artifact (CC BY-ND 4.0)",
+/Users/[REDACTED]/hc-grc/src/nodes/gates.py-        "All statistical outputs reference data/splits/test/ DVC hash — "
+/Users/[REDACTED]/hc-grc/src/nodes/gates.py:        "confirms correct test set was used (seed_hash unchanged from Gate 2)",
+/Users/[REDACTED]/hc-grc/src/nodes/gates.py-        # ── Documentation triggers ─────────────────────────────────────────────
+/Users/[REDACTED]/hc-grc/src/nodes/gates.py-        "Orchestrator has triggered Repo Documentation Agent for finding documentation "
+/Users/[REDACTED]/hc-grc/src/nodes/orchestrator.py-    "phase_1": (
+/Users/[REDACTED]/hc-grc/src/nodes/orchestrator.py-        "Phase 1 (current): data_pipeline → exploratory P1-P5 → "
+/Users/[REDACTED]/hc-grc/src/nodes/orchestrator.py:        "hypothesis_formalize → Gate 2 (exploratory→confirmatory; locks the "
+/Users/[REDACTED]/hc-grc/src/nodes/orchestrator.py-        "pre-registered hypothesis set and unlocks the test split — irreversible)."
+/Users/[REDACTED]/hc-grc/src/nodes/orchestrator.py-    ),
+/Users/[REDACTED]/hc-grc/src/nodes/orchestrator.py:    "phase_2": (
+/Users/[REDACTED]/hc-grc/src/nodes/orchestrator.py-        "Phase 2 (current): confirmatory subgraph → Gate 3/4/5. Test split is "
+/Users/[REDACTED]/hc-grc/src/nodes/orchestrator.py:        "live only after Gate 2 approval; every confirmatory script carries a "
+/Users/[REDACTED]/hc-grc/src/nodes/orchestrator.py-        "SAP header."
+/Users/[REDACTED]/hc-grc/src/nodes/orchestrator.py-    ),
+--
+/Users/[REDACTED]/hc-grc/src/nodes/orchestrator.py-
+/Users/[REDACTED]/hc-grc/src/nodes/orchestrator.py-
+/Users/[REDACTED]/hc-grc/src/nodes/orchestrator.py:def route_after_gate_2(state: HCGRCState) -> str:
+/Users/[REDACTED]/hc-grc/src/nodes/orchestrator.py:    """Conditional edge after Gate 2."""
+/Users/[REDACTED]/hc-grc/src/nodes/orchestrator.py-    gate_status = state.get("gate_status", {})
+/Users/[REDACTED]/hc-grc/src/nodes/orchestrator.py:    gate_2 = gate_status.get("gate_2")
+/Users/[REDACTED]/hc-grc/src/nodes/orchestrator.py-
+/Users/[REDACTED]/hc-grc/src/nodes/orchestrator.py:    if gate_2 is None:
+/Users/[REDACTED]/hc-grc/src/nodes/orchestrator.py-        return "end"
+/Users/[REDACTED]/hc-grc/src/nodes/orchestrator.py-
+/Users/[REDACTED]/hc-grc/src/nodes/orchestrator.py:    decision = gate_2.get("decision", "rejected")
+/Users/[REDACTED]/hc-grc/src/nodes/orchestrator.py-
+/Users/[REDACTED]/hc-grc/src/nodes/orchestrator.py-    if decision == "approved":
+/Users/[REDACTED]/hc-grc/src/agents/base.py-Phase guard:
+/Users/[REDACTED]/hc-grc/src/agents/base.py-  - Exploratory phase: access train_ids + val_ids only
+/Users/[REDACTED]/hc-grc/src/agents/base.py:  - Confirmatory phase: access test_ids — only after Gate 2 approval
+/Users/[REDACTED]/hc-grc/src/agents/base.py:  - Agents check state["gate_status"]["gate_2"].decision == "approved" before
+/Users/[REDACTED]/hc-grc/src/agents/base.py-    touching test split. Violation is a SAP violation.
+/Users/[REDACTED]/hc-grc/src/agents/base.py-
+--
+/Users/[REDACTED]/hc-grc/src/agents/base.py-
+/Users/[REDACTED]/hc-grc/src/agents/base.py-class SAPViolationError(Exception):
+/Users/[REDACTED]/hc-grc/src/agents/base.py:    """Raised when an agent attempts to access test data before Gate 2."""
+/Users/[REDACTED]/hc-grc/src/agents/base.py-    pass
+/Users/[REDACTED]/hc-grc/src/agents/base.py-
+--
+/Users/[REDACTED]/hc-grc/src/agents/base.py-def assert_gate2_approved(state: HCGRCState) -> None:
+/Users/[REDACTED]/hc-grc/src/agents/base.py-    """
+/Users/[REDACTED]/hc-grc/src/agents/base.py:    Raise SAPViolationError if Gate 2 has not been approved.
+/Users/[REDACTED]/hc-grc/src/agents/base.py-
+/Users/[REDACTED]/hc-grc/src/agents/base.py-    Must be called before any agent accesses test_ids or test split data.
+--
+/Users/[REDACTED]/hc-grc/src/agents/base.py-    """
+/Users/[REDACTED]/hc-grc/src/agents/base.py-    gate_status = state.get("gate_status", {})
+/Users/[REDACTED]/hc-grc/src/agents/base.py:    gate_2 = gate_status.get("gate_2")
+/Users/[REDACTED]/hc-grc/src/agents/base.py:    if gate_2 is None or gate_2.get("decision") != "approved":
+/Users/[REDACTED]/hc-grc/src/agents/base.py-        raise SAPViolationError(
+/Users/[REDACTED]/hc-grc/src/agents/base.py:            "Attempted to access test split before Gate 2 approval. "
+/Users/[REDACTED]/hc-grc/src/agents/base.py:            "This is a SAP violation. Gate 2 status: "
+/Users/[REDACTED]/hc-grc/src/agents/base.py:            f"{gate_2.get('decision') if gate_2 else 'not_run'}. "
+/Users/[REDACTED]/hc-grc/src/agents/base.py:            "Do not access test_ids or confirmatory split until gate_2.decision == 'approved'."
+/Users/[REDACTED]/hc-grc/src/agents/base.py-        )
+/Users/[REDACTED]/hc-grc/src/agents/base.py-
+--
+/Users/[REDACTED]/hc-grc/src/agents/base.py-
+/Users/[REDACTED]/hc-grc/src/agents/base.py-        The canonical phase values written by the graph are phase_0 / phase_1 /
+/Users/[REDACTED]/hc-grc/src/agents/base.py:        phase_2 (see state.Phase). Exploratory analysis runs in phase_0/phase_1;
+/Users/[REDACTED]/hc-grc/src/agents/base.py:        confirmatory analysis runs in phase_2, where the Gate 2 SAP firewall
+/Users/[REDACTED]/hc-grc/src/agents/base.py-        (assert_gate2_approved) must hold before any test-split access. The legacy
+/Users/[REDACTED]/hc-grc/src/agents/base.py-        string aliases "exploratory"/"confirmatory" are accepted defensively.
+/Users/[REDACTED]/hc-grc/src/agents/base.py:        (Hardening pass 1, #17: phase_2 previously hit the else-branch and raised,
+/Users/[REDACTED]/hc-grc/src/agents/base.py-        so run_confirmatory and the SAP firewall were unreachable.)
+/Users/[REDACTED]/hc-grc/src/agents/base.py-        """
+--
+/Users/[REDACTED]/hc-grc/src/agents/base.py-        if phase in ("phase_0", "phase_1", "exploratory"):
+/Users/[REDACTED]/hc-grc/src/agents/base.py-            return self.run_exploratory(state)
+/Users/[REDACTED]/hc-grc/src/agents/base.py:        elif phase in ("phase_2", "confirmatory"):
+/Users/[REDACTED]/hc-grc/src/agents/base.py-            assert_gate2_approved(state)
+/Users/[REDACTED]/hc-grc/src/agents/base.py-            return self.run_confirmatory(state)
+--
+/Users/[REDACTED]/hc-grc/src/agents/base.py-        Execute confirmatory analysis on test split for one hypothesis.
+/Users/[REDACTED]/hc-grc/src/agents/base.py-
+/Users/[REDACTED]/hc-grc/src/agents/base.py:        Gate 2 approval is verified by __call__ before this is invoked.
+/Users/[REDACTED]/hc-grc/src/agents/base.py-        Every confirmatory script must carry a SAP header:
+/Users/[REDACTED]/hc-grc/src/agents/base.py-          # SAP header: hypothesis_id=H[x].[n], test=[named test],
+/Users/[REDACTED]/hc-grc/src/agents/p4_risk_blindspot/agent.py-
+/Users/[REDACTED]/hc-grc/src/agents/p4_risk_blindspot/agent.py-# Coverage density threshold below which a risk category is a "blindspot"
+/Users/[REDACTED]/hc-grc/src/agents/p4_risk_blindspot/agent.py:# Pre-registered value — do not change after Gate 2
+/Users/[REDACTED]/hc-grc/src/agents/p4_risk_blindspot/agent.py-BLINDSPOT_COVERAGE_THRESHOLD = 0.30  # 30% of applicable controls cover the risk
+/Users/[REDACTED]/hc-grc/src/agents/p4_risk_blindspot/agent.py-
+--
+/Users/[REDACTED]/hc-grc/src/agents/p4_risk_blindspot/agent.py-        EXP_P4_blindspots.json       — risk categories below threshold, by framework combo
+/Users/[REDACTED]/hc-grc/src/agents/p4_risk_blindspot/agent.py-        EXP_P4_false_coverage.parquet — controls appearing to cover a risk but flagged by P3
+/Users/[REDACTED]/hc-grc/src/agents/p4_risk_blindspot/agent.py:        H4.x_results.parquet          — confirmatory results (post-Gate 2)
+/Users/[REDACTED]/hc-grc/src/agents/p4_risk_blindspot/agent.py-    """
+/Users/[REDACTED]/hc-grc/src/agents/p4_risk_blindspot/agent.py-
+--
+/Users/[REDACTED]/hc-grc/src/agents/p4_risk_blindspot/agent.py-        Execute one pre-registered confirmatory blindspot test on test split.
+/Users/[REDACTED]/hc-grc/src/agents/p4_risk_blindspot/agent.py-
+/Users/[REDACTED]/hc-grc/src/agents/p4_risk_blindspot/agent.py:        Gate 2 approval verified by BaseResearchAgent.__call__.
+/Users/[REDACTED]/hc-grc/src/agents/p4_risk_blindspot/agent.py-        Requires: state["current_hypothesis_id"] == "H4.[n]"
+/Users/[REDACTED]/hc-grc/src/agents/p4_risk_blindspot/agent.py-        """
+/Users/[REDACTED]/hc-grc/src/agents/p4_risk_blindspot/agent.py-        raise NotImplementedError(
+/Users/[REDACTED]/hc-grc/src/agents/p4_risk_blindspot/agent.py-            "P4 confirmatory analysis not yet implemented. "
+/Users/[REDACTED]/hc-grc/src/agents/p4_risk_blindspot/agent.py:            "Requires: Gate 2 approved, hypothesis_id in state."
+/Users/[REDACTED]/hc-grc/src/agents/p4_risk_blindspot/agent.py-        )
+/Users/[REDACTED]/hc-grc/src/agents/p4_risk_blindspot/agent.py-
+/Users/[REDACTED]/hc-grc/src/agents/p1_strm_nlp/agent.py-PHASE DISCIPLINE:
+/Users/[REDACTED]/hc-grc/src/agents/p1_strm_nlp/agent.py-  Exploratory: train + val splits. All outputs prefixed EXP_. No p-value decisions.
+/Users/[REDACTED]/hc-grc/src/agents/p1_strm_nlp/agent.py:  Confirmatory: test split only, after Gate 2. Every script has SAP header.
+/Users/[REDACTED]/hc-grc/src/agents/p1_strm_nlp/agent.py-
+/Users/[REDACTED]/hc-grc/src/agents/p1_strm_nlp/agent.py-NIST CLUSTER CONSTRAINT:
+--
+/Users/[REDACTED]/hc-grc/src/agents/p1_strm_nlp/agent.py-        EXP_P1_classification.parquet — predicted relationship types vs. STRM labels
+/Users/[REDACTED]/hc-grc/src/agents/p1_strm_nlp/agent.py-        EXP_P1_disagreements.md     — high-disagreement mappings for Gate 3 review
+/Users/[REDACTED]/hc-grc/src/agents/p1_strm_nlp/agent.py:        H1.x_results.parquet       — confirmatory per-hypothesis results (post-Gate 2)
+/Users/[REDACTED]/hc-grc/src/agents/p1_strm_nlp/agent.py-    """
+/Users/[REDACTED]/hc-grc/src/agents/p1_strm_nlp/agent.py-
+--
+/Users/[REDACTED]/hc-grc/src/agents/p1_strm_nlp/agent.py-        Execute one pre-registered confirmatory test on the test split.
+/Users/[REDACTED]/hc-grc/src/agents/p1_strm_nlp/agent.py-
+/Users/[REDACTED]/hc-grc/src/agents/p1_strm_nlp/agent.py:        Gate 2 approval verified by BaseResearchAgent.__call__ before this runs.
+/Users/[REDACTED]/hc-grc/src/agents/p1_strm_nlp/agent.py-        Requires: state["current_hypothesis_id"] == "H1.[n]"
+/Users/[REDACTED]/hc-grc/src/agents/p1_strm_nlp/agent.py-        Writes:   analysis/02-confirmatory/H1.[n]_results.parquet
+--
+/Users/[REDACTED]/hc-grc/src/agents/p1_strm_nlp/agent.py-        raise NotImplementedError(
+/Users/[REDACTED]/hc-grc/src/agents/p1_strm_nlp/agent.py-            "P1 confirmatory analysis not yet implemented. "
+/Users/[REDACTED]/hc-grc/src/agents/p1_strm_nlp/agent.py:            "Requires: Gate 2 approved, hypothesis_id in state, "
+/Users/[REDACTED]/hc-grc/src/agents/p1_strm_nlp/agent.py-            "test split accessible via DataSteward."
+/Users/[REDACTED]/hc-grc/src/agents/p1_strm_nlp/agent.py-        )
+/Users/[REDACTED]/hc-grc/src/agents/data_curation/agent.py-@dataclass
+/Users/[REDACTED]/hc-grc/src/agents/data_curation/agent.py-class CurationReport:
+/Users/[REDACTED]/hc-grc/src/agents/data_curation/agent.py:    """Summary produced by a curation run. Surfaces in lab notebook and Gate 2 review."""
+/Users/[REDACTED]/hc-grc/src/agents/data_curation/agent.py-
+/Users/[REDACTED]/hc-grc/src/agents/data_curation/agent.py-    records_before: int = 0
+--
+/Users/[REDACTED]/hc-grc/src/agents/data_curation/agent.py-
+/Users/[REDACTED]/hc-grc/src/agents/data_curation/agent.py-        If > 5% of STRM mappings removed: halt and surface to human before analysis
+/Users/[REDACTED]/hc-grc/src/agents/data_curation/agent.py:        proceeds. This is a Gate 2 blocker.
+/Users/[REDACTED]/hc-grc/src/agents/data_curation/agent.py-
+/Users/[REDACTED]/hc-grc/src/agents/data_curation/agent.py-        Returns partial HCGRCState update:
+--
+/Users/[REDACTED]/hc-grc/src/agents/data_curation/agent.py-
+/Users/[REDACTED]/hc-grc/src/agents/data_curation/agent.py-        Per AGENT.md: > 5% removed triggers human review before analysis proceeds.
+/Users/[REDACTED]/hc-grc/src/agents/data_curation/agent.py:        Raises ValueError — calling node must propagate to Gate 2 blocker.
+/Users/[REDACTED]/hc-grc/src/agents/data_curation/agent.py-        """
+/Users/[REDACTED]/hc-grc/src/agents/data_curation/agent.py-        if report.removal_fraction > _MAX_REMOVAL_FRACTION:
+/Users/[REDACTED]/hc-grc/src/agents/hypothesis_formalizer/agent.py-SAP-compatible hypotheses (H[module].[n] format). The formalized hypothesis
+/Users/[REDACTED]/hc-grc/src/agents/hypothesis_formalizer/agent.py-includes: the null, the alternative, the named test, the decision rule, and
+/Users/[REDACTED]/hc-grc/src/agents/hypothesis_formalizer/agent.py:the effect size threshold. Output is added to the SAP at Gate 2.
+/Users/[REDACTED]/hc-grc/src/agents/hypothesis_formalizer/agent.py-
+/Users/[REDACTED]/hc-grc/src/agents/hypothesis_formalizer/agent.py-PROTECTED AGENT: Prompts may not be modified autonomously by Agent Evolution.
+--
+/Users/[REDACTED]/hc-grc/src/agents/hypothesis_formalizer/agent.py-
+/Users/[REDACTED]/hc-grc/src/agents/hypothesis_formalizer/agent.py-WORKFLOW POSITION:
+/Users/[REDACTED]/hc-grc/src/agents/hypothesis_formalizer/agent.py:  EDA findings → Hypothesis Formalizer → SAP (Gate 2 package)
+/Users/[REDACTED]/hc-grc/src/agents/hypothesis_formalizer/agent.py-  → Statistical Analyst (Phase 2 confirmatory tests)
+/Users/[REDACTED]/hc-grc/src/agents/hypothesis_formalizer/agent.py-
+--
+/Users/[REDACTED]/hc-grc/src/agents/hypothesis_formalizer/agent.py-
+/Users/[REDACTED]/hc-grc/src/agents/hypothesis_formalizer/agent.py-GATE 2 PACKAGE:
+/Users/[REDACTED]/hc-grc/src/agents/hypothesis_formalizer/agent.py:  The Gate 2 proposal contains the formalized hypothesis set. The operator
+/Users/[REDACTED]/hc-grc/src/agents/hypothesis_formalizer/agent.py:  approves the hypothesis set as part of Gate 2. Any post-Gate-2 hypothesis
+/Users/[REDACTED]/hc-grc/src/agents/hypothesis_formalizer/agent.py-  addition requires a SAP amendment entry in the Preregistration Ledger.
+/Users/[REDACTED]/hc-grc/src/agents/hypothesis_formalizer/agent.py-
+--
+/Users/[REDACTED]/hc-grc/src/agents/hypothesis_formalizer/agent.py-    A single formalized hypothesis for the SAP.
+/Users/[REDACTED]/hc-grc/src/agents/hypothesis_formalizer/agent.py-
+/Users/[REDACTED]/hc-grc/src/agents/hypothesis_formalizer/agent.py:    All fields required before this hypothesis is added to the Gate 2 package.
+/Users/[REDACTED]/hc-grc/src/agents/hypothesis_formalizer/agent.py-    Field names match the Instructor schema enforced at the output boundary —
+/Users/[REDACTED]/hc-grc/src/agents/hypothesis_formalizer/agent.py-    see agents/01-research/hypothesis-formalizer/AGENT.md Skills section.
+--
+/Users/[REDACTED]/hc-grc/src/agents/hypothesis_formalizer/agent.py-    Hypothesis formalizer — translates EDA findings to SAP hypotheses.
+/Users/[REDACTED]/hc-grc/src/agents/hypothesis_formalizer/agent.py-
+/Users/[REDACTED]/hc-grc/src/agents/hypothesis_formalizer/agent.py:    Runs only in exploratory phase (before Gate 2).
+/Users/[REDACTED]/hc-grc/src/agents/hypothesis_formalizer/agent.py:    Output is appended to the SAP and included in the Gate 2 package.
+/Users/[REDACTED]/hc-grc/src/agents/hypothesis_formalizer/agent.py-    """
+/Users/[REDACTED]/hc-grc/src/agents/hypothesis_formalizer/agent.py-
+--
+/Users/[REDACTED]/hc-grc/src/agents/hypothesis_formalizer/agent.py-    def run_exploratory(self, state: HCGRCState) -> dict[str, Any]:
+/Users/[REDACTED]/hc-grc/src/agents/hypothesis_formalizer/agent.py-        """
+/Users/[REDACTED]/hc-grc/src/agents/hypothesis_formalizer/agent.py:        Formalize hypotheses from EDA findings for Gate 2 package.
+/Users/[REDACTED]/hc-grc/src/agents/hypothesis_formalizer/agent.py-
+/Users/[REDACTED]/hc-grc/src/agents/hypothesis_formalizer/agent.py:        Must NOT use test data — all hypotheses formalized before Gate 2.
+/Users/[REDACTED]/hc-grc/src/agents/hypothesis_formalizer/agent.py-        Must NOT use p-values from exploratory analysis to select hypotheses (HARKing).
+/Users/[REDACTED]/hc-grc/src/agents/hypothesis_formalizer/agent.py-        Effect size thresholds must be grounded in domain knowledge or prior literature,
+--
+/Users/[REDACTED]/hc-grc/src/agents/hypothesis_formalizer/agent.py-            "(2) formalize each research question into H[module].[n] format, "
+/Users/[REDACTED]/hc-grc/src/agents/hypothesis_formalizer/agent.py-            "(3) specify named test, decision rule, and effect size threshold, "
+/Users/[REDACTED]/hc-grc/src/agents/hypothesis_formalizer/agent.py:            "(4) append to SAP markdown, (5) return hypothesis list for Gate 2 package."
+/Users/[REDACTED]/hc-grc/src/agents/hypothesis_formalizer/agent.py-        )
+/Users/[REDACTED]/hc-grc/src/agents/hypothesis_formalizer/agent.py-
+--
+/Users/[REDACTED]/hc-grc/src/agents/hypothesis_formalizer/agent.py-        Hypothesis Formalizer does not run in confirmatory phase.
+/Users/[REDACTED]/hc-grc/src/agents/hypothesis_formalizer/agent.py-
+/Users/[REDACTED]/hc-grc/src/agents/hypothesis_formalizer/agent.py:        Adding hypotheses after Gate 2 requires a SAP amendment — not this agent.
+/Users/[REDACTED]/hc-grc/src/agents/hypothesis_formalizer/agent.py-        Raises SAPViolationError.
+/Users/[REDACTED]/hc-grc/src/agents/hypothesis_formalizer/agent.py-        """
+/Users/[REDACTED]/hc-grc/src/agents/hypothesis_formalizer/agent.py-        raise SAPViolationError(
+/Users/[REDACTED]/hc-grc/src/agents/hypothesis_formalizer/agent.py:            "Hypothesis Formalizer may not add hypotheses after Gate 2. "
+/Users/[REDACTED]/hc-grc/src/agents/hypothesis_formalizer/agent.py:            "All pre-registered hypotheses must be formalized before Gate 2 approval. "
+/Users/[REDACTED]/hc-grc/src/agents/hypothesis_formalizer/agent.py-            "Post-Gate-2 additions require a LEDGER sap-amendment entry and explicit "
+/Users/[REDACTED]/hc-grc/src/agents/hypothesis_formalizer/agent.py-            "justification that this does not constitute HARKing."
+--
+/Users/[REDACTED]/hc-grc/src/agents/hypothesis_formalizer/agent.py-        If exploratory_p_values are provided, log a warning if the hypothesis
+/Users/[REDACTED]/hc-grc/src/agents/hypothesis_formalizer/agent.py-        direction matches a significant exploratory finding — this is not a block
+/Users/[REDACTED]/hc-grc/src/agents/hypothesis_formalizer/agent.py:        but is flagged for Gate 2 human review.
+/Users/[REDACTED]/hc-grc/src/agents/hypothesis_formalizer/agent.py-        """
+/Users/[REDACTED]/hc-grc/src/agents/hypothesis_formalizer/agent.py-        if exploratory_p_values:
+/Users/[REDACTED]/hc-grc/src/agents/hypothesis_formalizer/agent.py:            # Log the association for Gate 2 reviewer — do not block
+/Users/[REDACTED]/hc-grc/src/agents/hypothesis_formalizer/agent.py-            pass
+/Users/[REDACTED]/hc-grc/src/agents/embedding_agent/agent.py-Model selection is governed by LEDGER-0002 (model candidates pre-registered) and
+/Users/[REDACTED]/hc-grc/src/agents/embedding_agent/agent.py-configs/platform.yaml (model_candidates section). Primary model designation is a
+/Users/[REDACTED]/hc-grc/src/agents/embedding_agent/agent.py:Gate 2 event. All candidates in the LEDGER-0002 race must be evaluated in Phase 1
+/Users/[REDACTED]/hc-grc/src/agents/embedding_agent/agent.py-before designation.
+/Users/[REDACTED]/hc-grc/src/agents/embedding_agent/agent.py-
+--
+/Users/[REDACTED]/hc-grc/src/agents/embedding_agent/agent.py-    """
+/Users/[REDACTED]/hc-grc/src/agents/embedding_agent/agent.py-    Provenance record for an embedding run. Written to state and to disk.
+/Users/[REDACTED]/hc-grc/src/agents/embedding_agent/agent.py:    Required at Gate 2 to confirm which model produced the embeddings.
+/Users/[REDACTED]/hc-grc/src/agents/embedding_agent/agent.py-    """
+/Users/[REDACTED]/hc-grc/src/agents/embedding_agent/agent.py-
+--
+/Users/[REDACTED]/hc-grc/src/agents/embedding_agent/agent.py-          1. Load primary model candidate from configs/platform.yaml
+/Users/[REDACTED]/hc-grc/src/agents/embedding_agent/agent.py-             (model_candidates section — LEDGER-0002 candidate set)
+/Users/[REDACTED]/hc-grc/src/agents/embedding_agent/agent.py:             NOTE: primary model is NULL until Gate 2 designation. Phase 1 runs
+/Users/[REDACTED]/hc-grc/src/agents/embedding_agent/agent.py-             all 5 candidates (3 general + 2 diversity anchors) and records F1
+/Users/[REDACTED]/hc-grc/src/agents/embedding_agent/agent.py:             scores to inform Gate 2 model selection.
+/Users/[REDACTED]/hc-grc/src/agents/embedding_agent/agent.py-          2. Batch-encode curated control text (GPU if available, CPU fallback)
+/Users/[REDACTED]/hc-grc/src/agents/embedding_agent/agent.py-          3. Build Qdrant collection: hcgrc_controls (1,400+ controls)
+--
+/Users/[REDACTED]/hc-grc/src/agents/embedding_agent/agent.py-        If any model achieves F1 < 0.70 on STRM classification (evaluated by
+/Users/[REDACTED]/hc-grc/src/agents/embedding_agent/agent.py-        P1 agent after EDA), triggers domain fine-tuning via Team 06 + human
+/Users/[REDACTED]/hc-grc/src/agents/embedding_agent/agent.py:        approval before Gate 2 model designation.
+/Users/[REDACTED]/hc-grc/src/agents/embedding_agent/agent.py-
+/Users/[REDACTED]/hc-grc/src/agents/embedding_agent/agent.py-        Returns partial HCGRCState update:
+/Users/[REDACTED]/hc-grc/src/agents/statistical_analyst/agent.py-    Confirmatory statistical testing agent.
+/Users/[REDACTED]/hc-grc/src/agents/statistical_analyst/agent.py-
+/Users/[REDACTED]/hc-grc/src/agents/statistical_analyst/agent.py:    Does not run in exploratory phase — raises SAPViolationError if called before Gate 2.
+/Users/[REDACTED]/hc-grc/src/agents/statistical_analyst/agent.py-    All tests are pre-specified in the SAP. Any deviation is a SAP violation.
+/Users/[REDACTED]/hc-grc/src/agents/statistical_analyst/agent.py-    """
+--
+/Users/[REDACTED]/hc-grc/src/agents/statistical_analyst/agent.py-        Statistical Analyst does not run in exploratory phase.
+/Users/[REDACTED]/hc-grc/src/agents/statistical_analyst/agent.py-
+/Users/[REDACTED]/hc-grc/src/agents/statistical_analyst/agent.py:        Raises SAPViolationError — confirmatory testing before Gate 2 is a protocol violation.
+/Users/[REDACTED]/hc-grc/src/agents/statistical_analyst/agent.py-        """
+/Users/[REDACTED]/hc-grc/src/agents/statistical_analyst/agent.py-        raise SAPViolationError(
+/Users/[REDACTED]/hc-grc/src/agents/statistical_analyst/agent.py:            "Statistical Analyst may not run before Gate 2 approval. "
+/Users/[REDACTED]/hc-grc/src/agents/statistical_analyst/agent.py-            "Confirmatory testing before the exploratory/confirmatory split is locked "
+/Users/[REDACTED]/hc-grc/src/agents/statistical_analyst/agent.py-            "constitutes pre-testing and invalidates the confirmatory analysis. "
+/Users/[REDACTED]/hc-grc/src/agents/statistical_analyst/agent.py:            "Wait for Gate 2 before calling this agent."
+/Users/[REDACTED]/hc-grc/src/agents/statistical_analyst/agent.py-        )
+/Users/[REDACTED]/hc-grc/src/agents/statistical_analyst/agent.py-
+--
+/Users/[REDACTED]/hc-grc/src/agents/statistical_analyst/agent.py-        Execute one pre-registered confirmatory test.
+/Users/[REDACTED]/hc-grc/src/agents/statistical_analyst/agent.py-
+/Users/[REDACTED]/hc-grc/src/agents/statistical_analyst/agent.py:        Gate 2 approval verified by BaseResearchAgent.__call__.
+/Users/[REDACTED]/hc-grc/src/agents/statistical_analyst/agent.py-        Requires: state["current_hypothesis_id"] == "H[module].[n]"
+/Users/[REDACTED]/hc-grc/src/agents/statistical_analyst/agent.py-        Verifies: hypothesis_id exists in SAP, test matches SAP spec.
+/Users/[REDACTED]/hc-grc/src/agents/p3_regulatory_convergence/agent.py-        EXP_P3_atlas.json           — structured atlas: genuine, terminological, divergence
+/Users/[REDACTED]/hc-grc/src/agents/p3_regulatory_convergence/agent.py-        EXP_P3_heatmap.parquet      — input to Visualization Agent
+/Users/[REDACTED]/hc-grc/src/agents/p3_regulatory_convergence/agent.py:        H3.x_results.parquet        — confirmatory results (post-Gate 2)
+/Users/[REDACTED]/hc-grc/src/agents/p3_regulatory_convergence/agent.py-    """
+/Users/[REDACTED]/hc-grc/src/agents/p3_regulatory_convergence/agent.py-
+--
+/Users/[REDACTED]/hc-grc/src/agents/p3_regulatory_convergence/agent.py-        Execute one pre-registered confirmatory convergence test on test split.
+/Users/[REDACTED]/hc-grc/src/agents/p3_regulatory_convergence/agent.py-
+/Users/[REDACTED]/hc-grc/src/agents/p3_regulatory_convergence/agent.py:        Gate 2 approval verified by BaseResearchAgent.__call__.
+/Users/[REDACTED]/hc-grc/src/agents/p3_regulatory_convergence/agent.py-        Requires: state["current_hypothesis_id"] == "H3.[n]"
+/Users/[REDACTED]/hc-grc/src/agents/p3_regulatory_convergence/agent.py-        """
+/Users/[REDACTED]/hc-grc/src/agents/p3_regulatory_convergence/agent.py-        raise NotImplementedError(
+/Users/[REDACTED]/hc-grc/src/agents/p3_regulatory_convergence/agent.py-            "P3 confirmatory analysis not yet implemented. "
+/Users/[REDACTED]/hc-grc/src/agents/p3_regulatory_convergence/agent.py:            "Requires: Gate 2 approved, hypothesis_id in state."
+/Users/[REDACTED]/hc-grc/src/agents/p3_regulatory_convergence/agent.py-        )
+/Users/[REDACTED]/hc-grc/src/agents/p3_regulatory_convergence/agent.py-
+/Users/[REDACTED]/hc-grc/src/agents/data_steward/agent.py-the train/validation/test split (seed from configs/seeds.yaml), and enforces access
+/Users/[REDACTED]/hc-grc/src/agents/data_steward/agent.py-control: exploratory agents receive train + val only; test split is unlocked only
+/Users/[REDACTED]/hc-grc/src/agents/data_steward/agent.py:after BOTH Gate 2 (SAP lock) AND Gate 3 (EDA review) are confirmed.
+/Users/[REDACTED]/hc-grc/src/agents/data_steward/agent.py-
+/Users/[REDACTED]/hc-grc/src/agents/data_steward/agent.py-Phase 1 stub: run() and get_split_paths() raise NotImplementedError.
+--
+/Users/[REDACTED]/hc-grc/src/agents/data_steward/agent.py-    Output of the Great Expectations validation suite.
+/Users/[REDACTED]/hc-grc/src/agents/data_steward/agent.py-
+/Users/[REDACTED]/hc-grc/src/agents/data_steward/agent.py:    surfaced at Gate 2 for operator review. Critical failures block Gate 2.
+/Users/[REDACTED]/hc-grc/src/agents/data_steward/agent.py-    """
+/Users/[REDACTED]/hc-grc/src/agents/data_steward/agent.py-
+--
+/Users/[REDACTED]/hc-grc/src/agents/data_steward/agent.py-@dataclass
+/Users/[REDACTED]/hc-grc/src/agents/data_steward/agent.py-class SplitRecord:
+/Users/[REDACTED]/hc-grc/src/agents/data_steward/agent.py:    """Metadata for a completed split operation. Immutable after Gate 2."""
+/Users/[REDACTED]/hc-grc/src/agents/data_steward/agent.py-
+/Users/[REDACTED]/hc-grc/src/agents/data_steward/agent.py-    seed: int = 0                  # from configs/seeds.yaml — changing post-Gate-2 is SAP violation
+--
+/Users/[REDACTED]/hc-grc/src/agents/data_steward/agent.py-
+/Users/[REDACTED]/hc-grc/src/agents/data_steward/agent.py-    The split seed in configs/seeds.yaml is the single most consequential
+/Users/[REDACTED]/hc-grc/src/agents/data_steward/agent.py:    configuration value in the platform. Changing it after Gate 2 is a
+/Users/[REDACTED]/hc-grc/src/agents/data_steward/agent.py-    direct SAP violation (equivalent to switching hypothesis tests after
+/Users/[REDACTED]/hc-grc/src/agents/data_steward/agent.py-    seeing the results). The Steward records the seed hash at split creation
+--
+/Users/[REDACTED]/hc-grc/src/agents/data_steward/agent.py-
+/Users/[REDACTED]/hc-grc/src/agents/data_steward/agent.py-    Behavioral constraints (per AGENT.md):
+/Users/[REDACTED]/hc-grc/src/agents/data_steward/agent.py:      - Never provide test-split access before BOTH Gate 2 AND Gate 3 are confirmed
+/Users/[REDACTED]/hc-grc/src/agents/data_steward/agent.py-      - Never silently resolve a quality failure — all anomalies in codebook
+/Users/[REDACTED]/hc-grc/src/agents/data_steward/agent.py:      - Never modify the split seed after Gate 2
+/Users/[REDACTED]/hc-grc/src/agents/data_steward/agent.py:      - Never re-run the split after Gate 2 without a full protocol amendment
+/Users/[REDACTED]/hc-grc/src/agents/data_steward/agent.py-      - Codebook updated before splits distributed to analysis agents
+/Users/[REDACTED]/hc-grc/src/agents/data_steward/agent.py-    """
+--
+/Users/[REDACTED]/hc-grc/src/agents/data_steward/agent.py-        Return file paths for the requested split.
+/Users/[REDACTED]/hc-grc/src/agents/data_steward/agent.py-
+/Users/[REDACTED]/hc-grc/src/agents/data_steward/agent.py:        Test split access requires BOTH gates confirmed — Gate 2 alone is NOT
+/Users/[REDACTED]/hc-grc/src/agents/data_steward/agent.py-        sufficient. The Data Steward AGENT.md is explicit: EDA review (Gate 3)
+/Users/[REDACTED]/hc-grc/src/agents/data_steward/agent.py-        must complete before the test split is unlocked. This is the mechanism
+--
+/Users/[REDACTED]/hc-grc/src/agents/data_steward/agent.py-
+/Users/[REDACTED]/hc-grc/src/agents/data_steward/agent.py-        Raises SAPViolationError if:
+/Users/[REDACTED]/hc-grc/src/agents/data_steward/agent.py:          - test split requested before Gate 2 (SAP lock)
+/Users/[REDACTED]/hc-grc/src/agents/data_steward/agent.py-          - test split requested before Gate 3 (EDA review)
+/Users/[REDACTED]/hc-grc/src/agents/data_steward/agent.py-
+--
+/Users/[REDACTED]/hc-grc/src/agents/data_steward/agent.py-            gate_status = state.get("gate_status", {})
+/Users/[REDACTED]/hc-grc/src/agents/data_steward/agent.py-
+/Users/[REDACTED]/hc-grc/src/agents/data_steward/agent.py:            gate_2 = gate_status.get("gate_2", {})
+/Users/[REDACTED]/hc-grc/src/agents/data_steward/agent.py:            if gate_2.get("decision") != "approved":
+/Users/[REDACTED]/hc-grc/src/agents/data_steward/agent.py-                raise SAPViolationError(
+/Users/[REDACTED]/hc-grc/src/agents/data_steward/agent.py:                    "Test split access attempted before Gate 2 (SAP lock). "
+/Users/[REDACTED]/hc-grc/src/agents/data_steward/agent.py:                    "Gate 2 must be approved before test split is available. "
+/Users/[REDACTED]/hc-grc/src/agents/data_steward/agent.py:                    f"Current gate_2 decision: {gate_2.get('decision', 'not_run')}. "
+/Users/[REDACTED]/hc-grc/src/agents/data_steward/agent.py-                    "This is a SAP violation."
+/Users/[REDACTED]/hc-grc/src/agents/data_steward/agent.py-                )
+--
+/Users/[REDACTED]/hc-grc/src/agents/data_steward/agent.py-                raise SAPViolationError(
+/Users/[REDACTED]/hc-grc/src/agents/data_steward/agent.py-                    "Test split access attempted before Gate 3 (EDA review complete). "
+/Users/[REDACTED]/hc-grc/src/agents/data_steward/agent.py:                    "Both Gate 2 (SAP lock) AND Gate 3 (EDA review) must be approved "
+/Users/[REDACTED]/hc-grc/src/agents/data_steward/agent.py-                    "before the test split is unlocked. "
+/Users/[REDACTED]/hc-grc/src/agents/data_steward/agent.py-                    f"Current gate_3 decision: {gate_3.get('decision', 'not_run')}. "
+--
+/Users/[REDACTED]/hc-grc/src/agents/data_steward/agent.py-    def _assert_seed_unchanged(self, current_seed_hash: str, recorded_seed_hash: str) -> None:
+/Users/[REDACTED]/hc-grc/src/agents/data_steward/agent.py-        """
+/Users/[REDACTED]/hc-grc/src/agents/data_steward/agent.py:        Verify the split seed has not changed since Gate 2.
+/Users/[REDACTED]/hc-grc/src/agents/data_steward/agent.py-
+/Users/[REDACTED]/hc-grc/src/agents/data_steward/agent.py:        Changing the seed after Gate 2 is a SAP violation equivalent to selecting
+/Users/[REDACTED]/hc-grc/src/agents/data_steward/agent.py-        a different test set after seeing confirmatory results.
+/Users/[REDACTED]/hc-grc/src/agents/data_steward/agent.py-        Raises RuntimeError if seed hash has changed.
+--
+/Users/[REDACTED]/hc-grc/src/agents/data_steward/agent.py-        if current_seed_hash != recorded_seed_hash:
+/Users/[REDACTED]/hc-grc/src/agents/data_steward/agent.py-            raise RuntimeError(
+/Users/[REDACTED]/hc-grc/src/agents/data_steward/agent.py:                "Split seed hash mismatch — seed has changed since Gate 2. "
+/Users/[REDACTED]/hc-grc/src/agents/data_steward/agent.py:                "This is a SAP violation. The split is frozen at Gate 2. "
+/Users/[REDACTED]/hc-grc/src/agents/data_steward/agent.py-                "Any re-split requires a full protocol amendment and new pre-registration. "
+/Users/[REDACTED]/hc-grc/src/agents/data_steward/agent.py-                f"Expected: {recorded_seed_hash}, got: {current_seed_hash}"
+/Users/[REDACTED]/hc-grc/src/agents/p2_control_topology/agent.py-        EXP_P2_communities.parquet   — community ID, size, intra/inter-community density
+/Users/[REDACTED]/hc-grc/src/agents/p2_control_topology/agent.py-        EXP_P2_hubs.md               — top 50 most central controls with annotations
+/Users/[REDACTED]/hc-grc/src/agents/p2_control_topology/agent.py:        H2.x_results.parquet         — confirmatory results (post-Gate 2)
+/Users/[REDACTED]/hc-grc/src/agents/p2_control_topology/agent.py-    """
+/Users/[REDACTED]/hc-grc/src/agents/p2_control_topology/agent.py-
+--
+/Users/[REDACTED]/hc-grc/src/agents/p2_control_topology/agent.py-        Execute one pre-registered confirmatory test on test split graph.
+/Users/[REDACTED]/hc-grc/src/agents/p2_control_topology/agent.py-
+/Users/[REDACTED]/hc-grc/src/agents/p2_control_topology/agent.py:        Gate 2 approval verified by BaseResearchAgent.__call__.
+/Users/[REDACTED]/hc-grc/src/agents/p2_control_topology/agent.py-        Requires: state["current_hypothesis_id"] == "H2.[n]"
+/Users/[REDACTED]/hc-grc/src/agents/p2_control_topology/agent.py-        """
+/Users/[REDACTED]/hc-grc/src/agents/p2_control_topology/agent.py-        raise NotImplementedError(
+/Users/[REDACTED]/hc-grc/src/agents/p2_control_topology/agent.py-            "P2 confirmatory analysis not yet implemented. "
+/Users/[REDACTED]/hc-grc/src/agents/p2_control_topology/agent.py:            "Requires: Gate 2 approved, hypothesis_id in state."
+/Users/[REDACTED]/hc-grc/src/agents/p2_control_topology/agent.py-        )
+/Users/[REDACTED]/hc-grc/src/agents/p2_control_topology/agent.py-
+/Users/[REDACTED]/hc-grc/src/agents/p5_ai_governance/agent.py-  Parameters are tuned during exploratory phase — final values logged to MLflow
+/Users/[REDACTED]/hc-grc/src/agents/p5_ai_governance/agent.py-  before any confirmatory clustering runs. Parameter decisions are logged to
+/Users/[REDACTED]/hc-grc/src/agents/p5_ai_governance/agent.py:  the Preregistration Ledger at Gate 2 (part of the model/parameter lock).
+/Users/[REDACTED]/hc-grc/src/agents/p5_ai_governance/agent.py-
+/Users/[REDACTED]/hc-grc/src/agents/p5_ai_governance/agent.py-HDBSCAN PARAMETERS:
+--
+/Users/[REDACTED]/hc-grc/src/agents/p5_ai_governance/agent.py-        EXP_P5_umap.parquet             — 2D + 3D UMAP projections
+/Users/[REDACTED]/hc-grc/src/agents/p5_ai_governance/agent.py-        EXP_P5_taxonomy_comparison.md   — ARI/NMI: empirical clusters vs. SCF domains
+/Users/[REDACTED]/hc-grc/src/agents/p5_ai_governance/agent.py:        H5.x_results.parquet            — confirmatory results (post-Gate 2)
+/Users/[REDACTED]/hc-grc/src/agents/p5_ai_governance/agent.py-    """
+/Users/[REDACTED]/hc-grc/src/agents/p5_ai_governance/agent.py-
+--
+/Users/[REDACTED]/hc-grc/src/agents/p5_ai_governance/agent.py-        Must NOT access test_ids.
+/Users/[REDACTED]/hc-grc/src/agents/p5_ai_governance/agent.py-        All outputs EXP_-prefixed.
+/Users/[REDACTED]/hc-grc/src/agents/p5_ai_governance/agent.py:        UMAP parameters tuned here — final values logged to MLflow before Gate 2.
+/Users/[REDACTED]/hc-grc/src/agents/p5_ai_governance/agent.py-        Noise points (HDBSCAN label = -1) reported as unclustered, never force-assigned.
+/Users/[REDACTED]/hc-grc/src/agents/p5_ai_governance/agent.py-        """
+--
+/Users/[REDACTED]/hc-grc/src/agents/p5_ai_governance/agent.py-        Execute one pre-registered confirmatory clustering test on test split embeddings.
+/Users/[REDACTED]/hc-grc/src/agents/p5_ai_governance/agent.py-
+/Users/[REDACTED]/hc-grc/src/agents/p5_ai_governance/agent.py:        Gate 2 approval verified by BaseResearchAgent.__call__.
+/Users/[REDACTED]/hc-grc/src/agents/p5_ai_governance/agent.py-        Requires: state["current_hypothesis_id"] == "H5.[n]"
+/Users/[REDACTED]/hc-grc/src/agents/p5_ai_governance/agent.py:        UMAP + HDBSCAN parameters locked at Gate 2 — must not re-tune on test split.
+/Users/[REDACTED]/hc-grc/src/agents/p5_ai_governance/agent.py-        """
+/Users/[REDACTED]/hc-grc/src/agents/p5_ai_governance/agent.py-        raise NotImplementedError(
+/Users/[REDACTED]/hc-grc/src/agents/p5_ai_governance/agent.py-            "P5 confirmatory analysis not yet implemented. "
+/Users/[REDACTED]/hc-grc/src/agents/p5_ai_governance/agent.py:            "Requires: Gate 2 approved, parameters locked in state, hypothesis_id set."
+/Users/[REDACTED]/hc-grc/src/agents/p5_ai_governance/agent.py-        )
+/Users/[REDACTED]/hc-grc/src/agents/p5_ai_governance/agent.py-

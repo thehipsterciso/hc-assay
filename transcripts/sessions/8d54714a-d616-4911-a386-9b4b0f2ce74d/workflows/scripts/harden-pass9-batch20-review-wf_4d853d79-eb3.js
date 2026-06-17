@@ -13,7 +13,7 @@ const VERDICT = {
   },
   required: ['unit', 'resolves', 'introduces_regression', 'confidence', 'severity_if_problem', 'findings', 'recommended_action'],
 }
-const REPO = '/Users/thomasjones/hc-grc'
+const REPO = '/Users/[REDACTED]/hc-grc'
 const UNITS = [
   { unit: 'resume_run gate_id required', files: 'src/graph.py, tests/test_phase0/test_gates_hardening.py', intent: 'gate_id is now a REQUIRED keyword arg (was optional default None, which silently disabled the gate-correlation guard). resume_value always carries gate_id. Tests updated to pass gate_id="gate_1"; new test asserts TypeError when omitted.', verify: 'Confirm omitting gate_id now raises TypeError (kw-only no default); the guard at gates.py _run_gate is now always reachable; auto-deriving was correctly NOT done (would make the guard a no-op); all call sites (only tests) updated; no other src caller of resume_run exists.' },
   { unit: 'setuptools src-layout packaging', files: 'pyproject.toml', intent: 'Added [tool.setuptools.packages.find] where=["."] include=["src*"] so the wheel ships `src` as the package (its modules use relative imports requiring src as root); flat auto-discovery previously flattened src/ contents to top-level, breaking `from ...state` in a wheel and shipping tests/.', verify: 'Confirm the config ships `src` + subpackages (not flattened) and excludes tests; confirm it does not break the editable/dev or CI workflow (CI runs pytest from source via conftest path injection, does not pip-install the package). The author already built a wheel and imported it in a clean venv — deep relative imports resolved (only a missing numpy dep stopped it). Sanity-check the reasoning and flag any way this breaks dev/CI.' },

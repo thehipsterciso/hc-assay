@@ -7,7 +7,7 @@ export const meta = {
   ],
 }
 
-const REPO = '/Users/thomasjones/hc-assay'
+const REPO = '/Users/[REDACTED]/hc-assay'
 
 const COMMON = `Repo: ${REPO} (branch harden/pass-3). It is a dataset-agnostic BLUEPRINT engine for rigorous empirical ML/NLP. Hard rules: the engine imports NO dataset/adapter specifics (ADR-0002); all engine computation/storage/observability + the bulk reasoning tier run on-box (ADR-0003) while the optional high-stakes tier is off-box by design; optional heavy backends are lazy-imported behind extras (ADR-0006).
 

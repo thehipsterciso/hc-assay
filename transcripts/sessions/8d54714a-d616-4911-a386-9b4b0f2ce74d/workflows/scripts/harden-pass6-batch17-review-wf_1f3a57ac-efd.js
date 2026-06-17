@@ -18,7 +18,7 @@ const VERDICT = {
   required: ['unit', 'resolves', 'introduces_regression', 'confidence', 'severity_if_problem', 'findings', 'recommended_action'],
 }
 
-const REPO = '/Users/thomasjones/hc-grc'
+const REPO = '/Users/[REDACTED]/hc-grc'
 
 const UNITS = [
   { unit: '#1 RateLimitEvent status discrimination', files: 'src/reasoning_client.py (_t3_async _drain)', intent: 'Only treat a RateLimitEvent as a fatal 429 when rate_limit_info.status == "rejected"; allowed/allowed_warning are ignored. Keep a generic status=="rejected" fallback for other message shapes.', verify: 'Confirm allowed/allowed_warning do NOT set result_error (no false backpressure), rejected DOES, the generic fallback still works, and the getattr chain is None-safe. Check the new/updated tests actually distinguish the statuses (class name must be RateLimitEvent for the type-name match).' },

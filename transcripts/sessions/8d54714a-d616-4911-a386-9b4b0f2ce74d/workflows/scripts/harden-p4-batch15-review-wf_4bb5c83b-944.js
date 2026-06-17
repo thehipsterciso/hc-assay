@@ -22,7 +22,7 @@ const VERDICT = {
   required: ['issue', 'resolves_issue', 'introduces_regression', 'confidence', 'severity_if_problem', 'findings', 'recommended_action'],
 }
 
-const REPO = '/Users/thomasjones/hc-grc'
+const REPO = '/Users/[REDACTED]/hc-grc'
 
 const FIXES = [
   { issue: '#272', file: 'src/reasoning_client.py', intent: 'Bound the shared timeout ThreadPoolExecutor: track in-flight workers and fail fast with a distinct ReasoningError ("saturated") when all slots are leaked to hung backends, instead of silently queueing behind work that never starts. Also gives the T2 outer future timeout margin (T2_TIMEOUT+10) over the inner HTTP timeout so the inner one wins and frees the worker.', verify: 'Confirm _submit_bounded correctly counts in-flight via _inflight + lock, decrements on done-callback (including for leaked/timed-out workers only when they eventually return), raises before incrementing when saturated, and is used by BOTH _with_timeout and _run_sync. Check the done_callback cannot double-decrement or underflow. Check the T2 margin does not defeat the timeout.' },

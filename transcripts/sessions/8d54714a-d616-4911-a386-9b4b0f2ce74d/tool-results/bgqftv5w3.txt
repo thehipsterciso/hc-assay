@@ -1,12 +1,12 @@
 commit 13892422db7e1396504535913befd96a0771cb61
-Author: Thomas Jones <thehipsterciso@protonmail.com>
+Author: Thomas Jones <[REDACTED]>
 Date:   Tue Jun 16 17:31:29 2026 -0400
 
     harden/pass-1: 22 production-readiness fixes (assess→2-agent verify→fix→2-agent confirm) (#123)
     
     * docs(hardening): kick off 48h production-readiness campaign (protocol + pass log)
     
-    Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
+    Co-Authored-By: Claude Opus 4.8 (1M context) <[REDACTED]>
     
     * feat(provenance): capture session transcripts into the repo on every commit
     
@@ -21,11 +21,11 @@ Date:   Tue Jun 16 17:31:29 2026 -0400
     contain the operator email + internal reasoning — review/exclude before making
     the repo public. Not shipped in the wheel (only src/assay_engine is packaged).
     
-    Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
+    Co-Authored-By: Claude Opus 4.8 (1M context) <[REDACTED]>
     
     * docs(harden-1): record 22 confirmed findings (#101-#122)
     
-    Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
+    Co-Authored-By: Claude Opus 4.8 (1M context) <[REDACTED]>
     
     * fix(harden-1): 3 HIGH — credential scrubber, run_json retry-storm, CI pytest-cov
     
@@ -35,11 +35,11 @@ Date:   Tue Jun 16 17:31:29 2026 -0400
       count + overall wall-clock deadline (no multiplicative retry storm). #103: add
       pytest-cov to dev extra (CI integration lane was failing every run).
     
-    Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
+    Co-Authored-By: Claude Opus 4.8 (1M context) <[REDACTED]>
     
     * docs(harden-1): progress — 3 HIGH fixed, 19 MED/LOW pending
     
-    Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
+    Co-Authored-By: Claude Opus 4.8 (1M context) <[REDACTED]>
     
     * fix(harden-1): reliability + security batch (#104,#105,#112,#115,#116,#117,#118)
     
@@ -51,7 +51,7 @@ Date:   Tue Jun 16 17:31:29 2026 -0400
     #117 QdrantVectorStore.close()/context-manager (closes only an owned client).
     #118 upsert streams bounded batches (memory, not just payload).
     
-    Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
+    Co-Authored-By: Claude Opus 4.8 (1M context) <[REDACTED]>
     
     * fix(harden-1): provenance + observability batch (#109,#110,#113,#114,#119,#122)
     
@@ -63,7 +63,7 @@ Date:   Tue Jun 16 17:31:29 2026 -0400
     #122 run_study bootstraps tracing + wraps phases in run_trace_context(corr_id),
       correlating every span to the run / experiment-tracker run_id.
     
-    Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
+    Co-Authored-By: Claude Opus 4.8 (1M context) <[REDACTED]>
     
     * fix(harden-1): ops/supply-chain batch (#108,#120,#121)
     
@@ -72,7 +72,7 @@ Date:   Tue Jun 16 17:31:29 2026 -0400
       __init__.__version__ (no second hardcoded literal feeding provenance).
     #121 drop mypy python_version pin so the CI matrix type-checks 3.11-3.14, not just 3.11.
     
-    Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
+    Co-Authored-By: Claude Opus 4.8 (1M context) <[REDACTED]>
     
     * fix(harden-1): perf + graph-provenance batch (#106,#107,#111)
     
@@ -85,7 +85,7 @@ Date:   Tue Jun 16 17:31:29 2026 -0400
     All 22 pass-1 findings (#101-#122) now fixed. 397 passed, 5 skipped; ruff +
     format + mypy --strict clean.
     
-    Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
+    Co-Authored-By: Claude Opus 4.8 (1M context) <[REDACTED]>
     
     * fix(harden-1): address 2-agent confirmation gaps (10 fixes)
     
@@ -107,7 +107,7 @@ Date:   Tue Jun 16 17:31:29 2026 -0400
     
     407 passed, 5 skipped; ruff + format + mypy --strict clean.
     
-    Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
+    Co-Authored-By: Claude Opus 4.8 (1M context) <[REDACTED]>
     
     * test(harden-1): make #114 concurrency test discriminating (slow injected clock)
     
@@ -116,16 +116,16 @@ Date:   Tue Jun 16 17:31:29 2026 -0400
     sleeps inside that window so an UNLOCKED record() corrupts the chain; verified the
     test PASSES with the lock and FAILS without it (revert check).
     
-    Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
+    Co-Authored-By: Claude Opus 4.8 (1M context) <[REDACTED]>
     
     * docs(harden-1): confirmation results (22/22) + retrospective; close pass 1
     
-    Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
+    Co-Authored-By: Claude Opus 4.8 (1M context) <[REDACTED]>
     
     ---------
     
-    Co-authored-by: Thomas Jones <thomasjones@hc-macmini.local>
-    Co-authored-by: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
+    Co-authored-by: Thomas Jones <[REDACTED]>
+    Co-authored-by: Claude Opus 4.8 (1M context) <[REDACTED]>
 
  .githooks/pre-commit                               |   12 +
  .github/workflows/ci.yml                           |   22 +

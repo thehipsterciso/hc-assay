@@ -3,8 +3,8 @@ export const meta = {
   description: 'Re-confirm the 10 strengthened pass-1 fixes: 2 independent agents each (appropriate AND complete)',
   phases: [{ title: 'Reconfirm' }],
 }
-const REPO = '/Users/thomasjones/hc-assay'
-const VENV = '/Users/thomasjones/hc-assay/.venv/bin/python'
+const REPO = '/Users/[REDACTED]/hc-assay'
+const VENV = '/Users/[REDACTED]/hc-assay/.venv/bin/python'
 const N = 10
 const ITEMS = '/tmp/pass1_reconfirm.json'
 const VERDICT = {

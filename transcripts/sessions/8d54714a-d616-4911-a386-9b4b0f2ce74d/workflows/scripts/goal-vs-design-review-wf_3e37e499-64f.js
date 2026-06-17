@@ -7,7 +7,7 @@ export const meta = {
   ],
 }
 
-const REPO = '/Users/thomasjones/hc-grc'
+const REPO = '/Users/[REDACTED]/hc-grc'
 
 const FINDING = {
   type: 'object', additionalProperties: false,
