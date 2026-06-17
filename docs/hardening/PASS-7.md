@@ -44,23 +44,33 @@ correct but left the operator's **bare first/last name** in cleartext governance
 "Thomas approves …", "Thomas builds and governs …") — and one reviewer independently corroborated
 the J-008 handle leak.
 
-**Consolidated privacy remediation (commit 7c50440)** for the J-002 concern + J-008:
-- `_display_name_patterns()` now also emits a per-**token** pattern (len≥4, trailing `\b`, no
-  leading `\b`) so the bare first/last name is redacted standalone while `Joneses` stays protected.
-  Over-redaction is bounded: the tokens come only from the verified operator name and the corpus
-  has no unrelated bearer of "Thomas"/"Jones" (sampled all 256 contexts — every one is an operator
-  governance reference).
-- `_repo_handle_patterns()` (new) derives the repo owner from `git remote -v` + `ASSAY_SCRUB_HANDLES`
-  and redacts it everywhere (URLs, `gh` args, the `<handle>@` email stem); the repo name is
-  preserved as legitimate provenance.
-- The committed corpus was **re-scrubbed in place** (207 files). Verified: `grep -rl` over
-  `transcripts/` now returns **0** for `Thomas`, `Jones` (excl. "Joneses"), `thehipsterciso`, and
-  `thomasjones`. (The bare provider word "protonmail" survives 6× only inside meta-discussion of the
-  scrubbing itself — not an address, not PII.)
-- Regression tests: `test_scrub_redacts_bare_name_tokens`, `test_scrub_redacts_github_handle`.
+**Consolidated privacy remediation for the J-002 concern + J-008**, hardened across **three
+adversarial confirmation rounds** — each round's 2-agent confirm found a real *adjacent* identity
+vector the previous fix didn't cover, which is the privacy dimension behaving as a live surface:
 
-The remediation was itself **2-agent confirmed** (CONFIRM-OUTCOME-PLACEHOLDER), each reviewer
-independently grep-verifying the committed corpus, not just the unit tests.
+| Round | Confirm verdict | New vector found | Fix |
+|-------|-----------------|------------------|-----|
+| 1 | both CONCERN | bare first/last name ("Thomas approves …", 256× prose) | `_display_name_patterns()` also emits a per-**token** pattern (len≥4, trailing `\b`); `Joneses` stays protected |
+| 2 | both CONCERN | **lowercase** identity (`thomas@hcgrc` actor field, `thomas-jones`), handle **stem** (`hipsterciso-audience-profiles`) | `re.IGNORECASE` on name+handle patterns; emit the handle stem (drop a leading "the") |
+| 3 | 1 confirm / 1 CONCERN | the **spaced source brand** ("The Hipster CISO") — handle de-spaced, reconstructable by concatenation with the redacted email | handle patterns (len≥8) become **separator-flexible** (`[\s._-]*` between each char) so spaced/hyphenated/dotted brand forms redact, while a common single token ("CISO") is **not** over-redacted (the whole ordered letter sequence must be present) |
+| 4 | **both CONFIRMED** | — | — |
+
+Mechanism (`scripts/capture_transcripts.py`):
+- `_display_name_patterns()` — full-name + per-token, `re.IGNORECASE`, derived from `git log`
+  author / `git config user.name` / `ASSAY_SCRUB_NAMES`.
+- `_repo_handle_patterns()` (new) — derives the repo owner from `git remote -v` + `ASSAY_SCRUB_HANDLES`,
+  expands to the "the"-stripped stem, and uses separator-flexible matching for len≥8. The repo name
+  is preserved as legitimate provenance; the separator class is space/`._-` only, so unrelated
+  prose cannot accidentally spell the handle.
+- The committed corpus was **re-scrubbed in place** after each round. Final verification (both
+  confirming reviewers ran it independently, case-insensitively): `grep` over `transcripts/` returns
+  **0** for word-bound `thomas`, standalone `jones`, `hipsterciso`, `thomasjones`, `thomas@`/`thomas-`,
+  and the spaced `hipster[sep]ciso` brand; `Joneses`, standalone `CISO`, and the provider word
+  `protonmail` are correctly **preserved** (not PII / not over-redacted). The only residual `hipster`
+  hits are this session's own grep-command meta-discussion and truncated `thehipster…` fragments —
+  the common word, not the brand.
+- Regression tests: `test_scrub_redacts_bare_name_tokens` (incl. lowercase actor tokens),
+  `test_scrub_redacts_github_handle` (incl. stem + spaced brand + no-over-redaction of common tokens).
 
 Git **history** still holds the old blobs — same accepted tradeoff as #F-024/#CV-O-1 (private node;
 `git filter-repo` required before any public release; documented in `transcripts/README`).
