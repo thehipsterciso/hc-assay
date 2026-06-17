@@ -71,6 +71,13 @@ class Hypothesis:
     # after seeing the baseline (audit pass 2, issue #24). For an EXTERNAL_CLAIM hypothesis
     # the adapter derives this from the claim's assertion, not from the baseline.
     predicted_direction: Direction | None = None
+    # Decision thresholds, optionally pre-registered so they cannot be chosen post-hoc after
+    # seeing the null/baseline (pass 5, #H-001 — the threshold analogue of predicted_direction).
+    # When set, they are bound into the pre-registration digest and the confirmers cross-check the
+    # confirm-time argument against them (a mismatch raises), so a pre-registered confirmatory test
+    # commits its alpha / stability bar in advance. Left None for exploratory/opted-out use.
+    alpha: float | None = None
+    stability_threshold: float | None = None
     params: Mapping[str, Any] = field(default_factory=dict)
 
     @property
@@ -80,6 +87,15 @@ class Hypothesis:
     def __post_init__(self) -> None:
         if self.origin is HypothesisOrigin.EXTERNAL_CLAIM and not self.source_claim_id:
             raise ValueError("EXTERNAL_CLAIM hypotheses must carry a source_claim_id")
+        # Validate pre-registered thresholds at construction (#H-001) so an invalid value can never
+        # be bound into a proof: alpha is a one-sided level in (0, 0.5); stability is a fraction in
+        # (0, 1]. (Mirrors the confirmers' own bounds checks.)
+        if self.alpha is not None and not (0.0 < self.alpha < 0.5):
+            raise ValueError(f"alpha must be in (0, 0.5); got {self.alpha}")
+        if self.stability_threshold is not None and not (0.0 < self.stability_threshold <= 1.0):
+            raise ValueError(
+                f"stability_threshold must be in (0, 1]; got {self.stability_threshold}"
+            )
         # Validate predicted_direction at the earliest possible point (pass 3, #F-002): an
         # invalid tail ("up", "UP", "") must never reach lock_hypothesis (which would
         # cryptographically bind garbage into the proof) nor confirm_unit_level (which does not
