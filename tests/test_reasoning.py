@@ -365,7 +365,9 @@ def test_bulk_complete_sets_a_total_bounded_http_timeout(monkeypatch):
     # anyio.fail_after). A bare float sets every httpx phase to BULK_TIMEOUT (connect+read can total
     # ~2x, past the outer BULK_TIMEOUT+10 bound, leaking the worker slot). Assert an explicit
     # httpx.Timeout whose read==BULK_TIMEOUT and connect is small, so the TOTAL stays ~BULK_TIMEOUT.
-    import httpx
+    # #K-CI-3: skip without the reasoning extra (httpx ships with it). This ran green in CI only
+    # because the bare-pytest collection bug (#K-CI-2) meant the core lane never executed.
+    httpx = pytest.importorskip("httpx")
 
     monkeypatch.delenv("ASSAY_DISABLE_REASONING", raising=False)
     captured: list[dict] = []
