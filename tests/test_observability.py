@@ -123,6 +123,32 @@ def test_bootstrap_logs_warning_on_setup_failure(monkeypatch, caplog):
     assert any("setup failed" in r.message for r in caplog.records)
 
 
+def test_experiment_id_survives_concurrent_create_race(monkeypatch, tmp_path):
+    # #J-004: check-then-create is a TOCTOU — on the first-time race, create_experiment raises
+    # RESOURCE_ALREADY_EXISTS for the loser. _experiment_id must re-fetch the now-existing
+    # experiment instead of propagating (which would leave run_id=None and drop all metrics).
+    monkeypatch.setenv("ASSAY_TRACKING_URI", f"sqlite:///{tmp_path / 'x.db'}")
+
+    class _Exp:
+        experiment_id = "exp-7"
+
+    class RacingClient:
+        def __init__(self):
+            self.calls = 0
+
+        def get_experiment_by_name(self, name):
+            # first call (the check) sees nothing; after the failed create, the winner's exists
+            self.calls += 1
+            return None if self.calls == 1 else _Exp()
+
+        def create_experiment(self, name):
+            raise RuntimeError("RESOURCE_ALREADY_EXISTS: another writer created it")
+
+    t = MlflowExperimentTracker()
+    client = RacingClient()
+    assert t._experiment_id(client) == "exp-7"  # re-fetched, not raised
+
+
 def test_start_run_terminates_run_when_param_logging_fails(monkeypatch, tmp_path):
     # #F-023: if create_run succeeds but log_param fails, the run must be terminated FAILED, not
     # left orphaned in RUNNING state. Mock the MLflow client to exercise the failure path without
