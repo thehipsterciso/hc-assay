@@ -85,6 +85,13 @@ def discover_and_confirm(
     2. ``confirm`` is handed a corpus containing only the held-out partition and tests each
        hypothesis there; the verdict must report the hypothesis it answers.
 
+    Firewall B is enforced STRUCTURALLY here (pass 5, #H-016): the ``confirm`` step physically
+    receives a held-out-only corpus, so it cannot evaluate a discovery-partition unit even if it
+    wanted to — discovery ids are simply not present. The per-id ``DiscoverConfirmSplit.
+    assert_confirm_only`` check used by :func:`confirm_unit_level` is an ADDITIONAL belt-and-braces
+    guard a study layers inside its own confirmer; this runner does not (and cannot) call it
+    because it does not know which evaluated ids the study's confirmer touched.
+
     ``authority`` is the pre-registration timestamp authority (e.g.
     :class:`~assay_engine.methodology.preregistration.LocalHmacAuthority`, or an RFC-3161
     adapter); the engine ships no silent-accept default. A study's ``discover`` step locks each

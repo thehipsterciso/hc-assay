@@ -49,6 +49,10 @@ _SECRET_PATTERNS = [
     # (/Users/<name>, /home/<name>) — the path STRUCTURE is kept, only the identity is masked.
     re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b"),  # email → [REDACTED]
     re.compile(r"(/(?:Users|home)/)[^/\s\"']+"),  # /Users/<name> → /Users/[REDACTED]
+    # The Claude project-dir SLUG (e.g. -Users-thomasjones-hc-grc): redact the username segment
+    # regardless of length (#H-018) — the bare-token rule below skips short handles to avoid
+    # over-redacting common words, but the slug form is unambiguous PII at any length.
+    re.compile(r"(-(?:Users|home)-)[^-\s/\"']+"),  # -Users-<name>- → -Users-[REDACTED]-
 ]
 
 

@@ -732,6 +732,7 @@ def run_study(
 
             def _log_trail(t: ExperimentTracker, rid: str) -> None:
                 import json
+                import os
                 import tempfile
 
                 from assay_engine.provenance import entries_to_records
@@ -741,7 +742,16 @@ def run_study(
                 ) as fh:
                     json.dump(list(entries_to_records(list(trail.entries))), fh, indent=2)
                     path = fh.name
-                t.log_artifact(rid, path)
+                # Clean up the scratch file after the tracker has copied it into its store, so a
+                # tracked run does not leak a temp file (with provenance contents) on every call
+                # (#H-013). The tracker reads/copies synchronously in log_artifact.
+                try:
+                    t.log_artifact(rid, path)
+                finally:
+                    try:
+                        os.unlink(path)
+                    except OSError:
+                        pass
 
             track(_log_trail)
         ok = True

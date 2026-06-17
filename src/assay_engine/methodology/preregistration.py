@@ -115,6 +115,10 @@ def canonical_hypothesis_digest(hypothesis: Hypothesis) -> str:
         "decision_rule": hypothesis.decision_rule,
         "source_claim_id": hypothesis.source_claim_id,
         "predicted_direction": hypothesis.predicted_direction,
+        # decision thresholds are decision-bearing content — bind them so a pre-registered alpha /
+        # stability bar cannot be changed post-hoc (pass 5, #H-001).
+        "alpha": hypothesis.alpha,
+        "stability_threshold": hypothesis.stability_threshold,
         "params": dict(hypothesis.params),
     }
     try:

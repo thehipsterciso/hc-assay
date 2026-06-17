@@ -21,7 +21,19 @@ Two further hardened behaviors, ported faithfully from the prior platform's gate
 - **Terminal-decision idempotency.** An ``approved`` decision is terminal: re-entering an
   already-approved gate is a no-op (it does not re-prompt or re-record). ``rejected`` and
   ``deferred`` are deliberately NOT terminal, so a reject→revise→re-review loop re-fires the
-  interrupt as intended.
+  interrupt as intended. (Honest scope, pass 5 #H-012: this no-op-on-re-entry holds only when the
+  prior ``approved`` decision is present in the ``gate_decisions`` graph state the node reads;
+  it is idempotency over the durable LangGraph state, not a guard against a caller fabricating
+  state.)
+
+Recorder is OPTIONAL here, deliberately asymmetric with ``run_study`` (pass 5, #H-011): the
+runner OWNS the provenance trail and records every gate decision to it unconditionally, whereas
+the graph node persists decisions in LangGraph checkpoint state and the ``recorder`` only BRIDGES
+them into the hash-chained trail. A GOVERNANCE-§3-compliant run must pass a recorder (omitting it
+warns — see :func:`make_gate_node`); it is optional only so a study not using the engine trail can
+still drive the graph. The trail write, when a recorder is present, happens before the state update
+is returned but the two are not a single atomic transaction — a recorder failure raises rather
+than half-applying (#G-020).
 
 The node returns a partial state update appending one record to ``gate_decisions``; a study's
 graph state should declare ``gate_decisions`` with a list/add reducer so records accumulate

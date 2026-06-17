@@ -293,6 +293,42 @@ def test_vector_store_upsert_streams_batches_and_owns_client():
     assert fc.closed is False  # #117: an INJECTED client is the caller's to close, not ours
 
 
+def test_int_env_names_the_bad_var():
+    # #H-022: a malformed integer env var must raise an error NAMING the var, not an opaque
+    # "invalid literal for int()" at import time.
+    from assay_engine.persistence import vectorstore as vsmod
+
+    with pytest.raises(ValueError, match="ASSAY_VECTOR_HTTP_PORT must be an integer"):
+        vsmod._int_env("ASSAY_VECTOR_HTTP_PORT", "not-a-port")
+
+
+def test_vector_store_query_validates_k_and_skips_payloadless_points():
+    # #H-021: query rejects non-positive k and skips a returned point lacking our 'ref' payload
+    # (rather than raising an opaque KeyError).
+    pytest.importorskip("qdrant_client")
+    from assay_engine.persistence.vectorstore import QdrantVectorStore
+
+    class _Pt:
+        def __init__(self, payload, score):
+            self.payload = payload
+            self.score = score
+
+    class _Res:
+        points = [_Pt({"ref": "a"}, 0.9), _Pt({}, 0.5), _Pt(None, 0.4)]  # 2 lack 'ref'
+
+    class FakeClient:
+        def query_points(self, *a, **k):
+            return _Res()
+
+        def close(self):
+            pass
+
+    store = QdrantVectorStore("c", 2, client=FakeClient())
+    with pytest.raises(ValueError, match="k must be a positive integer"):
+        store.query([0.0, 1.0], 0)
+    assert store.query([0.0, 1.0], 5) == [("a", 0.9)]  # payloadless points skipped, not crashing
+
+
 def test_vector_store_closes_owned_client(monkeypatch):
     # #117: a self-created client (no client injected) MUST be closed on close()/context-exit
     pytest.importorskip("qdrant_client")
