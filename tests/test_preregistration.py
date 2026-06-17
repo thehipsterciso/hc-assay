@@ -62,6 +62,15 @@ def test_digest_covers_content_and_id_but_not_lock_fields():
     assert canonical_hypothesis_digest(h) != canonical_hypothesis_digest(
         replace(h, predicted_direction="greater")
     )
+    # #H-001: pre-registered decision thresholds are decision-bearing and must be bound, so they
+    # cannot be changed post-hoc without invalidating the proof.
+    assert canonical_hypothesis_digest(h) != canonical_hypothesis_digest(replace(h, alpha=0.05))
+    assert canonical_hypothesis_digest(replace(h, alpha=0.05)) != canonical_hypothesis_digest(
+        replace(h, alpha=0.10)
+    )
+    assert canonical_hypothesis_digest(h) != canonical_hypothesis_digest(
+        replace(h, stability_threshold=0.9)
+    )
 
 
 def test_digest_is_stable_and_does_not_change_when_locked():
