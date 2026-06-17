@@ -11,12 +11,24 @@ from __future__ import annotations
 import json
 import sys
 
-# Strong-copyleft families denied in the distributed dependency set.
-_DENY = ("GPL", "AGPL", "SSPL", "EUPL")
+# Strong-copyleft families denied in the distributed dependency set. Both the SPDX-style short
+# tokens AND the full prose names must be listed (pass 3, #F-015): a package reporting
+# "Server Side Public License" or "European Union Public Licence 1.2" contains neither the "SSPL"
+# nor "EUPL" token, so the short tokens alone let those families bypass the gate.
+_DENY = (
+    "GPL",
+    "AGPL",
+    "SSPL",
+    "EUPL",
+    "SERVER SIDE PUBLIC",  # SSPL prose form
+    "EUROPEAN UNION PUBLIC",  # EUPL prose form
+    "AFFERO",  # AGPL prose form ("GNU Affero General Public License")
+)
 
 
 def main(path: str = "licenses.json") -> int:
-    packages = json.load(open(path, encoding="utf-8"))
+    with open(path, encoding="utf-8") as f:  # context manager — no leaked fd (#F-050)
+        packages = json.load(f)
     bad = []
     for pkg in packages:
         lic = (pkg.get("License") or "").upper()
