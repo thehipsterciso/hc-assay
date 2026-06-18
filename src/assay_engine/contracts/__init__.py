@@ -13,6 +13,7 @@ types and Protocols defined here; adapters implement them. Per ARCHITECTURE.md Â
 from assay_engine.contracts.claims import ClaimRecord, ExternalClaimsSource
 from assay_engine.contracts.features import FeatureBuilder, FeatureMatrix
 from assay_engine.contracts.parser import IngestionParser
+from assay_engine.contracts.prompts import PromptManifest, prompt_manifest
 from assay_engine.contracts.schema import Corpus, Relation, Unit
 from assay_engine.contracts.study import StudyDefinition, StudyMode
 
@@ -22,6 +23,8 @@ __all__ = [
     "FeatureBuilder",
     "FeatureMatrix",
     "IngestionParser",
+    "PromptManifest",
+    "prompt_manifest",
     "Corpus",
     "Relation",
     "Unit",
