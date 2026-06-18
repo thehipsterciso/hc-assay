@@ -6,7 +6,15 @@ import pytest
 
 torch = pytest.importorskip("torch")
 
-from assay_engine.graphs.anomaly import AnomalyGNNResult, DOMINANTConfig, dominant  # noqa: E402
+from assay_engine.graphs.anomaly import (  # noqa: E402
+    AnomalyGNNResult,
+    CODAConfig,
+    DOMINANTConfig,
+    GANomalyConfig,
+    card,
+    cola,
+    dominant,
+)
 from assay_engine.graphs.data import GraphData  # noqa: E402
 
 
@@ -78,3 +86,63 @@ def test_anomaly_gnn_result_frozen() -> None:
     r = AnomalyGNNResult(scores=[0.1], outlier_flags=[False], threshold=0.5, n_outliers=0)
     with pytest.raises(Exception):
         object.__setattr__(r, "threshold", 0.9)
+
+
+def test_coda_config_defaults() -> None:
+    cfg = CODAConfig()
+    assert cfg.hidden_channels == 64
+    assert cfg.epochs == 100
+    assert cfg.lr == 0.005
+    assert cfg.threshold_percentile == 95.0
+    assert cfg.seed is None
+
+
+def test_coda_config_custom() -> None:
+    cfg = CODAConfig(hidden_channels=32, epochs=10, lr=0.001, threshold_percentile=90.0, seed=42)
+    assert cfg.hidden_channels == 32
+    assert cfg.seed == 42
+
+
+def test_coda_config_frozen() -> None:
+    cfg = CODAConfig()
+    with pytest.raises(Exception):
+        object.__setattr__(cfg, "epochs", 999)
+
+
+def test_ganomaly_config_defaults() -> None:
+    cfg = GANomalyConfig()
+    assert cfg.hidden_channels == 64
+    assert cfg.epochs == 100
+    assert cfg.lr == 0.005
+    assert cfg.threshold_percentile == 95.0
+    assert cfg.seed is None
+
+
+def test_ganomaly_config_custom() -> None:
+    cfg = GANomalyConfig(hidden_channels=16, epochs=5, seed=7)
+    assert cfg.hidden_channels == 16
+    assert cfg.seed == 7
+
+
+def test_ganomaly_config_frozen() -> None:
+    cfg = GANomalyConfig()
+    with pytest.raises(Exception):
+        object.__setattr__(cfg, "lr", 1.0)
+
+
+def test_cola_result_type() -> None:
+    pytest.importorskip("pygod")
+    g = _triangle_with_features()
+    cfg = CODAConfig(hidden_channels=8, epochs=2, seed=0)
+    result = cola(g, cfg)
+    assert isinstance(result, AnomalyGNNResult)
+    assert len(result.scores) == g.num_nodes
+
+
+def test_card_result_type() -> None:
+    pytest.importorskip("pygod")
+    g = _triangle_with_features()
+    cfg = GANomalyConfig(hidden_channels=8, epochs=2, seed=0)
+    result = card(g, cfg)
+    assert isinstance(result, AnomalyGNNResult)
+    assert len(result.scores) == g.num_nodes

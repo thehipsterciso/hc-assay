@@ -71,6 +71,7 @@ baseline = [
 gnn = [
     "torch>=2.0",
     "torch-geometric>=2.3",
+    "pygod>=1.0",
 ]
 # Every backend in one shot (for a full local install). dev tooling stays separate.
 all = [
@@ -144,5 +145,6 @@ module = [
     "torch.*",
     "torch_geometric.*",
     "torch_geometric_temporal.*",
+    "pygod.*",
 ]
 ignore_missing_imports = true

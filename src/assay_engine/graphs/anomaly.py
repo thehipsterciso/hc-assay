@@ -31,16 +31,29 @@ class AnomalyGNNResult:
 
 @dataclass(frozen=True)
 class DOMINANTConfig:
-    """Configuration for the DOMINANT anomaly detector.
+    """Configuration for the DOMINANT anomaly detector."""
 
-    Attributes
-    ----------
-    hidden_channels:      Hidden dimension for the GCN encoder.
-    epochs:               Training epochs.
-    lr:                   Learning rate.
-    threshold_percentile: Percentile of score distribution used as the outlier threshold.
-    seed:                 Optional RNG seed for reproducibility.
-    """
+    hidden_channels: int = 64
+    epochs: int = 100
+    lr: float = 0.005
+    threshold_percentile: float = 95.0
+    seed: int | None = None
+
+
+@dataclass(frozen=True)
+class CODAConfig:
+    """Configuration for the CoLA anomaly detector."""
+
+    hidden_channels: int = 64
+    epochs: int = 100
+    lr: float = 0.005
+    threshold_percentile: float = 95.0
+    seed: int | None = None
+
+
+@dataclass(frozen=True)
+class GANomalyConfig:
+    """Configuration for the CARD anomaly detector."""
 
     hidden_channels: int = 64
     epochs: int = 100
@@ -140,3 +153,72 @@ def dominant(g: GraphData, config: DOMINANTConfig) -> AnomalyGNNResult:
         threshold=threshold,
         n_outliers=sum(flags),
     )
+
+
+def _pygod_detect(
+    g: GraphData,
+    detector: object,
+    threshold_percentile: float,
+) -> AnomalyGNNResult:
+    """Shared helper: fit a pygod detector and return AnomalyGNNResult."""
+    import torch  # noqa: PLC0415
+
+    from assay_engine.graphs.data import to_pyg  # noqa: PLC0415
+
+    data = to_pyg(g)
+    detector.fit(data)  # type: ignore[attr-defined]
+    scores_arr = detector.decision_score_  # type: ignore[attr-defined]
+    scores_t = torch.tensor(scores_arr, dtype=torch.float)
+    threshold = float(torch.quantile(scores_t, threshold_percentile / 100.0).item())
+    scores = scores_t.tolist()
+    flags = [s > threshold for s in scores]
+    return AnomalyGNNResult(
+        scores=scores,
+        outlier_flags=flags,
+        threshold=threshold,
+        n_outliers=sum(flags),
+    )
+
+
+def cola(g: GraphData, config: CODAConfig) -> AnomalyGNNResult:
+    """CoLA: Contrastive self-supervised Learning for Anomaly detection (Liu et al., 2021)."""
+    try:
+        from pygod.detector import CoLA  # noqa: PLC0415
+    except ImportError as exc:
+        raise ImportError(
+            "pygod is required for cola(). Install with: pip install assay-engine[gnn]"
+        ) from exc
+
+    if config.seed is not None:
+        import torch  # noqa: PLC0415
+
+        torch.manual_seed(config.seed)
+
+    detector = CoLA(
+        hid_dim=config.hidden_channels,
+        epoch=config.epochs,
+        lr=config.lr,
+    )
+    return _pygod_detect(g, detector, config.threshold_percentile)
+
+
+def card(g: GraphData, config: GANomalyConfig) -> AnomalyGNNResult:
+    """CARD: GNN-based anomaly detection via CARD (pygod)."""
+    try:
+        from pygod.detector import CARD  # noqa: PLC0415
+    except ImportError as exc:
+        raise ImportError(
+            "pygod is required for card(). Install with: pip install assay-engine[gnn]"
+        ) from exc
+
+    if config.seed is not None:
+        import torch  # noqa: PLC0415
+
+        torch.manual_seed(config.seed)
+
+    detector = CARD(
+        hid_dim=config.hidden_channels,
+        epoch=config.epochs,
+        lr=config.lr,
+    )
+    return _pygod_detect(g, detector, config.threshold_percentile)

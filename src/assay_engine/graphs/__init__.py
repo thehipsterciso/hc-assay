@@ -20,13 +20,36 @@ Categories
 data             Graph data types and conversion utilities.
 conv             GNN layer and model implementations (GCN, GAT, GraphSAGE).
 embeddings       Graph embedding methods (random walks, Node2Vec, DeepWalk).
-anomaly          GNN-based anomaly detection (DOMINANT).
+anomaly          GNN-based anomaly detection (DOMINANT, CoLA, CARD).
+classification   Graph classification (GIN).
+explainability   Node-level GNN explanations (GNNExplainer).
 temporal         Temporal GNNs for time-series event graphs (A3T-GCN).
 heterogeneous    Heterogeneous GNNs for multi-entity graphs (HGT).
 link_prediction  Link prediction for inferring relationships.
 """
 
-from assay_engine.graphs.anomaly import AnomalyGNNResult, DOMINANTConfig, dominant
+from assay_engine.graphs.anomaly import (
+    AnomalyGNNResult,
+    CODAConfig,
+    DOMINANTConfig,
+    GANomalyConfig,
+    card,
+    cola,
+    dominant,
+)
+from assay_engine.graphs.classification import (
+    GINConfig,
+    GINModel,
+    GraphClassificationResult,
+    classify_graph,
+    train_gin,
+)
+from assay_engine.graphs.explainability import (
+    GNNExplainerConfig,
+    NodeExplanation,
+    explain_node,
+    explain_nodes,
+)
 from assay_engine.graphs.conv import GAT, GCN, GATLayer, GCNLayer, GraphSAGE, SAGELayer
 from assay_engine.graphs.data import (
     GraphData,
@@ -87,6 +110,21 @@ __all__ = [
     "AnomalyGNNResult",
     "DOMINANTConfig",
     "dominant",
+    "CODAConfig",
+    "cola",
+    "GANomalyConfig",
+    "card",
+    # --- classification ---
+    "GINConfig",
+    "GINModel",
+    "GraphClassificationResult",
+    "train_gin",
+    "classify_graph",
+    # --- explainability ---
+    "GNNExplainerConfig",
+    "NodeExplanation",
+    "explain_node",
+    "explain_nodes",
     # --- temporal ---
     "TemporalSnapshot",
     "A3TGCNConfig",
