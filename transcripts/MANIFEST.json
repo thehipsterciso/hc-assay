@@ -1,13 +1,13 @@
 {
-  "captured_at": "2026-06-18T13:36:50.505129+00:00",
+  "captured_at": "2026-06-18T13:54:57.945421+00:00",
   "active_session": "8d54714a-d616-4911-a386-9b4b0f2ce74d",
-  "n_files": 2935,
-  "total_bytes": 271778069,
+  "n_files": 2941,
+  "total_bytes": 272515160,
   "files": [
     {
       "path": "transcripts/sessions/8d54714a-d616-4911-a386-9b4b0f2ce74d.jsonl",
-      "bytes": 35915529,
-      "sha256": "773236dfa3cd310d446399ae4a4745b6c7df17c0f5a985579498074bd5744360"
+      "bytes": 36278853,
+      "sha256": "f6877ec264ed9551f685791603e409d3d4209ab855aad3ce3523427941a80081"
     },
     {
       "path": "transcripts/sessions/8d54714a-d616-4911-a386-9b4b0f2ce74d/subagents/agent-a05067d59cf434caf.jsonl",
@@ -61,8 +61,8 @@
     },
     {
       "path": "transcripts/sessions/8d54714a-d616-4911-a386-9b4b0f2ce74d/subagents/agent-a10c0a84ea4edbc0b.jsonl",
-      "bytes": 154972,
-      "sha256": "f618b07e9080d99c2337a0835f87947d17eed049bcfa3f2d75bcb326c876f0f2"
+      "bytes": 154988,
+      "sha256": "5336c62bef329b67dbed7f4220b71ce76495c9afa3d3eb23678567a7fac9ec2f"
     },
     {
       "path": "transcripts/sessions/8d54714a-d616-4911-a386-9b4b0f2ce74d/subagents/agent-a10c0a84ea4edbc0b.meta.json",
@@ -72,7 +72,7 @@
     {
       "path": "transcripts/sessions/8d54714a-d616-4911-a386-9b4b0f2ce74d/subagents/agent-a172ea6f90a435340.jsonl",
       "bytes": 228582,
-      "sha256": "7cb56a2e4eb45020ed8c4e5a5a2629323b0a5ca04a85c4de2d7b0e89916ed88e"
+      "sha256": "e56697ff5e8e58f37d7dea3798577471ba284ae989fa832eceed51e92b66cfbd"
     },
     {
       "path": "transcripts/sessions/8d54714a-d616-4911-a386-9b4b0f2ce74d/subagents/agent-a172ea6f90a435340.meta.json",
@@ -510,6 +510,16 @@
       "sha256": "31d414db61f22227a8bd7ad586c46ba5943e8297ff912cf78d0cbb91750e174d"
     },
     {
+      "path": "transcripts/sessions/8d54714a-d616-4911-a386-9b4b0f2ce74d/subagents/agent-a962acb602a4cc303.jsonl",
+      "bytes": 251589,
+      "sha256": "9a2dfb366fd0e8c8a560efc49588cd26893bbb745629ebe567d6be2e17f38ca7"
+    },
+    {
+      "path": "transcripts/sessions/8d54714a-d616-4911-a386-9b4b0f2ce74d/subagents/agent-a962acb602a4cc303.meta.json",
+      "bytes": 140,
+      "sha256": "820aff60435a28f47317059acc457058d12b18cdff6d37ce20b77c433c1bb346"
+    },
+    {
       "path": "transcripts/sessions/8d54714a-d616-4911-a386-9b4b0f2ce74d/subagents/agent-a975cd0ea65535761.jsonl",
       "bytes": 140404,
       "sha256": "3c3767c85baf9198e0a09e702522a4fcdb526adb3e50c47282ba1c388e0f72cc"
@@ -518,6 +528,16 @@
       "path": "transcripts/sessions/8d54714a-d616-4911-a386-9b4b0f2ce74d/subagents/agent-a975cd0ea65535761.meta.json",
       "bytes": 126,
       "sha256": "315110ef272cb3d9a13a1b6da67d3aae90dc566b2caefa9c28d9c974519ce5af"
+    },
+    {
+      "path": "transcripts/sessions/8d54714a-d616-4911-a386-9b4b0f2ce74d/subagents/agent-a9e77a4917297b41d.jsonl",
+      "bytes": 62193,
+      "sha256": "938318994094476112276239bf73697f4e867f59827f8575310c02194df93a09"
+    },
+    {
+      "path": "transcripts/sessions/8d54714a-d616-4911-a386-9b4b0f2ce74d/subagents/agent-a9e77a4917297b41d.meta.json",
+      "bytes": 132,
+      "sha256": "f3a2a4d2f03bc9832f8447dd0e8f80fb7daf41880cb15aaf1ed37321bfb8ab11"
     },
     {
       "path": "transcripts/sessions/8d54714a-d616-4911-a386-9b4b0f2ce74d/subagents/agent-a9ef88eff05aba611.jsonl",
@@ -768,6 +788,16 @@
       "path": "transcripts/sessions/8d54714a-d616-4911-a386-9b4b0f2ce74d/subagents/agent-ad4dee587a2df530c.meta.json",
       "bytes": 117,
       "sha256": "506eccc53a89d57fabba089a3db7f2d6884101f2b6204b55dce0fdaac324322b"
+    },
+    {
+      "path": "transcripts/sessions/8d54714a-d616-4911-a386-9b4b0f2ce74d/subagents/agent-ad601e344647dd992.jsonl",
+      "bytes": 59565,
+      "sha256": "4ad85325612724161b37beca6bc08461fc09568b61d68a1f7b78c7217e3b3551"
+    },
+    {
+      "path": "transcripts/sessions/8d54714a-d616-4911-a386-9b4b0f2ce74d/subagents/agent-ad601e344647dd992.meta.json",
+      "bytes": 132,
+      "sha256": "8cecaf9e2b82914696cfc154a20d262b395345d5d362ab9b1b4c6f733fb56e39"
     },
     {
       "path": "transcripts/sessions/8d54714a-d616-4911-a386-9b4b0f2ce74d/subagents/agent-ad62d8959ed6e0b6e.jsonl",
