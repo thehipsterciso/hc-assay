@@ -69,7 +69,7 @@ baseline = [
     "numpy>=1.26,<3",  # vectorized similarity at corpus scale (pure-Python fallback otherwise)
 ]
 gnn = [
-    "torch>=2.0",
+    "torch>=2.12.1",
     "torch-geometric>=2.3",
     "pygod>=1.0",
 ]
