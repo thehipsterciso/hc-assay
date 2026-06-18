@@ -27,8 +27,11 @@ your dataset and calling `run_study`.
 
 ```bash
 git clone <repo> && cd hc-assay
-pip install -e .                    # dependency-free core (from source)
-pip install -e ".[all]"            # + every optional backend
+make install          # all optional backends, hash-pinned lockfile
+# or: make install-core   # dependency-free core only (no backends, fully offline)
+
+make test             # unit tests (no services needed)
+make ci               # lint + typecheck + unit tests (local CI simulation)
 
 # post-publication (once on PyPI):
 # pip install assay-engine          # dependency-free core
