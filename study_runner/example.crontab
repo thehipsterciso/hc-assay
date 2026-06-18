@@ -1,0 +1,16 @@
+# hc-assay study runner — example crontab entries
+#
+# Install: crontab -e  (then paste the relevant line)
+# View:    crontab -l
+#
+# Adjust STUDY_DIR and ADAPTER_MODULE to match your study repository layout.
+
+STUDY_DIR=/path/to/your/study-repo
+ADAPTER_MODULE=my_study.adapter
+LOGFILE=/var/log/hc-assay-study.log
+
+# Weekly run every Sunday at 02:17 local time (off-peak, staggered to avoid cron pile-ups).
+17 2 * * 0 cd $STUDY_DIR && bash study_runner/run_once.sh $ADAPTER_MODULE >> $LOGFILE 2>&1
+
+# Daily run at 03:23 local time (if your corpus refreshes daily).
+# 23 3 * * * cd $STUDY_DIR && bash study_runner/run_once.sh $ADAPTER_MODULE >> $LOGFILE 2>&1
