@@ -31,3 +31,6 @@ artifacts/
 *.db
 mlruns/
 assay_mlflow.db
+
+# Transcripts — captured locally for provenance, not committed to remote
+transcripts/
