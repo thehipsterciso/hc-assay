@@ -143,7 +143,16 @@ def require_local_uri(uri: str, *, what: str) -> str:
             raise NonLocalEndpointError(
                 f"{what}: backslash in URI authority is not permitted (ADR-0003); rejecting"
             )
-        for h in _authority_hosts(netloc):
+        hosts = _authority_hosts(netloc)
+        if not hosts:
+            # A URI authority that yields zero hosts after stripping userinfo and splitting
+            # multi-host is pathological (e.g. "postgresql://@" — bare userinfo, no host).
+            # We cannot confirm locality, so reject (#L-13-4, ADR-0003 fail-closed).
+            raise NonLocalEndpointError(
+                f"{what}: URI authority {netloc!r} contains no extractable host; "
+                "rejecting (ADR-0003)"
+            )
+        for h in hosts:
             # A residual '@' means the authority is ambiguous between this parser and libpq —
             # fail closed (audit #D5).
             if "@" in h or not is_loopback_host(h):
@@ -196,6 +205,15 @@ def require_local_uri(uri: str, *, what: str) -> str:
                             f"non-loopback host {h!r}"
                         )
         return uri
+
+    # A libpq scheme with no authority and no key=value params delegates host resolution entirely
+    # to environment variables (e.g. "postgresql:" alone). We cannot verify locality from the URI
+    # itself, so reject to preserve defense-in-depth (#L-13-5, ADR-0003).
+    if parsed.scheme in {"postgresql", "postgres"} and not netloc:
+        raise NonLocalEndpointError(
+            f"{what}: scheme-only libpq URI {uri!r} specifies no host; "
+            "use explicit host=localhost form (ADR-0003)"
+        )
 
     stripped = uri.lstrip()
     # Windows treats ANY two leading separators (in any mix of '\' and '/') as a UNC prefix

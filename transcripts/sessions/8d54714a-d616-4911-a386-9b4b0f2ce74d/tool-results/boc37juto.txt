@@ -1,0 +1,1409 @@
+Refreshing run status every 3 seconds. Press Ctrl+C to quit.
+
+* main ci · 27765257234
+Triggered via push about 2 minutes ago
+
+JOBS
+✓ core (3.11) in 52s (ID 82150110737)
+  ✓ Set up job
+  ✓ Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  ✓ Install (no extras, hash-pinned)
+  ✓ Lint (ruff)
+  ✓ Format check (ruff)
+  ✓ Type-check (mypy)
+  ✓ Test (pytest)
+  ✓ Post Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  ✓ Post Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Complete job
+* integration (ID 82150110746)
+  ✓ Set up job
+  ✓ Initialize containers
+  ✓ Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  ✓ Install (all extras, hash-pinned)
+  * Type-check against real backend types (mypy)
+  * Verify service containers are reachable (no silent skip)
+  * Integration + unit tests with coverage
+  * Post Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  * Post Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  * Stop containers
+* audit (ID 82150110758)
+  ✓ Set up job
+  ✓ Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  ✓ Install pip-audit
+  ✓ Lockfiles are in sync with pyproject (reproducibility guard)
+  ✓ pip-audit (reproducible known-vulnerability scan)
+  ✓ SBOM (CycloneDX) from the lockfile
+  ✓ Upload SBOM artifact
+  * License gate (deny strong-copyleft in the pinned dependency set)
+  * Upload license report
+  * Post Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  * Post Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+✓ core (3.12) in 40s (ID 82150110769)
+  ✓ Set up job
+  ✓ Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  ✓ Install (no extras, hash-pinned)
+  ✓ Lint (ruff)
+  ✓ Format check (ruff)
+  ✓ Type-check (mypy)
+  ✓ Test (pytest)
+  ✓ Post Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  ✓ Post Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Complete job
+✓ core (3.14) in 49s (ID 82150110844)
+  ✓ Set up job
+  ✓ Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  ✓ Install (no extras, hash-pinned)
+  ✓ Lint (ruff)
+  ✓ Format check (ruff)
+  ✓ Type-check (mypy)
+  ✓ Test (pytest)
+  ✓ Post Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  ✓ Post Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Complete job
+✓ core (3.13) in 46s (ID 82150110888)
+  ✓ Set up job
+  ✓ Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  ✓ Install (no extras, hash-pinned)
+  ✓ Lint (ruff)
+  ✓ Format check (ruff)
+  ✓ Type-check (mypy)
+  ✓ Test (pytest)
+  ✓ Post Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  ✓ Post Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Complete job
+
+ANNOTATIONS
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5, actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+core (3.11): .github#2
+
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5, actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+core (3.12): .github#2
+
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5, actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+core (3.14): .github#2
+
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5, actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+core (3.13): .github#2
+
+Refreshing run status every 3 seconds. Press Ctrl+C to quit.
+
+* main ci · 27765257234
+Triggered via push about 2 minutes ago
+
+JOBS
+✓ core (3.11) in 52s (ID 82150110737)
+  ✓ Set up job
+  ✓ Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  ✓ Install (no extras, hash-pinned)
+  ✓ Lint (ruff)
+  ✓ Format check (ruff)
+  ✓ Type-check (mypy)
+  ✓ Test (pytest)
+  ✓ Post Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  ✓ Post Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Complete job
+* integration (ID 82150110746)
+  ✓ Set up job
+  ✓ Initialize containers
+  ✓ Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  ✓ Install (all extras, hash-pinned)
+  * Type-check against real backend types (mypy)
+  * Verify service containers are reachable (no silent skip)
+  * Integration + unit tests with coverage
+  * Post Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  * Post Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  * Stop containers
+* audit (ID 82150110758)
+  ✓ Set up job
+  ✓ Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  ✓ Install pip-audit
+  ✓ Lockfiles are in sync with pyproject (reproducibility guard)
+  ✓ pip-audit (reproducible known-vulnerability scan)
+  ✓ SBOM (CycloneDX) from the lockfile
+  ✓ Upload SBOM artifact
+  * License gate (deny strong-copyleft in the pinned dependency set)
+  * Upload license report
+  * Post Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  * Post Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+✓ core (3.12) in 40s (ID 82150110769)
+  ✓ Set up job
+  ✓ Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  ✓ Install (no extras, hash-pinned)
+  ✓ Lint (ruff)
+  ✓ Format check (ruff)
+  ✓ Type-check (mypy)
+  ✓ Test (pytest)
+  ✓ Post Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  ✓ Post Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Complete job
+✓ core (3.14) in 49s (ID 82150110844)
+  ✓ Set up job
+  ✓ Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  ✓ Install (no extras, hash-pinned)
+  ✓ Lint (ruff)
+  ✓ Format check (ruff)
+  ✓ Type-check (mypy)
+  ✓ Test (pytest)
+  ✓ Post Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  ✓ Post Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Complete job
+✓ core (3.13) in 46s (ID 82150110888)
+  ✓ Set up job
+  ✓ Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  ✓ Install (no extras, hash-pinned)
+  ✓ Lint (ruff)
+  ✓ Format check (ruff)
+  ✓ Type-check (mypy)
+  ✓ Test (pytest)
+  ✓ Post Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  ✓ Post Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Complete job
+
+ANNOTATIONS
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5, actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+core (3.11): .github#2
+
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5, actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+core (3.12): .github#2
+
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5, actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+core (3.14): .github#2
+
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5, actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+core (3.13): .github#2
+
+Refreshing run status every 3 seconds. Press Ctrl+C to quit.
+
+* main ci · 27765257234
+Triggered via push about 2 minutes ago
+
+JOBS
+✓ core (3.11) in 52s (ID 82150110737)
+  ✓ Set up job
+  ✓ Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  ✓ Install (no extras, hash-pinned)
+  ✓ Lint (ruff)
+  ✓ Format check (ruff)
+  ✓ Type-check (mypy)
+  ✓ Test (pytest)
+  ✓ Post Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  ✓ Post Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Complete job
+* integration (ID 82150110746)
+  ✓ Set up job
+  ✓ Initialize containers
+  ✓ Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  ✓ Install (all extras, hash-pinned)
+  * Type-check against real backend types (mypy)
+  * Verify service containers are reachable (no silent skip)
+  * Integration + unit tests with coverage
+  * Post Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  * Post Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  * Stop containers
+* audit (ID 82150110758)
+  ✓ Set up job
+  ✓ Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  ✓ Install pip-audit
+  ✓ Lockfiles are in sync with pyproject (reproducibility guard)
+  ✓ pip-audit (reproducible known-vulnerability scan)
+  ✓ SBOM (CycloneDX) from the lockfile
+  ✓ Upload SBOM artifact
+  * License gate (deny strong-copyleft in the pinned dependency set)
+  * Upload license report
+  * Post Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  * Post Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+✓ core (3.12) in 40s (ID 82150110769)
+  ✓ Set up job
+  ✓ Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  ✓ Install (no extras, hash-pinned)
+  ✓ Lint (ruff)
+  ✓ Format check (ruff)
+  ✓ Type-check (mypy)
+  ✓ Test (pytest)
+  ✓ Post Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  ✓ Post Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Complete job
+✓ core (3.14) in 49s (ID 82150110844)
+  ✓ Set up job
+  ✓ Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  ✓ Install (no extras, hash-pinned)
+  ✓ Lint (ruff)
+  ✓ Format check (ruff)
+  ✓ Type-check (mypy)
+  ✓ Test (pytest)
+  ✓ Post Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  ✓ Post Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Complete job
+✓ core (3.13) in 46s (ID 82150110888)
+  ✓ Set up job
+  ✓ Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  ✓ Install (no extras, hash-pinned)
+  ✓ Lint (ruff)
+  ✓ Format check (ruff)
+  ✓ Type-check (mypy)
+  ✓ Test (pytest)
+  ✓ Post Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  ✓ Post Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Complete job
+
+ANNOTATIONS
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5, actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+core (3.11): .github#2
+
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5, actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+core (3.12): .github#2
+
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5, actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+core (3.14): .github#2
+
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5, actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+core (3.13): .github#2
+
+Refreshing run status every 3 seconds. Press Ctrl+C to quit.
+
+* main ci · 27765257234
+Triggered via push about 2 minutes ago
+
+JOBS
+✓ core (3.11) in 52s (ID 82150110737)
+  ✓ Set up job
+  ✓ Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  ✓ Install (no extras, hash-pinned)
+  ✓ Lint (ruff)
+  ✓ Format check (ruff)
+  ✓ Type-check (mypy)
+  ✓ Test (pytest)
+  ✓ Post Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  ✓ Post Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Complete job
+* integration (ID 82150110746)
+  ✓ Set up job
+  ✓ Initialize containers
+  ✓ Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  ✓ Install (all extras, hash-pinned)
+  * Type-check against real backend types (mypy)
+  * Verify service containers are reachable (no silent skip)
+  * Integration + unit tests with coverage
+  * Post Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  * Post Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  * Stop containers
+* audit (ID 82150110758)
+  ✓ Set up job
+  ✓ Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  ✓ Install pip-audit
+  ✓ Lockfiles are in sync with pyproject (reproducibility guard)
+  ✓ pip-audit (reproducible known-vulnerability scan)
+  ✓ SBOM (CycloneDX) from the lockfile
+  ✓ Upload SBOM artifact
+  * License gate (deny strong-copyleft in the pinned dependency set)
+  * Upload license report
+  * Post Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  * Post Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+✓ core (3.12) in 40s (ID 82150110769)
+  ✓ Set up job
+  ✓ Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  ✓ Install (no extras, hash-pinned)
+  ✓ Lint (ruff)
+  ✓ Format check (ruff)
+  ✓ Type-check (mypy)
+  ✓ Test (pytest)
+  ✓ Post Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  ✓ Post Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Complete job
+✓ core (3.14) in 49s (ID 82150110844)
+  ✓ Set up job
+  ✓ Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  ✓ Install (no extras, hash-pinned)
+  ✓ Lint (ruff)
+  ✓ Format check (ruff)
+  ✓ Type-check (mypy)
+  ✓ Test (pytest)
+  ✓ Post Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  ✓ Post Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Complete job
+✓ core (3.13) in 46s (ID 82150110888)
+  ✓ Set up job
+  ✓ Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  ✓ Install (no extras, hash-pinned)
+  ✓ Lint (ruff)
+  ✓ Format check (ruff)
+  ✓ Type-check (mypy)
+  ✓ Test (pytest)
+  ✓ Post Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  ✓ Post Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Complete job
+
+ANNOTATIONS
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5, actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+core (3.11): .github#2
+
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5, actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+core (3.12): .github#2
+
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5, actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+core (3.14): .github#2
+
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5, actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+core (3.13): .github#2
+
+Refreshing run status every 3 seconds. Press Ctrl+C to quit.
+
+* main ci · 27765257234
+Triggered via push about 2 minutes ago
+
+JOBS
+✓ core (3.11) in 52s (ID 82150110737)
+  ✓ Set up job
+  ✓ Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  ✓ Install (no extras, hash-pinned)
+  ✓ Lint (ruff)
+  ✓ Format check (ruff)
+  ✓ Type-check (mypy)
+  ✓ Test (pytest)
+  ✓ Post Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  ✓ Post Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Complete job
+* integration (ID 82150110746)
+  ✓ Set up job
+  ✓ Initialize containers
+  ✓ Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  ✓ Install (all extras, hash-pinned)
+  ✓ Type-check against real backend types (mypy)
+  ✓ Verify service containers are reachable (no silent skip)
+  * Integration + unit tests with coverage
+  * Post Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  * Post Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  * Stop containers
+* audit (ID 82150110758)
+  ✓ Set up job
+  ✓ Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  ✓ Install pip-audit
+  ✓ Lockfiles are in sync with pyproject (reproducibility guard)
+  ✓ pip-audit (reproducible known-vulnerability scan)
+  ✓ SBOM (CycloneDX) from the lockfile
+  ✓ Upload SBOM artifact
+  * License gate (deny strong-copyleft in the pinned dependency set)
+  * Upload license report
+  * Post Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  * Post Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+✓ core (3.12) in 40s (ID 82150110769)
+  ✓ Set up job
+  ✓ Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  ✓ Install (no extras, hash-pinned)
+  ✓ Lint (ruff)
+  ✓ Format check (ruff)
+  ✓ Type-check (mypy)
+  ✓ Test (pytest)
+  ✓ Post Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  ✓ Post Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Complete job
+✓ core (3.14) in 49s (ID 82150110844)
+  ✓ Set up job
+  ✓ Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  ✓ Install (no extras, hash-pinned)
+  ✓ Lint (ruff)
+  ✓ Format check (ruff)
+  ✓ Type-check (mypy)
+  ✓ Test (pytest)
+  ✓ Post Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  ✓ Post Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Complete job
+✓ core (3.13) in 46s (ID 82150110888)
+  ✓ Set up job
+  ✓ Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  ✓ Install (no extras, hash-pinned)
+  ✓ Lint (ruff)
+  ✓ Format check (ruff)
+  ✓ Type-check (mypy)
+  ✓ Test (pytest)
+  ✓ Post Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  ✓ Post Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Complete job
+
+ANNOTATIONS
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5, actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+core (3.11): .github#2
+
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5, actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+core (3.12): .github#2
+
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5, actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+core (3.14): .github#2
+
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5, actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+core (3.13): .github#2
+
+Refreshing run status every 3 seconds. Press Ctrl+C to quit.
+
+* main ci · 27765257234
+Triggered via push about 2 minutes ago
+
+JOBS
+✓ core (3.11) in 52s (ID 82150110737)
+  ✓ Set up job
+  ✓ Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  ✓ Install (no extras, hash-pinned)
+  ✓ Lint (ruff)
+  ✓ Format check (ruff)
+  ✓ Type-check (mypy)
+  ✓ Test (pytest)
+  ✓ Post Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  ✓ Post Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Complete job
+* integration (ID 82150110746)
+  ✓ Set up job
+  ✓ Initialize containers
+  ✓ Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  ✓ Install (all extras, hash-pinned)
+  ✓ Type-check against real backend types (mypy)
+  ✓ Verify service containers are reachable (no silent skip)
+  * Integration + unit tests with coverage
+  * Post Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  * Post Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  * Stop containers
+* audit (ID 82150110758)
+  ✓ Set up job
+  ✓ Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  ✓ Install pip-audit
+  ✓ Lockfiles are in sync with pyproject (reproducibility guard)
+  ✓ pip-audit (reproducible known-vulnerability scan)
+  ✓ SBOM (CycloneDX) from the lockfile
+  ✓ Upload SBOM artifact
+  * License gate (deny strong-copyleft in the pinned dependency set)
+  * Upload license report
+  * Post Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  * Post Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+✓ core (3.12) in 40s (ID 82150110769)
+  ✓ Set up job
+  ✓ Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  ✓ Install (no extras, hash-pinned)
+  ✓ Lint (ruff)
+  ✓ Format check (ruff)
+  ✓ Type-check (mypy)
+  ✓ Test (pytest)
+  ✓ Post Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  ✓ Post Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Complete job
+✓ core (3.14) in 49s (ID 82150110844)
+  ✓ Set up job
+  ✓ Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  ✓ Install (no extras, hash-pinned)
+  ✓ Lint (ruff)
+  ✓ Format check (ruff)
+  ✓ Type-check (mypy)
+  ✓ Test (pytest)
+  ✓ Post Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  ✓ Post Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Complete job
+✓ core (3.13) in 46s (ID 82150110888)
+  ✓ Set up job
+  ✓ Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  ✓ Install (no extras, hash-pinned)
+  ✓ Lint (ruff)
+  ✓ Format check (ruff)
+  ✓ Type-check (mypy)
+  ✓ Test (pytest)
+  ✓ Post Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  ✓ Post Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Complete job
+
+ANNOTATIONS
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5, actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+core (3.11): .github#2
+
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5, actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+core (3.12): .github#2
+
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5, actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+core (3.14): .github#2
+
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5, actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+core (3.13): .github#2
+
+Refreshing run status every 3 seconds. Press Ctrl+C to quit.
+
+* main ci · 27765257234
+Triggered via push about 2 minutes ago
+
+JOBS
+✓ core (3.11) in 52s (ID 82150110737)
+  ✓ Set up job
+  ✓ Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  ✓ Install (no extras, hash-pinned)
+  ✓ Lint (ruff)
+  ✓ Format check (ruff)
+  ✓ Type-check (mypy)
+  ✓ Test (pytest)
+  ✓ Post Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  ✓ Post Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Complete job
+* integration (ID 82150110746)
+  ✓ Set up job
+  ✓ Initialize containers
+  ✓ Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  ✓ Install (all extras, hash-pinned)
+  ✓ Type-check against real backend types (mypy)
+  ✓ Verify service containers are reachable (no silent skip)
+  * Integration + unit tests with coverage
+  * Post Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  * Post Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  * Stop containers
+* audit (ID 82150110758)
+  ✓ Set up job
+  ✓ Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  ✓ Install pip-audit
+  ✓ Lockfiles are in sync with pyproject (reproducibility guard)
+  ✓ pip-audit (reproducible known-vulnerability scan)
+  ✓ SBOM (CycloneDX) from the lockfile
+  ✓ Upload SBOM artifact
+  ✓ License gate (deny strong-copyleft in the pinned dependency set)
+  ✓ Upload license report
+  ✓ Post Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  * Post Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+✓ core (3.12) in 40s (ID 82150110769)
+  ✓ Set up job
+  ✓ Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  ✓ Install (no extras, hash-pinned)
+  ✓ Lint (ruff)
+  ✓ Format check (ruff)
+  ✓ Type-check (mypy)
+  ✓ Test (pytest)
+  ✓ Post Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  ✓ Post Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Complete job
+✓ core (3.14) in 49s (ID 82150110844)
+  ✓ Set up job
+  ✓ Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  ✓ Install (no extras, hash-pinned)
+  ✓ Lint (ruff)
+  ✓ Format check (ruff)
+  ✓ Type-check (mypy)
+  ✓ Test (pytest)
+  ✓ Post Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  ✓ Post Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Complete job
+✓ core (3.13) in 46s (ID 82150110888)
+  ✓ Set up job
+  ✓ Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  ✓ Install (no extras, hash-pinned)
+  ✓ Lint (ruff)
+  ✓ Format check (ruff)
+  ✓ Type-check (mypy)
+  ✓ Test (pytest)
+  ✓ Post Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  ✓ Post Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Complete job
+
+ANNOTATIONS
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5, actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+core (3.11): .github#2
+
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5, actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+core (3.12): .github#2
+
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5, actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+core (3.14): .github#2
+
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5, actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+core (3.13): .github#2
+
+Refreshing run status every 3 seconds. Press Ctrl+C to quit.
+
+* main ci · 27765257234
+Triggered via push about 2 minutes ago
+
+JOBS
+✓ core (3.11) in 52s (ID 82150110737)
+  ✓ Set up job
+  ✓ Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  ✓ Install (no extras, hash-pinned)
+  ✓ Lint (ruff)
+  ✓ Format check (ruff)
+  ✓ Type-check (mypy)
+  ✓ Test (pytest)
+  ✓ Post Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  ✓ Post Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Complete job
+* integration (ID 82150110746)
+  ✓ Set up job
+  ✓ Initialize containers
+  ✓ Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  ✓ Install (all extras, hash-pinned)
+  ✓ Type-check against real backend types (mypy)
+  ✓ Verify service containers are reachable (no silent skip)
+  * Integration + unit tests with coverage
+  * Post Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  * Post Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  * Stop containers
+✓ audit in 2m45s (ID 82150110758)
+  ✓ Set up job
+  ✓ Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  ✓ Install pip-audit
+  ✓ Lockfiles are in sync with pyproject (reproducibility guard)
+  ✓ pip-audit (reproducible known-vulnerability scan)
+  ✓ SBOM (CycloneDX) from the lockfile
+  ✓ Upload SBOM artifact
+  ✓ License gate (deny strong-copyleft in the pinned dependency set)
+  ✓ Upload license report
+  ✓ Post Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  ✓ Post Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Complete job
+✓ core (3.12) in 40s (ID 82150110769)
+  ✓ Set up job
+  ✓ Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  ✓ Install (no extras, hash-pinned)
+  ✓ Lint (ruff)
+  ✓ Format check (ruff)
+  ✓ Type-check (mypy)
+  ✓ Test (pytest)
+  ✓ Post Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  ✓ Post Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Complete job
+✓ core (3.14) in 49s (ID 82150110844)
+  ✓ Set up job
+  ✓ Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  ✓ Install (no extras, hash-pinned)
+  ✓ Lint (ruff)
+  ✓ Format check (ruff)
+  ✓ Type-check (mypy)
+  ✓ Test (pytest)
+  ✓ Post Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  ✓ Post Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Complete job
+✓ core (3.13) in 46s (ID 82150110888)
+  ✓ Set up job
+  ✓ Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  ✓ Install (no extras, hash-pinned)
+  ✓ Lint (ruff)
+  ✓ Format check (ruff)
+  ✓ Type-check (mypy)
+  ✓ Test (pytest)
+  ✓ Post Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  ✓ Post Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Complete job
+
+ANNOTATIONS
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5, actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+core (3.11): .github#2
+
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5, actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+core (3.12): .github#2
+
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5, actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+core (3.14): .github#2
+
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5, actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+core (3.13): .github#2
+
+Refreshing run status every 3 seconds. Press Ctrl+C to quit.
+
+* main ci · 27765257234
+Triggered via push about 2 minutes ago
+
+JOBS
+✓ core (3.11) in 52s (ID 82150110737)
+  ✓ Set up job
+  ✓ Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  ✓ Install (no extras, hash-pinned)
+  ✓ Lint (ruff)
+  ✓ Format check (ruff)
+  ✓ Type-check (mypy)
+  ✓ Test (pytest)
+  ✓ Post Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  ✓ Post Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Complete job
+* integration (ID 82150110746)
+  ✓ Set up job
+  ✓ Initialize containers
+  ✓ Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  ✓ Install (all extras, hash-pinned)
+  ✓ Type-check against real backend types (mypy)
+  ✓ Verify service containers are reachable (no silent skip)
+  * Integration + unit tests with coverage
+  * Post Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  * Post Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  * Stop containers
+✓ audit in 2m45s (ID 82150110758)
+  ✓ Set up job
+  ✓ Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  ✓ Install pip-audit
+  ✓ Lockfiles are in sync with pyproject (reproducibility guard)
+  ✓ pip-audit (reproducible known-vulnerability scan)
+  ✓ SBOM (CycloneDX) from the lockfile
+  ✓ Upload SBOM artifact
+  ✓ License gate (deny strong-copyleft in the pinned dependency set)
+  ✓ Upload license report
+  ✓ Post Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  ✓ Post Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Complete job
+✓ core (3.12) in 40s (ID 82150110769)
+  ✓ Set up job
+  ✓ Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  ✓ Install (no extras, hash-pinned)
+  ✓ Lint (ruff)
+  ✓ Format check (ruff)
+  ✓ Type-check (mypy)
+  ✓ Test (pytest)
+  ✓ Post Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  ✓ Post Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Complete job
+✓ core (3.14) in 49s (ID 82150110844)
+  ✓ Set up job
+  ✓ Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  ✓ Install (no extras, hash-pinned)
+  ✓ Lint (ruff)
+  ✓ Format check (ruff)
+  ✓ Type-check (mypy)
+  ✓ Test (pytest)
+  ✓ Post Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  ✓ Post Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Complete job
+✓ core (3.13) in 46s (ID 82150110888)
+  ✓ Set up job
+  ✓ Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  ✓ Install (no extras, hash-pinned)
+  ✓ Lint (ruff)
+  ✓ Format check (ruff)
+  ✓ Type-check (mypy)
+  ✓ Test (pytest)
+  ✓ Post Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  ✓ Post Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Complete job
+
+ANNOTATIONS
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5, actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+core (3.11): .github#2
+
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5, actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+core (3.12): .github#2
+
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5, actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+core (3.14): .github#2
+
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5, actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+core (3.13): .github#2
+
+Refreshing run status every 3 seconds. Press Ctrl+C to quit.
+
+* main ci · 27765257234
+Triggered via push about 3 minutes ago
+
+JOBS
+✓ core (3.11) in 52s (ID 82150110737)
+  ✓ Set up job
+  ✓ Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  ✓ Install (no extras, hash-pinned)
+  ✓ Lint (ruff)
+  ✓ Format check (ruff)
+  ✓ Type-check (mypy)
+  ✓ Test (pytest)
+  ✓ Post Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  ✓ Post Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Complete job
+* integration (ID 82150110746)
+  ✓ Set up job
+  ✓ Initialize containers
+  ✓ Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  ✓ Install (all extras, hash-pinned)
+  ✓ Type-check against real backend types (mypy)
+  ✓ Verify service containers are reachable (no silent skip)
+  * Integration + unit tests with coverage
+  * Post Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  * Post Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  * Stop containers
+✓ audit in 2m45s (ID 82150110758)
+  ✓ Set up job
+  ✓ Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  ✓ Install pip-audit
+  ✓ Lockfiles are in sync with pyproject (reproducibility guard)
+  ✓ pip-audit (reproducible known-vulnerability scan)
+  ✓ SBOM (CycloneDX) from the lockfile
+  ✓ Upload SBOM artifact
+  ✓ License gate (deny strong-copyleft in the pinned dependency set)
+  ✓ Upload license report
+  ✓ Post Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  ✓ Post Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Complete job
+✓ core (3.12) in 40s (ID 82150110769)
+  ✓ Set up job
+  ✓ Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  ✓ Install (no extras, hash-pinned)
+  ✓ Lint (ruff)
+  ✓ Format check (ruff)
+  ✓ Type-check (mypy)
+  ✓ Test (pytest)
+  ✓ Post Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  ✓ Post Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Complete job
+✓ core (3.14) in 49s (ID 82150110844)
+  ✓ Set up job
+  ✓ Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  ✓ Install (no extras, hash-pinned)
+  ✓ Lint (ruff)
+  ✓ Format check (ruff)
+  ✓ Type-check (mypy)
+  ✓ Test (pytest)
+  ✓ Post Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  ✓ Post Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Complete job
+✓ core (3.13) in 46s (ID 82150110888)
+  ✓ Set up job
+  ✓ Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  ✓ Install (no extras, hash-pinned)
+  ✓ Lint (ruff)
+  ✓ Format check (ruff)
+  ✓ Type-check (mypy)
+  ✓ Test (pytest)
+  ✓ Post Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  ✓ Post Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Complete job
+
+ANNOTATIONS
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5, actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+core (3.11): .github#2
+
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5, actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+core (3.12): .github#2
+
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5, actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+core (3.14): .github#2
+
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5, actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+core (3.13): .github#2
+
+Refreshing run status every 3 seconds. Press Ctrl+C to quit.
+
+* main ci · 27765257234
+Triggered via push about 3 minutes ago
+
+JOBS
+✓ core (3.11) in 52s (ID 82150110737)
+  ✓ Set up job
+  ✓ Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  ✓ Install (no extras, hash-pinned)
+  ✓ Lint (ruff)
+  ✓ Format check (ruff)
+  ✓ Type-check (mypy)
+  ✓ Test (pytest)
+  ✓ Post Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  ✓ Post Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Complete job
+* integration (ID 82150110746)
+  ✓ Set up job
+  ✓ Initialize containers
+  ✓ Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  ✓ Install (all extras, hash-pinned)
+  ✓ Type-check against real backend types (mypy)
+  ✓ Verify service containers are reachable (no silent skip)
+  * Integration + unit tests with coverage
+  * Post Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  * Post Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  * Stop containers
+✓ audit in 2m45s (ID 82150110758)
+  ✓ Set up job
+  ✓ Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  ✓ Install pip-audit
+  ✓ Lockfiles are in sync with pyproject (reproducibility guard)
+  ✓ pip-audit (reproducible known-vulnerability scan)
+  ✓ SBOM (CycloneDX) from the lockfile
+  ✓ Upload SBOM artifact
+  ✓ License gate (deny strong-copyleft in the pinned dependency set)
+  ✓ Upload license report
+  ✓ Post Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  ✓ Post Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Complete job
+✓ core (3.12) in 40s (ID 82150110769)
+  ✓ Set up job
+  ✓ Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  ✓ Install (no extras, hash-pinned)
+  ✓ Lint (ruff)
+  ✓ Format check (ruff)
+  ✓ Type-check (mypy)
+  ✓ Test (pytest)
+  ✓ Post Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  ✓ Post Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Complete job
+✓ core (3.14) in 49s (ID 82150110844)
+  ✓ Set up job
+  ✓ Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  ✓ Install (no extras, hash-pinned)
+  ✓ Lint (ruff)
+  ✓ Format check (ruff)
+  ✓ Type-check (mypy)
+  ✓ Test (pytest)
+  ✓ Post Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  ✓ Post Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Complete job
+✓ core (3.13) in 46s (ID 82150110888)
+  ✓ Set up job
+  ✓ Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  ✓ Install (no extras, hash-pinned)
+  ✓ Lint (ruff)
+  ✓ Format check (ruff)
+  ✓ Type-check (mypy)
+  ✓ Test (pytest)
+  ✓ Post Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  ✓ Post Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Complete job
+
+ANNOTATIONS
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5, actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+core (3.11): .github#2
+
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5, actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+core (3.12): .github#2
+
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5, actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+core (3.14): .github#2
+
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5, actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+core (3.13): .github#2
+
+Refreshing run status every 3 seconds. Press Ctrl+C to quit.
+
+* main ci · 27765257234
+Triggered via push about 3 minutes ago
+
+JOBS
+✓ core (3.11) in 52s (ID 82150110737)
+  ✓ Set up job
+  ✓ Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  ✓ Install (no extras, hash-pinned)
+  ✓ Lint (ruff)
+  ✓ Format check (ruff)
+  ✓ Type-check (mypy)
+  ✓ Test (pytest)
+  ✓ Post Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  ✓ Post Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Complete job
+* integration (ID 82150110746)
+  ✓ Set up job
+  ✓ Initialize containers
+  ✓ Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  ✓ Install (all extras, hash-pinned)
+  ✓ Type-check against real backend types (mypy)
+  ✓ Verify service containers are reachable (no silent skip)
+  * Integration + unit tests with coverage
+  * Post Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  * Post Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  * Stop containers
+✓ audit in 2m45s (ID 82150110758)
+  ✓ Set up job
+  ✓ Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  ✓ Install pip-audit
+  ✓ Lockfiles are in sync with pyproject (reproducibility guard)
+  ✓ pip-audit (reproducible known-vulnerability scan)
+  ✓ SBOM (CycloneDX) from the lockfile
+  ✓ Upload SBOM artifact
+  ✓ License gate (deny strong-copyleft in the pinned dependency set)
+  ✓ Upload license report
+  ✓ Post Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  ✓ Post Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Complete job
+✓ core (3.12) in 40s (ID 82150110769)
+  ✓ Set up job
+  ✓ Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  ✓ Install (no extras, hash-pinned)
+  ✓ Lint (ruff)
+  ✓ Format check (ruff)
+  ✓ Type-check (mypy)
+  ✓ Test (pytest)
+  ✓ Post Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  ✓ Post Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Complete job
+✓ core (3.14) in 49s (ID 82150110844)
+  ✓ Set up job
+  ✓ Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  ✓ Install (no extras, hash-pinned)
+  ✓ Lint (ruff)
+  ✓ Format check (ruff)
+  ✓ Type-check (mypy)
+  ✓ Test (pytest)
+  ✓ Post Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  ✓ Post Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Complete job
+✓ core (3.13) in 46s (ID 82150110888)
+  ✓ Set up job
+  ✓ Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  ✓ Install (no extras, hash-pinned)
+  ✓ Lint (ruff)
+  ✓ Format check (ruff)
+  ✓ Type-check (mypy)
+  ✓ Test (pytest)
+  ✓ Post Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  ✓ Post Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Complete job
+
+ANNOTATIONS
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5, actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+core (3.11): .github#2
+
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5, actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+core (3.12): .github#2
+
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5, actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+core (3.14): .github#2
+
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5, actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+core (3.13): .github#2
+
+Refreshing run status every 3 seconds. Press Ctrl+C to quit.
+
+* main ci · 27765257234
+Triggered via push about 3 minutes ago
+
+JOBS
+✓ core (3.11) in 52s (ID 82150110737)
+  ✓ Set up job
+  ✓ Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  ✓ Install (no extras, hash-pinned)
+  ✓ Lint (ruff)
+  ✓ Format check (ruff)
+  ✓ Type-check (mypy)
+  ✓ Test (pytest)
+  ✓ Post Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  ✓ Post Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Complete job
+* integration (ID 82150110746)
+  ✓ Set up job
+  ✓ Initialize containers
+  ✓ Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  ✓ Install (all extras, hash-pinned)
+  ✓ Type-check against real backend types (mypy)
+  ✓ Verify service containers are reachable (no silent skip)
+  ✓ Integration + unit tests with coverage
+  ✓ Post Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  ✓ Post Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Stop containers
+  ✓ Complete job
+✓ audit in 2m45s (ID 82150110758)
+  ✓ Set up job
+  ✓ Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  ✓ Install pip-audit
+  ✓ Lockfiles are in sync with pyproject (reproducibility guard)
+  ✓ pip-audit (reproducible known-vulnerability scan)
+  ✓ SBOM (CycloneDX) from the lockfile
+  ✓ Upload SBOM artifact
+  ✓ License gate (deny strong-copyleft in the pinned dependency set)
+  ✓ Upload license report
+  ✓ Post Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  ✓ Post Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Complete job
+✓ core (3.12) in 40s (ID 82150110769)
+  ✓ Set up job
+  ✓ Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  ✓ Install (no extras, hash-pinned)
+  ✓ Lint (ruff)
+  ✓ Format check (ruff)
+  ✓ Type-check (mypy)
+  ✓ Test (pytest)
+  ✓ Post Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  ✓ Post Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Complete job
+✓ core (3.14) in 49s (ID 82150110844)
+  ✓ Set up job
+  ✓ Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  ✓ Install (no extras, hash-pinned)
+  ✓ Lint (ruff)
+  ✓ Format check (ruff)
+  ✓ Type-check (mypy)
+  ✓ Test (pytest)
+  ✓ Post Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  ✓ Post Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Complete job
+✓ core (3.13) in 46s (ID 82150110888)
+  ✓ Set up job
+  ✓ Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  ✓ Install (no extras, hash-pinned)
+  ✓ Lint (ruff)
+  ✓ Format check (ruff)
+  ✓ Type-check (mypy)
+  ✓ Test (pytest)
+  ✓ Post Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  ✓ Post Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Complete job
+
+ANNOTATIONS
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5, actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+core (3.11): .github#2
+
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5, actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+core (3.12): .github#2
+
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5, actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+core (3.14): .github#2
+
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5, actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+core (3.13): .github#2
+
+Refreshing run status every 3 seconds. Press Ctrl+C to quit.
+
+* main ci · 27765257234
+Triggered via push about 3 minutes ago
+
+JOBS
+✓ core (3.11) in 52s (ID 82150110737)
+  ✓ Set up job
+  ✓ Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  ✓ Install (no extras, hash-pinned)
+  ✓ Lint (ruff)
+  ✓ Format check (ruff)
+  ✓ Type-check (mypy)
+  ✓ Test (pytest)
+  ✓ Post Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  ✓ Post Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Complete job
+✓ integration in 3m8s (ID 82150110746)
+  ✓ Set up job
+  ✓ Initialize containers
+  ✓ Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  ✓ Install (all extras, hash-pinned)
+  ✓ Type-check against real backend types (mypy)
+  ✓ Verify service containers are reachable (no silent skip)
+  ✓ Integration + unit tests with coverage
+  ✓ Post Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  ✓ Post Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Stop containers
+  ✓ Complete job
+✓ audit in 2m45s (ID 82150110758)
+  ✓ Set up job
+  ✓ Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  ✓ Install pip-audit
+  ✓ Lockfiles are in sync with pyproject (reproducibility guard)
+  ✓ pip-audit (reproducible known-vulnerability scan)
+  ✓ SBOM (CycloneDX) from the lockfile
+  ✓ Upload SBOM artifact
+  ✓ License gate (deny strong-copyleft in the pinned dependency set)
+  ✓ Upload license report
+  ✓ Post Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  ✓ Post Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Complete job
+✓ core (3.12) in 40s (ID 82150110769)
+  ✓ Set up job
+  ✓ Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  ✓ Install (no extras, hash-pinned)
+  ✓ Lint (ruff)
+  ✓ Format check (ruff)
+  ✓ Type-check (mypy)
+  ✓ Test (pytest)
+  ✓ Post Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  ✓ Post Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Complete job
+✓ core (3.14) in 49s (ID 82150110844)
+  ✓ Set up job
+  ✓ Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  ✓ Install (no extras, hash-pinned)
+  ✓ Lint (ruff)
+  ✓ Format check (ruff)
+  ✓ Type-check (mypy)
+  ✓ Test (pytest)
+  ✓ Post Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  ✓ Post Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Complete job
+✓ core (3.13) in 46s (ID 82150110888)
+  ✓ Set up job
+  ✓ Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  ✓ Install (no extras, hash-pinned)
+  ✓ Lint (ruff)
+  ✓ Format check (ruff)
+  ✓ Type-check (mypy)
+  ✓ Test (pytest)
+  ✓ Post Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  ✓ Post Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Complete job
+* all-checks (ID 82150828882)
+
+ANNOTATIONS
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5, actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+core (3.11): .github#2
+
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5, actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+core (3.12): .github#2
+
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5, actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+core (3.14): .github#2
+
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5, actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+core (3.13): .github#2
+
+✓ main ci · 27765257234
+Triggered via push about 3 minutes ago
+
+JOBS
+✓ core (3.11) in 52s (ID 82150110737)
+  ✓ Set up job
+  ✓ Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  ✓ Install (no extras, hash-pinned)
+  ✓ Lint (ruff)
+  ✓ Format check (ruff)
+  ✓ Type-check (mypy)
+  ✓ Test (pytest)
+  ✓ Post Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  ✓ Post Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Complete job
+✓ integration in 3m8s (ID 82150110746)
+  ✓ Set up job
+  ✓ Initialize containers
+  ✓ Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  ✓ Install (all extras, hash-pinned)
+  ✓ Type-check against real backend types (mypy)
+  ✓ Verify service containers are reachable (no silent skip)
+  ✓ Integration + unit tests with coverage
+  ✓ Post Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  ✓ Post Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Stop containers
+  ✓ Complete job
+✓ audit in 2m45s (ID 82150110758)
+  ✓ Set up job
+  ✓ Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  ✓ Install pip-audit
+  ✓ Lockfiles are in sync with pyproject (reproducibility guard)
+  ✓ pip-audit (reproducible known-vulnerability scan)
+  ✓ SBOM (CycloneDX) from the lockfile
+  ✓ Upload SBOM artifact
+  ✓ License gate (deny strong-copyleft in the pinned dependency set)
+  ✓ Upload license report
+  ✓ Post Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  ✓ Post Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Complete job
+✓ core (3.12) in 40s (ID 82150110769)
+  ✓ Set up job
+  ✓ Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  ✓ Install (no extras, hash-pinned)
+  ✓ Lint (ruff)
+  ✓ Format check (ruff)
+  ✓ Type-check (mypy)
+  ✓ Test (pytest)
+  ✓ Post Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  ✓ Post Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Complete job
+✓ core (3.14) in 49s (ID 82150110844)
+  ✓ Set up job
+  ✓ Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  ✓ Install (no extras, hash-pinned)
+  ✓ Lint (ruff)
+  ✓ Format check (ruff)
+  ✓ Type-check (mypy)
+  ✓ Test (pytest)
+  ✓ Post Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  ✓ Post Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Complete job
+✓ core (3.13) in 46s (ID 82150110888)
+  ✓ Set up job
+  ✓ Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  ✓ Install (no extras, hash-pinned)
+  ✓ Lint (ruff)
+  ✓ Format check (ruff)
+  ✓ Type-check (mypy)
+  ✓ Test (pytest)
+  ✓ Post Run actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+  ✓ Post Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+  ✓ Complete job
+✓ all-checks in 2s (ID 82150828882)
+  ✓ Set up job
+  ✓ Verify all required jobs succeeded
+  ✓ Complete job
+
+ANNOTATIONS
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5, actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+core (3.11): .github#2
+
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5, actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+core (3.12): .github#2
+
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5, actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+core (3.14): .github#2
+
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5, actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+core (3.13): .github#2
+
