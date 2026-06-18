@@ -300,3 +300,40 @@ def test_example_uses_no_hardcoded_hmac_secret():
     src = (_ROOT / "examples" / "minimal_study.py").read_text(encoding="utf-8")
     assert b"example-study-secret-key".decode() not in src  # the stale weak literal is gone
     assert "os.urandom(32)" in src  # the fresh-per-run secret is in place
+
+
+def test_scrub_redacts_password_env_vars():
+    # #B-12-1: PGPASSWORD, DATABASE_PASSWORD, DB_PASSWORD, DB_PASS, REDIS_PASSWORD and similar
+    # credential env vars appear in `env`/`printenv` output and in psycopg error messages captured
+    # in agent transcripts. The _TOKEN/_KEY/_SECRET rules required an 8-char minimum and did not
+    # cover _PASSWORD/_PASS variants — leaving short or differently-suffixed passwords in cleartext.
+    cap = _load("scripts/capture_transcripts.py", "capture_transcripts_pass")
+    # JSON value form (captured from env dump with JSON encoding)
+    out_json = cap._scrub('{"PGPASSWORD": "s3cr3t", "DB_PASSWORD": "hunter2", "DB_PASS": "pw"}')
+    assert "s3cr3t" not in out_json, "PGPASSWORD value leaked in JSON form"
+    assert "hunter2" not in out_json, "DB_PASSWORD value leaked in JSON form"
+    assert "pw" not in out_json, "DB_PASS value leaked in JSON form"
+    # env/export form: NAME=value (no quotes)
+    out_env = cap._scrub("PGPASSWORD=s3cr3t DB_PASSWORD=hunter2 REDIS_PASSWORD=abc123 DB_PASS=pw")
+    assert "s3cr3t" not in out_env, "PGPASSWORD value leaked in env form"
+    assert "hunter2" not in out_env, "DB_PASSWORD value leaked in env form"
+    assert "abc123" not in out_env, "REDIS_PASSWORD value leaked in env form"
+    assert "pw" not in out_env, "DB_PASS value leaked in env form"
+    # negative: BYPASS and COMPASS must not be over-redacted by the _PASS\b boundary rule
+    out_safe = cap._scrub("BYPASS=foo COMPASS=bar")
+    assert "BYPASS=foo" in out_safe, "BYPASS over-redacted"
+    assert "COMPASS=bar" in out_safe, "COMPASS over-redacted"
+
+
+def test_scrub_mac_pattern_does_not_redact_timestamps():
+    # #B-12-2: HH:MM:SS timestamps (e.g. "12:34:56") are 3 colon-separated 2-hex-digit groups —
+    # a false-positive substring of the 6-group MAC pattern. The lookbehind/lookahead guards in
+    # the MAC pattern must reject them so log/trace output is not mangled.
+    cap = _load("scripts/capture_transcripts.py", "capture_transcripts_mac_neg")
+    out = cap._scrub(
+        "timestamp 12:34:56 elapsed 00:01:23 at 23:59:59 ether b2:35:c2:4c:12:2f real-mac"
+    )
+    assert "12:34:56" in out, "HH:MM:SS timestamp incorrectly redacted as MAC"
+    assert "00:01:23" in out, "elapsed time incorrectly redacted as MAC"
+    assert "23:59:59" in out, "HH:MM:SS timestamp incorrectly redacted as MAC"
+    assert "b2:35:c2:4c:12:2f" not in out, "real MAC address should be redacted"

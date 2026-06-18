@@ -47,6 +47,13 @@ _SECRET_PATTERNS = [
     # explicit OAuth/token env values: "...OAUTH_TOKEN":"<value>" / ...KEY=<value>
     re.compile(r'((?:OAUTH_TOKEN|_TOKEN|_KEY|_SECRET)"\s*:\s*")[^"]{8,}(")'),
     re.compile(r"((?:OAUTH_TOKEN|_TOKEN|_KEY|_SECRET)=)[^\s\"']{8,}"),
+    # password-class env vars (#B-12-1): PGPASSWORD, DATABASE_PASSWORD, DB_PASSWORD, DB_PASS,
+    # REDIS_PASSWORD, etc. — absent from the _TOKEN/_KEY/_SECRET rules above. These appear in
+    # `env`/`printenv` output and in psycopg error messages captured in agent transcripts.
+    # Boundaries: _PASS\b avoids BYPASS/COMPASS; PGPASSWORD matched explicitly (ends in GPASSWORD,
+    # not _PASSWORD). No minimum-length floor — DB_PASS=pw is unambiguous credential context.
+    re.compile(r'((?:PGPASSWORD|_PASSWORD|_PASS\b)"\s*:\s*")[^"]+?(")'),
+    re.compile(r"((?:PGPASSWORD|_PASSWORD|_PASS\b)=)[^\s\"']+"),
     # operator PII (#F-024): email addresses, and the username segment of a home path
     # (/Users/<name>, /home/<name>) — the path STRUCTURE is kept, only the identity is masked.
     re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b"),  # email → [REDACTED]
