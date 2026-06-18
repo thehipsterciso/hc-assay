@@ -325,6 +325,43 @@ def test_scrub_redacts_password_env_vars():
     assert "COMPASS=bar" in out_safe, "COMPASS over-redacted"
 
 
+def test_scrub_redacts_dsn_uri_userinfo():
+    # #L-13-P1: DSN URI userinfo (scheme://user:pass@host) is not matched by the email regex
+    # (which requires a real TLD — '@localhost' has none) and not by the env-var _PASS patterns.
+    # A psycopg error or Bash output printing a full DSN would expose the password verbatim.
+    cap = _load("scripts/capture_transcripts.py", "capture_transcripts_dsn_uri")
+    out = cap._scrub(
+        "postgresql://hcgrc_agent:s3cretpw@localhost:5432/hcgrc "
+        "postgresql://user:hunter2@127.0.0.1/db "
+        "http://admin:abc123@localhost:8080/api"
+    )
+    assert "s3cretpw" not in out, "URI password leaked for @localhost form"
+    assert "hunter2" not in out, "URI password leaked for @127.0.0.1 form"
+    assert "abc123" not in out, "URI password leaked for http @localhost form"
+    # URI structure preserved — host, path, and scheme visible for provenance
+    assert "localhost" in out
+    assert "127.0.0.1" in out
+    assert "[REDACTED]" in out
+
+
+def test_scrub_redacts_libpq_password_keyword():
+    # #L-13-P2: psycopg error messages and DSN strings in Bash output use the keyword form
+    # 'password=<val>' — not an env-var prefix name, so the _PASS\b patterns don't cover it.
+    # Verified: 'password' does not match PGPASSWORD (no leading \b before 'P' in 'GPASSWORD').
+    cap = _load("scripts/capture_transcripts.py", "capture_transcripts_pw_kw")
+    out_bare = cap._scrub("host=localhost password=s3cretpw dbname=hcgrc user=agent")
+    assert "s3cretpw" not in out_bare, "libpq keyword password value leaked (unquoted)"
+    out_single = cap._scrub("host=localhost password='s3cretpw' dbname=hcgrc")
+    assert "s3cretpw" not in out_single, "libpq keyword password value leaked (single-quoted)"
+    out_double = cap._scrub('host=localhost password="s3cretpw" dbname=hcgrc')
+    assert "s3cretpw" not in out_double, "libpq keyword password value leaked (double-quoted)"
+    # 'host' keyword must NOT be redacted — only the password value
+    assert "host=localhost" in out_bare
+    # PGPASSWORD= env-var form is still covered by the pre-existing _PASS pattern (no regression)
+    out_env = cap._scrub("PGPASSWORD=s3cretpw DB_PASS=pw2")
+    assert "s3cretpw" not in out_env and "pw2" not in out_env
+
+
 def test_scrub_mac_pattern_does_not_redact_timestamps():
     # #B-12-2: HH:MM:SS timestamps (e.g. "12:34:56") are 3 colon-separated 2-hex-digit groups —
     # a false-positive substring of the 6-group MAC pattern. The lookbehind/lookahead guards in

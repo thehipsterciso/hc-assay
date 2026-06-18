@@ -71,7 +71,7 @@ index 9aacee3..c36fbb0 100644
 +          --health-retries 5
 +
 +    env:
-+      HCGRC_POSTGRES_URL: postgresql://postgres:postgres@localhost:5432/hcgrc
++      HCGRC_POSTGRES_URL: postgresql://[REDACTED]@localhost:5432/hcgrc
 +
      steps:
        - uses: actions/checkout@v4

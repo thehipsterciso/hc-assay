@@ -433,6 +433,9 @@ def test_tracker_receives_run_and_metrics_and_failures_dont_abort(tmp_path):
         def log_metric(self, run_id, key, value):
             self.calls.append(("metric", key, value))
 
+        def log_param(self, run_id, key, value):
+            self.calls.append(("param", key, value))
+
         def log_artifact(self, run_id, path):
             self.calls.append(("artifact", path))
 
@@ -444,6 +447,9 @@ def test_tracker_receives_run_and_metrics_and_failures_dont_abort(tmp_path):
     assert res.experiment_run_id == "run-1"
     assert ("start", "reference-study") in t.calls and ("end", "run-1", "FINISHED") in t.calls
     assert any(c[0] == "metric" and c[1] == "alignment_rate" for c in t.calls)
+    # #L-13-1: corpus/source fingerprints must be logged as MLflow params for run comparability
+    param_keys = {c[1] for c in t.calls if c[0] == "param"}
+    assert {"source_fingerprint", "corpus_fingerprint"} <= param_keys
     # #F-029: SLO-relevant scale + latency metrics are logged so corpus-size↔latency regressions
     # are analysable from the experiment store, not just the provenance trail.
     metric_keys = {c[1] for c in t.calls if c[0] == "metric"}
