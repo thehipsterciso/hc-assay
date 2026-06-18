@@ -222,9 +222,12 @@ def test_scrub_redacts_private_ips_keeps_loopback_and_public():
     # IP (RFC1918). Redact 10/8, 172.16/12, 192.168/16 — including a form glued to a JSON-\n — while
     # KEEPING loopback (127.x), 0.0.0.0, and public IPs (remote API endpoints, not operator PII).
     cap = _load("scripts/capture_transcripts.py", "capture_transcripts_ip")
+    # include a sentence-final form "192.168.50.134." — the old (?![\d.]) lookahead refused the
+    # trailing period and left the operator's real IP in cleartext (#P10-PII-1 confirm-concern).
     out = cap._scrub(
         "gw 192.168.50.1 host 192.168.50.134 ten 10.0.0.9 priv 172.16.5.4 "
-        "loop 127.0.0.1 any 0.0.0.0 pub 160.79.104.10 glued:\\n192.168.1.50"
+        "loop 127.0.0.1 any 0.0.0.0 pub 160.79.104.10 glued:\\n192.168.1.50 "
+        "sentence addr 192.168.50.134. Next sentence."
     )
     for priv in ("192.168.50.1", "192.168.50.134", "10.0.0.9", "172.16.5.4", "192.168.1.50"):
         assert priv not in out, f"private IP {priv} leaked"
@@ -242,7 +245,9 @@ def test_scrub_hostname_does_not_over_redact_as_substring(monkeypatch):
     out = cap._scrub("connect to localhost; the localhostname var; rehosting the service")
     # leading \b prevents the SUBSTRING matches that were the defect: 'host' must not fire inside
     # 'localhost', 'localhostname', or 'rehosting'.
-    assert "localhost" in out and "localhostname" in out and "rehosting" in out, (
+    # "to localhost;" tests the EXACT token in context — "localhost" alone would spuriously
+    # pass via the substring "localhostname" even when localhost is redacted to "local[REDACTED]".
+    assert "to localhost;" in out and "localhostname" in out and "rehosting" in out, (
         "over-redacted 'host' as a substring (#P10-PII-2)"
     )
 

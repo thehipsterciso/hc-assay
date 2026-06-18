@@ -61,12 +61,16 @@ _SECRET_PATTERNS = [
     # (127.0.0.0/8) and 0.0.0.0 are NOT private/identifying and are left (they appear in guard
     # tests/messages); public IPs (e.g. remote API endpoints) are not the operator's and are left.
     # Digit/dot lookarounds (not \b): the IP often abuts a JSON-escaped newline ("...\\n192.168...")
-    # where \b fails because the escape's 'n' is a word char; the lookarounds still bound it so it
-    # never matches inside a longer number/IP.
+    # where \b fails because the escape's 'n' is a word char. Leading guard: not preceded by a
+    # digit/dot (so we don't match inside a longer dotted number). Trailing guard: not followed by a
+    # digit, and not by a dot-then-digit — this still bounds a longer IP ("10.0.0.50", "...0.134.5")
+    # WITHOUT rejecting an IP that merely ends a sentence ("addr 192.168.50.134. Next ...") — the
+    # earlier (?![\d.]) refused the sentence-final period and left the operator's real IP in cleartext
+    # (#P10-PII-1 confirm-concern).
     re.compile(
         r"(?<![\d.])(?:10\.\d{1,3}\.\d{1,3}\.\d{1,3}"
         r"|172\.(?:1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}"
-        r"|192\.168\.\d{1,3}\.\d{1,3})(?![\d.])"
+        r"|192\.168\.\d{1,3}\.\d{1,3})(?!\d)(?!\.\d)"
     ),  # RFC1918 → [REDACTED]
 ]
 

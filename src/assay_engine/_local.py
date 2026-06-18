@@ -162,11 +162,27 @@ def require_local_uri(uri: str, *, what: str) -> str:
                             f"{what} must be a local store (ADR-0003 data sovereignty); URI query "
                             f"{key}={h!r} points off-box"
                         )
+        # libpq ``service``/``servicefile`` query params load ~/.pg_service.conf (or a custom
+        # file) which can redirect the connection off-box regardless of host= (#SEC-10-1).
+        for key in ("service", "servicefile"):
+            if parse_qs(query).get(key):
+                raise NonLocalEndpointError(
+                    f"{what}: URI query parameter {key!r} would load an off-box service "
+                    "definition (ADR-0003 data sovereignty); use explicit host=localhost instead"
+                )
         return uri
 
     if "=" in uri:  # libpq keyword/value DSN (no URI authority)
         for match in _DSN_TOKEN_RE.finditer(uri):
-            if match.group(1).strip().lower() in {"host", "hostaddr"}:
+            kw = match.group(1).strip().lower()
+            # libpq ``service``/``servicefile`` DSN keywords load ~/.pg_service.conf (or a custom
+            # file) which can redirect the connection off-box regardless of host= (#SEC-10-1).
+            if kw in {"service", "servicefile"}:
+                raise NonLocalEndpointError(
+                    f"{what}: DSN keyword {kw!r} would load an off-box service definition "
+                    "(ADR-0003 data sovereignty); use explicit host=localhost instead"
+                )
+            if kw in {"host", "hostaddr"}:
                 raw = match.group(2).strip().strip("'\"")
                 # Split libpq's comma-separated multi-host and validate each element (#K-SEC-9-1).
                 for h in (p.strip() for p in raw.split(",")):
