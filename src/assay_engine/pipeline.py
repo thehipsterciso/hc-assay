@@ -437,6 +437,11 @@ def run_study(
             # #F-029). Best-effort via track() (no-ops if no tracker/run_id).
             track(_count_logger("n_units", float(len(corpus.units))))
             track(_count_logger("n_relations", float(len(corpus.relations))))
+            # Log corpus/source fingerprints as MLflow params so runs are comparable by corpus
+            # identity without opening the provenance artifact JSON (#L-13-1). These are SHA-256
+            # digests — no raw content, no data-path leak — safe to store in the tracker.
+            track(lambda t, rid: t.log_param(rid, "source_fingerprint", source_fp))
+            track(lambda t, rid: t.log_param(rid, "corpus_fingerprint", cfp))
             # Compute the corpus unit-id set ONCE and reuse it for both the split-id and feature-id
             # validations (pass 4, #G-023 — was built twice on the same corpus).
             corpus_unit_ids = {u.unit_id for u in corpus.units}
@@ -732,6 +737,10 @@ def run_study(
             experiment_run_id=run_id,
             n_provenance_entries=len(trail.entries) + 1,  # +1 counts this terminal entry itself
         )
+        # Set ok BEFORE the best-effort tracker calls so a BaseException (KeyboardInterrupt,
+        # SystemExit) fired during track() does not leave the MLflow run FAILED while the trail
+        # already carries the terminal run_end success marker (#L-13-2).
+        ok = True
         track(_count_logger("run_duration_s", time.monotonic() - started_at))  # SLO metric (#F-029)
         # Correlate the hash-chained trail to the experiment run (#G-009): persist it as a JSON
         # artifact on the tracker so an auditor opening the run can retrieve the provenance that
@@ -768,13 +777,19 @@ def run_study(
                     fh.close()
                     t.log_artifact(rid, fh.name)
                 finally:
+                    # Close fh before unlinking — if fh.write() raised, close() was skipped and
+                    # the file descriptor would leak until GC (#L-13-3). Harmless if already closed.
+                    try:
+                        if not fh.closed:
+                            fh.close()
+                    except OSError:
+                        pass
                     try:
                         os.unlink(fh.name)
                     except OSError:
                         pass
 
             track(_log_trail)
-        ok = True
     except Exception as exc:
         # Record a terminal failure entry BEFORE re-raising so the abort reason is recoverable
         # from the (caller-owned) trail, not lost (#109).

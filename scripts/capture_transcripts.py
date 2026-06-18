@@ -54,6 +54,21 @@ _SECRET_PATTERNS = [
     # not _PASSWORD). No minimum-length floor — DB_PASS=pw is unambiguous credential context.
     re.compile(r'((?:PGPASSWORD|_PASSWORD|_PASS\b)"\s*:\s*")[^"]+?(")'),
     re.compile(r"((?:PGPASSWORD|_PASSWORD|_PASS\b)=)[^\s\"']+"),
+    # DSN URI userinfo (#L-13-P1): credentials embedded in a URI authority (scheme://user:pass@host)
+    # are NOT caught by the email regex (which requires a real TLD — '@localhost' has none) and are
+    # absent from the env-var _PASS patterns. A psycopg connection string printed by the engine or
+    # in agent Bash output would expose the password verbatim. Capture the '://' prefix and '@'
+    # suffix as sentinels so the URI structure is preserved for readability; only the credentials
+    # are replaced.
+    re.compile(r"(://)[^@\s]+(@)"),  # ://user:pass@ → ://[REDACTED]@
+    # libpq keyword form 'password=<val>' (#L-13-P2): psycopg error messages and DSN strings
+    # printed in Bash output use the keyword form 'password=s3cret' — not an env-var prefix name
+    # so the _PASS\b patterns above don't cover it. '\bpassword' requires a word boundary, so
+    # PGPASSWORD (no '_' before 'PASSWORD') is unaffected. Handles quoted and unquoted values;
+    # terminates at whitespace, delimiters, and common DSN token separators.
+    re.compile(
+        r"(?i)(\bpassword\s*=\s*)(?:'[^']*'|\"[^\"]*\"|[^\s\"',;()\[\]]+)"
+    ),  # password=<val> → password=[REDACTED]
     # operator PII (#F-024): email addresses, and the username segment of a home path
     # (/Users/<name>, /home/<name>) — the path STRUCTURE is kept, only the identity is masked.
     re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b"),  # email → [REDACTED]

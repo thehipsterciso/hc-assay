@@ -275,6 +275,31 @@ def test_connection_string_accepts_normal_userinfo(monkeypatch):
     assert get_postgres_connection_string().endswith("/db")
 
 
+def test_require_local_uri_rejects_zero_host_authority():
+    # #L-13-4: a URI authority with userinfo but no host (e.g. "postgresql://@") yields an empty
+    # host list from _authority_hosts() — the for-loop never executes and require_local_uri()
+    # returned the URI without any loopback check, silently accepting it.
+    from assay_engine._local import require_local_uri
+
+    with pytest.raises(NonLocalEndpointError, match="no extractable host"):
+        require_local_uri("postgresql://@", what="x")
+    with pytest.raises(NonLocalEndpointError, match="no extractable host"):
+        require_local_uri("postgresql://user:pw@", what="x")
+
+
+def test_require_local_uri_rejects_scheme_only():
+    # #L-13-5: a scheme-only URI like "postgresql:" has no authority and no key=value params, so
+    # both the URI branch and DSN branch are skipped and the bare-path branch accepted it — but
+    # libpq resolves all connection parameters from environment variables in this case, making
+    # the host indeterminate. Reject to preserve defense-in-depth.
+    from assay_engine._local import require_local_uri
+
+    with pytest.raises(NonLocalEndpointError, match="scheme-only"):
+        require_local_uri("postgresql:", what="x")
+    with pytest.raises(NonLocalEndpointError, match="scheme-only"):
+        require_local_uri("postgres:", what="x")
+
+
 def test_redact_strips_dsn_password():
     out = redact_creds("OperationalError: host=localhost password=s3cr#t dbname=x failed")
     assert "s3cr#t" not in out and "password=***" in out
