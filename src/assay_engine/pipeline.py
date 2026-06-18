@@ -39,10 +39,11 @@ from pathlib import Path
 from typing import Any, Callable, Iterable, Mapping, cast
 
 from assay_engine._frozen import freeze_mapping, unfreeze
-from assay_engine.baseline.determinism import corpus_fingerprint
+from assay_engine.baseline.determinism import corpus_fingerprint, diff_baseline_fingerprints
 from assay_engine.baseline.toolkit import BaselineArtifact, BaselineBuilder
 from assay_engine.contracts.claims import ClaimRecord, claim_set_fingerprint
 from assay_engine.contracts.features import FeatureMatrix
+from assay_engine.contracts.prompts import PromptManifest
 from assay_engine.contracts.schema import Corpus
 from assay_engine.contracts.study import StudyDefinition, StudyMode
 from assay_engine.methodology.adjudication import (
@@ -180,6 +181,7 @@ class StudyPlan:
     confirm_held_out: HeldOutConfirmer | None = None
     hypothesis_for: Callable[[ClaimRecord], Hypothesis] | None = None
     confirm_claim: ClaimConfirmer | None = None
+    prompt_manifest: PromptManifest | None = None
 
     def __post_init__(self) -> None:
         modes = self.definition.modes
@@ -270,6 +272,7 @@ def run_study(
     secret: bytes | None = None,
     trail: ProvenanceTrail | None = None,
     verify_trail: bool = True,
+    prior_corpus_fingerprint: str | None = None,
 ) -> StudyResult:
     """Run one study end-to-end through its governed phase sequence. See module docstring.
 
@@ -329,6 +332,10 @@ def run_study(
                 "experiment tracker call failed (%s: %s); this metric/artifact was not logged",
                 type(exc).__name__,
                 exc,
+                extra={
+                    "event": "tracker.call_failed",
+                    "error_type": type(exc).__name__,
+                },
             )
 
     def run_gate(review: GateReview) -> None:
@@ -375,7 +382,27 @@ def run_study(
                 "to the tracker for this study",
                 type(exc).__name__,
                 exc,
+                extra={
+                    "event": "tracker.start_run_failed",
+                    "study": defn.name,
+                    "error_type": type(exc).__name__,
+                },
             )
+    # Log prompt manifest so every run is comparable by prompt version (#178).
+    # trail.record always runs; track() is best-effort (no-ops without a tracker/run_id).
+    if plan.prompt_manifest:
+        manifest = plan.prompt_manifest
+        for callable_name, version in manifest.items():
+            track(
+                lambda t, rid, k=callable_name, v=version: t.log_param(
+                    rid, f"prompt_version.{k}", v
+                )
+            )
+        trail.record(
+            "prompt_manifest",
+            f"logged prompt versions for {len(manifest)} callable(s)",
+            callables=dict(manifest),
+        )
 
     ok = False
     started_at = time.monotonic()
@@ -410,6 +437,21 @@ def run_study(
             if not corpus.units:
                 raise IngestionError("ingestion produced an empty corpus")
             cfp = corpus_fingerprint(corpus)
+            # Cross-run drift detection (#179): compare this run's fingerprint to the prior one
+            # when the caller supplies it. Best-effort — a drift warning never aborts a run.
+            if prior_corpus_fingerprint is not None:
+                drift_report = diff_baseline_fingerprints(
+                    prior_corpus_fingerprint,
+                    cfp,
+                    current_n_units=len(corpus.units),
+                )
+                trail.record(
+                    "baseline_drift",
+                    "corpus fingerprint compared to prior run",
+                    **drift_report.as_params(),
+                )
+                for k, v in drift_report.as_params().items():
+                    track(lambda t, rid, pk=k, pv=v: t.log_param(rid, pk, pv))
             source_version: str | None = None
             if versioner is not None:
                 # The versioner is an optional seam; a storage failure (PermissionError,
@@ -811,6 +853,11 @@ def run_study(
                 "could not record run_failed provenance entry (%s: %s)",
                 type(inner).__name__,
                 inner,
+                extra={
+                    "event": "provenance.record_failed",
+                    "phase": last_phase,
+                    "error_type": type(inner).__name__,
+                },
             )
         raise
     finally:
