@@ -119,7 +119,7 @@ def HGTModel(  # noqa: N802
             h = {ntype: F.relu(self.lin_dict[ntype](x)) for ntype, x in x_dict.items()}
             for conv in self.convs:
                 h = conv(h, edge_index_dict)
-            return self.lin_out(h[target_node_type])  # type: ignore[return-value]
+            return self.lin_out(h[target_node_type])  # type: ignore[no-any-return]
 
     return _HGT()
 

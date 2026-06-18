@@ -118,7 +118,7 @@ def dominant(g: GraphData, config: DOMINANTConfig) -> AnomalyGNNResult:
 
         def forward(self, xin: torch.Tensor, ei: torch.Tensor) -> torch.Tensor:
             z = F.relu(self.conv1(xin, ei))
-            return self.conv2(z, ei)  # type: ignore[return-value]
+            return self.conv2(z, ei)  # type: ignore[no-any-return]
 
     encoder = _Encoder()
     optimizer = torch.optim.Adam(encoder.parameters(), lr=config.lr)

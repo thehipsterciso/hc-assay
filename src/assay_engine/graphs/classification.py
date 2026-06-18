@@ -48,7 +48,7 @@ def GINModel(config: GINConfig) -> object:
             )
 
         def forward(self, x: torch.Tensor) -> torch.Tensor:
-            return self.net(x)  # type: ignore[return-value]
+            return self.net(x)  # type: ignore[no-any-return]
 
     class _GIN(nn.Module):  # type: ignore[misc]
         def __init__(self) -> None:
@@ -74,7 +74,7 @@ def GINModel(config: GINConfig) -> object:
                 x = F.relu(bn(conv(x, edge_index)))
                 x = F.dropout(x, p=self.dropout, training=self.training)
             x = global_mean_pool(x, batch)
-            return self.classifier(x)  # type: ignore[return-value]
+            return self.classifier(x)  # type: ignore[no-any-return]
 
     return _GIN()
 

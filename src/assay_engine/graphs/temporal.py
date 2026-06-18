@@ -72,7 +72,7 @@ class A3TGCNModel:
                 self.recurrent = A3TGCN(in_channels, out_channels, periods)
 
             def forward(self, x: torch.Tensor, edge_index: torch.Tensor) -> torch.Tensor:
-                return self.recurrent(x, edge_index)  # type: ignore[return-value]
+                return self.recurrent(x, edge_index)  # type: ignore[no-any-return]
 
         self._model = _Model()
 
