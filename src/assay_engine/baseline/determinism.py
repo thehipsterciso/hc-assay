@@ -18,6 +18,7 @@ from __future__ import annotations
 import hashlib
 import json
 import sys
+import warnings
 from dataclasses import dataclass
 from typing import Any, Mapping
 
@@ -160,3 +161,94 @@ def build_baseline_artifact(
     return BaselineArtifact(
         corpus_fingerprint=corpus_hash, contents=contents, determinism=record.as_dict()
     )
+
+
+# --------------------------------------------------------------------------------------
+# Baseline drift detection — cross-run corpus change alerting (#179)
+# --------------------------------------------------------------------------------------
+
+class BaselineDriftWarning(UserWarning):
+    """The corpus fingerprint changed between study runs.
+
+    Emitted when ``run_study`` is given a ``prior_corpus_fingerprint`` that does not match
+    the current run's fingerprint — the corpus was re-ingested and its content differs.
+    Inspect the :class:`BaselineDriftReport` in the experiment tracker (param
+    ``drift.prior_fingerprint`` / ``drift.current_fingerprint``) to decide whether the change
+    is expected (new documents, schema refresh) or a data-integrity issue.
+    """
+
+
+@dataclass(frozen=True, slots=True)
+class BaselineDriftReport:
+    """Summary of a corpus fingerprint change detected at run start.
+
+    ``prior_fingerprint`` and ``current_fingerprint`` are SHA-256 hex digests from
+    :func:`corpus_fingerprint`. ``prior_n_units`` / ``current_n_units`` are optional —
+    set them when the previous run's unit count is available (e.g. from an MLflow param)
+    to surface a size delta alongside the fingerprint change.
+    """
+
+    prior_fingerprint: str
+    current_fingerprint: str
+    drifted: bool
+    prior_n_units: int | None = None
+    current_n_units: int | None = None
+
+    @property
+    def unit_delta(self) -> int | None:
+        """Signed change in unit count (positive = grew, negative = shrank), or None if unknown."""
+        if self.prior_n_units is not None and self.current_n_units is not None:
+            return self.current_n_units - self.prior_n_units
+        return None
+
+    def as_params(self) -> dict[str, str]:
+        """Flat string dict suitable for logging as MLflow params."""
+        p: dict[str, str] = {
+            "drift.prior_fingerprint": self.prior_fingerprint,
+            "drift.current_fingerprint": self.current_fingerprint,
+            "drift.detected": str(self.drifted),
+        }
+        if self.prior_n_units is not None:
+            p["drift.prior_n_units"] = str(self.prior_n_units)
+        if self.current_n_units is not None:
+            p["drift.current_n_units"] = str(self.current_n_units)
+        if self.unit_delta is not None:
+            p["drift.unit_delta"] = str(self.unit_delta)
+        return p
+
+
+def diff_baseline_fingerprints(
+    prior_fingerprint: str,
+    current_fingerprint: str,
+    *,
+    prior_n_units: int | None = None,
+    current_n_units: int | None = None,
+    warn: bool = True,
+) -> BaselineDriftReport:
+    """Compare two corpus fingerprints and return a :class:`BaselineDriftReport`.
+
+    Emits a :class:`BaselineDriftWarning` when the fingerprints differ and ``warn=True``
+    (the default). Pass ``warn=False`` to suppress the warning (e.g. in tests that
+    intentionally exercise drift). The report is always returned regardless of ``warn``.
+
+    ``prior_n_units`` / ``current_n_units`` are optional but recommended — supply them
+    from your study plan or a previous MLflow run to surface a size delta in the report.
+    """
+    drifted = prior_fingerprint != current_fingerprint
+    report = BaselineDriftReport(
+        prior_fingerprint=prior_fingerprint,
+        current_fingerprint=current_fingerprint,
+        drifted=drifted,
+        prior_n_units=prior_n_units,
+        current_n_units=current_n_units,
+    )
+    if drifted and warn:
+        delta = f", unit delta={report.unit_delta:+d}" if report.unit_delta is not None else ""
+        warnings.warn(
+            f"corpus fingerprint changed between runs{delta}: "
+            f"{prior_fingerprint[:12]}… → {current_fingerprint[:12]}… "
+            "— verify the re-ingestion was intentional before trusting cross-run comparisons",
+            BaselineDriftWarning,
+            stacklevel=2,
+        )
+    return report
