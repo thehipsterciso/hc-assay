@@ -348,6 +348,10 @@ def test_merge_gate_compensating_control_exists():
     assert policy.exists() and "branch protection" in policy.read_text(encoding="utf-8").lower()
     ci = _ci_text()
     assert "#CI-1" in ci, "all-checks comment does not flag the unenforced-gate caveat"
+    # #P10-CI-1: the gate must bind the green run to the exact commit (headSha == HEAD), else a
+    # stale green run from an earlier commit certifies a newer untested HEAD.
+    assert "headSha" in body, "CI gate does not compare the run's headSha to HEAD (#P10-CI-1)"
+    assert "rev-parse" in body, "CI gate does not resolve the branch HEAD SHA to compare"
 
 
 def test_numeric_env_parsing_names_the_bad_var():

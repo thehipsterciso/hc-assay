@@ -217,6 +217,41 @@ def test_scrub_redacts_machine_and_namespace_hostnames(monkeypatch):
     assert "settings.local.json" in out  # unrelated *.local untouched (no blanket rule)
 
 
+def test_scrub_redacts_private_ips_keeps_loopback_and_public():
+    # #P10-PII-1: captured ifconfig/route/lsof output leaks the operator's LAN subnet/gateway/host
+    # IP (RFC1918). Redact 10/8, 172.16/12, 192.168/16 — including a form glued to a JSON-\n — while
+    # KEEPING loopback (127.x), 0.0.0.0, and public IPs (remote API endpoints, not operator PII).
+    cap = _load("scripts/capture_transcripts.py", "capture_transcripts_ip")
+    # include a sentence-final form "192.168.50.134." — the old (?![\d.]) lookahead refused the
+    # trailing period and left the operator's real IP in cleartext (#P10-PII-1 confirm-concern).
+    out = cap._scrub(
+        "gw 192.168.50.1 host 192.168.50.134 ten 10.0.0.9 priv 172.16.5.4 "
+        "loop 127.0.0.1 any 0.0.0.0 pub 160.79.104.10 glued:\\n192.168.1.50 "
+        "sentence addr 192.168.50.134. Next sentence."
+    )
+    for priv in ("192.168.50.1", "192.168.50.134", "10.0.0.9", "172.16.5.4", "192.168.1.50"):
+        assert priv not in out, f"private IP {priv} leaked"
+    assert "127.0.0.1" in out and "0.0.0.0" in out and "160.79.104.10" in out  # kept
+
+
+def test_scrub_hostname_does_not_over_redact_as_substring(monkeypatch):
+    # #P10-PII-2: the machine-hostname rule has a leading \b so a short/common hostname does not
+    # match as a substring of legitimate content (e.g. host "host" must NOT redact "localhost").
+    monkeypatch.delenv("ASSAY_SCRUB_HOSTS", raising=False)
+    cap = _load("scripts/capture_transcripts.py", "capture_transcripts_hostsub")
+    monkeypatch.setattr(cap.socket, "gethostname", lambda: "host")
+    monkeypatch.setattr(cap.platform, "node", lambda: "host")
+    cap._HOSTNAME_RES = cap._hostname_patterns()
+    out = cap._scrub("connect to localhost; the localhostname var; rehosting the service")
+    # leading \b prevents the SUBSTRING matches that were the defect: 'host' must not fire inside
+    # 'localhost', 'localhostname', or 'rehosting'.
+    # "to localhost;" tests the EXACT token in context — "localhost" alone would spuriously
+    # pass via the substring "localhostname" even when localhost is redacted to "local[REDACTED]".
+    assert "to localhost;" in out and "localhostname" in out and "rehosting" in out, (
+        "over-redacted 'host' as a substring (#P10-PII-2)"
+    )
+
+
 def test_precommit_hook_wires_namespace_host_into_capture():
     # #P9-PII-1 confirm-concern: the namespace host (hc-grc.local) only redacts when ASSAY_SCRUB_HOSTS
     # names it; the machine hostname auto-derives but this does not. The pre-commit hook must set

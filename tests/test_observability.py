@@ -286,6 +286,48 @@ def test_sigterm_handler_redelivers_default_termination(monkeypatch):
     )
 
 
+def test_sigterm_handler_redelivers_when_prior_is_none_c_handler(monkeypatch):
+    # #REL-1: signal.getsignal() returns None when the previous SIGTERM handler was installed from
+    # NON-Python (C) code. None is neither callable nor == SIG_DFL, so the pass-8 fix's branches
+    # both miss it and the handler would flush-and-return → swallow SIGTERM again. It must treat
+    # None like SIG_DFL and re-deliver the default terminate.
+    import signal as _signal
+
+    calls = {"reset": [], "killed": []}
+
+    class _Provider:
+        def force_flush(self):
+            pass
+
+        def shutdown(self):
+            pass
+
+    captured = {}
+    monkeypatch.setattr(tr.atexit, "register", lambda fn: None)
+    monkeypatch.setattr(tr.signal, "getsignal", lambda s: None)  # C-installed prior handler
+
+    def _fake_signal(sig, handler):
+        if handler is _signal.SIG_DFL:
+            calls["reset"].append(sig)
+        else:
+            captured["h"] = handler
+
+    monkeypatch.setattr(tr.signal, "signal", _fake_signal)
+    monkeypatch.setattr(tr.os, "kill", lambda pid, sig: calls["killed"].append((pid, sig)))
+
+    import threading
+
+    if threading.current_thread() is not threading.main_thread():  # pragma: no cover
+        pytest.skip("SIGTERM wiring only on the main thread")
+
+    tr._install_flush_on_exit(_Provider())
+    assert "h" in captured
+    captured["h"](_signal.SIGTERM, None)
+    assert _signal.SIGTERM in calls["reset"] and calls["killed"], (
+        "prior=None (C handler) swallowed SIGTERM instead of re-delivering (#REL-1)"
+    )
+
+
 def test_install_flush_on_exit_noop_without_force_flush(monkeypatch):
     # a provider lacking force_flush must not register anything (no crash)
     calls = []

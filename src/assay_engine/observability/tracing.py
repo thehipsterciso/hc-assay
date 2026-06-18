@@ -158,7 +158,11 @@ def _install_flush_on_exit(provider: Any) -> None:
                 # action so the process still dies on SIGTERM (SIG_IGN stays ignored).
                 if callable(prior):
                     prior(signum, frame)
-                elif prior == signal.SIG_DFL:
+                elif prior is None or prior == signal.SIG_DFL:
+                    # prior is None when the previous SIGTERM handler was installed from NON-Python
+                    # (C) code (signal.getsignal returns None for "unknown handler") — we cannot
+                    # chain to it, so treat it like SIG_DFL and re-deliver the default terminate
+                    # rather than swallow the signal (#REL-1, the K-REL-1 class for a C prior).
                     signal.signal(signal.SIGTERM, signal.SIG_DFL)
                     os.kill(os.getpid(), signum)  # re-deliver → default terminate action runs
 
