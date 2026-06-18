@@ -33,7 +33,7 @@ def _simple_hetero() -> HeteroGraphData:
 def test_hetero_graph_data_frozen() -> None:
     g = _simple_hetero()
     with pytest.raises(Exception):
-        object.__setattr__(g, "node_types", [])
+        g.node_types = []  # type: ignore[misc]
 
 
 def test_to_pyg_hetero_node_features() -> None:

@@ -66,7 +66,10 @@ def test_random_walks_reproducible() -> None:
 def test_node2vec_output_shape() -> None:
     g = _triangle()
     cfg = Node2VecConfig(embedding_dim=16, walk_length=5, num_walks=2, epochs=2, seed=0)
-    embeddings = node2vec(g, cfg)
+    try:
+        embeddings = node2vec(g, cfg)
+    except ImportError as exc:
+        pytest.skip(str(exc))
     assert len(embeddings) == g.num_nodes
     assert all(len(v) == 16 for v in embeddings)
 
@@ -81,7 +84,10 @@ def test_node2vec_config_defaults() -> None:
 def test_deepwalk_output_shape() -> None:
     g = _triangle()
     cfg = DeepWalkConfig(embedding_dim=8, walk_length=4, num_walks=2, epochs=1, seed=0)
-    embeddings = deepwalk(g, cfg)
+    try:
+        embeddings = deepwalk(g, cfg)
+    except ImportError as exc:
+        pytest.skip(str(exc))
     assert len(embeddings) == g.num_nodes
     assert all(len(v) == 8 for v in embeddings)
 
@@ -93,6 +99,9 @@ def test_deepwalk_matches_node2vec_p1_q1() -> None:
     n2v_cfg = Node2VecConfig(
         embedding_dim=8, walk_length=4, num_walks=2, p=1.0, q=1.0, epochs=1, seed=seed
     )
-    dw = deepwalk(g, dw_cfg)
-    n2v = node2vec(g, n2v_cfg)
+    try:
+        dw = deepwalk(g, dw_cfg)
+        n2v = node2vec(g, n2v_cfg)
+    except ImportError as exc:
+        pytest.skip(str(exc))
     assert len(dw) == len(n2v)

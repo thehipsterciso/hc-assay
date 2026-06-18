@@ -26,7 +26,7 @@ def _small_graph() -> GraphData:
 def test_graphdata_is_frozen() -> None:
     g = _small_graph()
     with pytest.raises(Exception):
-        object.__setattr__(g, "num_nodes", 99)
+        g.num_nodes = 99  # type: ignore[misc]
 
 
 def test_to_pyg_edge_index_shape() -> None:

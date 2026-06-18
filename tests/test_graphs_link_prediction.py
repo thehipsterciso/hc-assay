@@ -118,4 +118,4 @@ def test_predict_links_empty_candidates() -> None:
 def test_link_prediction_result_frozen() -> None:
     r = LinkPredictionResult(candidate_edges=[(0, 1)], scores=[0.8], predicted_links=[(0, 1)])
     with pytest.raises(Exception):
-        object.__setattr__(r, "scores", [0.0])
+        r.scores = [0.0]  # type: ignore[misc]

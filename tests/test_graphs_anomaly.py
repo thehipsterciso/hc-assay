@@ -85,7 +85,7 @@ def test_dominant_raises_on_empty_graph() -> None:
 def test_anomaly_gnn_result_frozen() -> None:
     r = AnomalyGNNResult(scores=[0.1], outlier_flags=[False], threshold=0.5, n_outliers=0)
     with pytest.raises(Exception):
-        object.__setattr__(r, "threshold", 0.9)
+        r.threshold = 0.9  # type: ignore[misc]
 
 
 def test_coda_config_defaults() -> None:
@@ -106,7 +106,7 @@ def test_coda_config_custom() -> None:
 def test_coda_config_frozen() -> None:
     cfg = CODAConfig()
     with pytest.raises(Exception):
-        object.__setattr__(cfg, "epochs", 999)
+        cfg.epochs = 999  # type: ignore[misc]
 
 
 def test_ganomaly_config_defaults() -> None:
@@ -127,14 +127,17 @@ def test_ganomaly_config_custom() -> None:
 def test_ganomaly_config_frozen() -> None:
     cfg = GANomalyConfig()
     with pytest.raises(Exception):
-        object.__setattr__(cfg, "lr", 1.0)
+        cfg.lr = 1.0  # type: ignore[misc]
 
 
 def test_cola_result_type() -> None:
     pytest.importorskip("pygod")
     g = _triangle_with_features()
     cfg = CODAConfig(hidden_channels=8, epochs=2, seed=0)
-    result = cola(g, cfg)
+    try:
+        result = cola(g, cfg)
+    except ImportError as exc:
+        pytest.skip(str(exc))
     assert isinstance(result, AnomalyGNNResult)
     assert len(result.scores) == g.num_nodes
 
@@ -143,6 +146,9 @@ def test_card_result_type() -> None:
     pytest.importorskip("pygod")
     g = _triangle_with_features()
     cfg = GANomalyConfig(hidden_channels=8, epochs=2, seed=0)
-    result = card(g, cfg)
+    try:
+        result = card(g, cfg)
+    except ImportError as exc:
+        pytest.skip(str(exc))
     assert isinstance(result, AnomalyGNNResult)
     assert len(result.scores) == g.num_nodes

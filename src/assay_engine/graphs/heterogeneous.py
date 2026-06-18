@@ -117,8 +117,14 @@ def HGTModel(  # noqa: N802
             edge_index_dict: dict[tuple[str, str, str], torch.Tensor],
         ) -> torch.Tensor:
             h = {ntype: F.relu(self.lin_dict[ntype](x)) for ntype, x in x_dict.items()}
-            for conv in self.convs:
-                h = conv(h, edge_index_dict)
+            if edge_index_dict:
+                for conv in self.convs:
+                    new_h = conv(h, edge_index_dict)
+                    # HGTConv only returns destination node types; keep source-only nodes intact.
+                    h = {
+                        ntype: (new_h[ntype] if ntype in new_h and new_h[ntype] is not None else h[ntype])
+                        for ntype in h
+                    }
             return self.lin_out(h[target_node_type])  # type: ignore[no-any-return]
 
     return _HGT()
