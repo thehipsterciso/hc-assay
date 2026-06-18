@@ -1,0 +1,26 @@
+cff-version: 1.2.0
+message: "If you use HC-Assay findings or methodology in your research, please cite this project."
+title: "HC-Assay: Independent GRC Maturity Benchmarking Engine"
+authors:
+  - alias: thehipsterciso
+    given-names: thehipsterciso
+repository-code: https://github.com/thehipsterciso/hc-assay
+license: Apache-2.0
+type: software
+keywords:
+  - GRC
+  - cybersecurity
+  - benchmarking
+  - empirical research
+  - maturity assessment
+  - independent research
+abstract: >
+  HC-Assay is an independent, practitioner-led empirical research engine for rigorous,
+  reproducible benchmarking of GRC maturity against observed security outcomes. Its first
+  concrete study measures the gap between stated GRC maturity and actual security resilience
+  across mid-market organizations, using a pre-registered survey instrument, a blind-scored
+  ML/NLP analysis pipeline, and a three-verdict adjudication methodology (supported /
+  contradicted / indeterminate). HC-Assay accepts no vendor funding and publishes
+  anonymized response data, scoring code, and full methodology to enable independent
+  reproduction by hostile reviewers.
+date-released: 2026-06-18
