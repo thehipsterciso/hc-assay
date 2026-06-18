@@ -148,3 +148,10 @@ module = [
     "pygod.*",
 ]
 ignore_missing_imports = true
+
+# torch ships type stubs; when torch IS installed the # type: ignore[misc] guards on inner
+# nn.Module subclasses become "unused". Disabling warn_unused_ignores for the graphs module
+# lets the same comments suppress errors in BOTH environments (with and without torch).
+[[tool.mypy.overrides]]
+module = ["assay_engine.graphs.*"]
+warn_unused_ignores = false

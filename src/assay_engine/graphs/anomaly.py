@@ -118,7 +118,7 @@ def dominant(g: GraphData, config: DOMINANTConfig) -> AnomalyGNNResult:
 
         def forward(self, xin: torch.Tensor, ei: torch.Tensor) -> torch.Tensor:
             z = F.relu(self.conv1(xin, ei))
-            return self.conv2(z, ei)
+            return self.conv2(z, ei)  # type: ignore[return-value]
 
     encoder = _Encoder()
     optimizer = torch.optim.Adam(encoder.parameters(), lr=config.lr)
@@ -132,7 +132,7 @@ def dominant(g: GraphData, config: DOMINANTConfig) -> AnomalyGNNResult:
         struct_loss = F.binary_cross_entropy(adj_recon, adj_dense, reduction="none").mean(dim=1)
         attr_loss = F.mse_loss(attr_recon, x @ x.T, reduction="none").mean(dim=1)
         loss = (0.5 * struct_loss + 0.5 * attr_loss).mean()
-        loss.backward()
+        loss.backward()  # type: ignore[no-untyped-call]
         optimizer.step()
 
     encoder.eval()

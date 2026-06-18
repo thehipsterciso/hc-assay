@@ -1,0 +1,11 @@
+# CVE allowlist for pip-audit (#P-GNN-1).
+# Each line is a CVE/GHSA ID. Lines beginning with '#' and blank lines are ignored.
+# Add an entry here ONLY when the vulnerability is accepted/mitigated for this project.
+# Document the rationale in the comment above each entry.
+
+# torch 2.12.0 — CVE-2025-3000
+# Affects torch's pickle-based model serialization (torch.load without weights_only=True).
+# Mitigation: assay-engine never calls torch.load on untrusted input; torch is an optional
+# gnn extra installed only in controlled research environments, not in the production core.
+# Re-evaluate when a patched torch release is available within the project's version bounds.
+CVE-2025-3000

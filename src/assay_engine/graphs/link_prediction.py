@@ -132,7 +132,7 @@ def train_link_predictor(g: GraphData, config: LinkPredictorConfig) -> Any:
             scores = torch.cat([pos_scores, neg_scores])
             labels = torch.cat([torch.ones(pos_scores.size(0)), torch.zeros(neg_scores.size(0))])
             loss = F.binary_cross_entropy(scores, labels)
-        loss.backward()
+        loss.backward()  # type: ignore[no-untyped-call]
         optimizer.step()
 
     return model

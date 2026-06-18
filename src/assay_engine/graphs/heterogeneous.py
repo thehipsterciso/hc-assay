@@ -119,7 +119,7 @@ def HGTModel(  # noqa: N802
             h = {ntype: F.relu(self.lin_dict[ntype](x)) for ntype, x in x_dict.items()}
             for conv in self.convs:
                 h = conv(h, edge_index_dict)
-            return self.lin_out(h[target_node_type])
+            return self.lin_out(h[target_node_type])  # type: ignore[return-value]
 
     return _HGT()
 
@@ -154,7 +154,7 @@ def train_hgt(
         optimizer.zero_grad()
         out = model(x_dict, edge_index_dict)
         loss = F.cross_entropy(out, y)
-        loss.backward()
+        loss.backward()  # type: ignore[no-untyped-call]
         optimizer.step()
 
     return model

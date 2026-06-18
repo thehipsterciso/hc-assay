@@ -72,7 +72,7 @@ class A3TGCNModel:
                 self.recurrent = A3TGCN(in_channels, out_channels, periods)
 
             def forward(self, x: torch.Tensor, edge_index: torch.Tensor) -> torch.Tensor:
-                return self.recurrent(x, edge_index)
+                return self.recurrent(x, edge_index)  # type: ignore[return-value]
 
         self._model = _Model()
 
@@ -116,7 +116,7 @@ def train_a3tgcn(snapshots: list[TemporalSnapshot], config: A3TGCNConfig) -> A3T
             optimizer.zero_grad()
             out = nn_model(x, edge_index_t)
             loss = F.mse_loss(out, x)
-            loss.backward()
+            loss.backward()  # type: ignore[no-untyped-call]
             optimizer.step()
             total_loss = total_loss + loss.detach()
 
