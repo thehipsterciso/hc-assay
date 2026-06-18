@@ -894,3 +894,38 @@ def test_submit_bounded_releases_slot_if_callback_registration_is_interrupted(mo
     # — _release is per-future idempotent. Simulate the future completing and the callback running.
     fut.cb(fut)
     assert seam._inflight == 0  # still 0, not -1
+
+
+# ---- SEC-10-1: service=/servicefile= DSN keyword and URI query bypass ----
+
+
+@pytest.mark.parametrize(
+    "uri",
+    [
+        "postgresql://localhost/assay?service=prod",
+        "postgresql://localhost/assay?servicefile=/tmp/svc.conf",
+    ],
+)
+def test_require_local_uri_rejects_service_query_param(uri):
+    # #SEC-10-1: a ``service=`` or ``servicefile=`` URI query param loads ~/.pg_service.conf (or
+    # a custom file) which can redirect the connection off-box regardless of the URI host.
+    from assay_engine._local import require_local_uri
+
+    with pytest.raises(NonLocalEndpointError, match="service"):
+        require_local_uri(uri, what="x")
+
+
+@pytest.mark.parametrize(
+    "dsn",
+    [
+        "service=prod host=localhost dbname=assay",
+        "servicefile=/tmp/svc.conf host=localhost",
+    ],
+)
+def test_require_local_uri_rejects_service_dsn_keyword(dsn):
+    # #SEC-10-1: a ``service`` or ``servicefile`` keyword in a libpq keyword/value DSN loads an
+    # off-box service definition even when host=localhost is also present.
+    from assay_engine._local import require_local_uri
+
+    with pytest.raises(NonLocalEndpointError, match="service"):
+        require_local_uri(dsn, what="x")
