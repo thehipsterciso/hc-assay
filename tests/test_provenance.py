@@ -210,3 +210,28 @@ def test_record_is_thread_safe_under_concurrency():
     assert len(t) == n_threads * per
     t.verify()  # intact hash chain despite concurrent appends through a widened window
     assert [e.seq for e in t.entries] == list(range(n_threads * per))  # contiguous, no dupes/gaps
+
+
+def test_record_rejects_set_payload_loudly_not_silent_verify_failure():
+    # #P10-MO-1: a set/frozenset payload value is hashable (freeze accepts it) but does NOT survive
+    # the to_records/from_records round-trip (unfreeze→sorted list→re-freeze→tuple), so verify
+    # would SILENTLY fail on the rebuilt chain. Reject it loudly at record time instead.
+    t = ProvenanceTrail()
+    with pytest.raises(ProvenanceError, match="set/frozenset"):
+        t.record("k", "summary", tags=frozenset({"a", "b", "c"}))
+    with pytest.raises(ProvenanceError, match="set/frozenset"):
+        t.record("k", "summary", nested={"inner": {1, 2, 3}})
+    # a sorted list/tuple is the supported substitute and round-trips cleanly
+    t.record("k", "summary", tags=["a", "b", "c"])
+    from_records(t.to_records())  # verifies — no silent failure
+
+
+def test_from_records_typed_error_on_non_mapping_payload():
+    # #P10-MO-2: a record whose payload field is a non-mapping (list/str) must raise the module's
+    # typed ProvenanceError, not a raw AttributeError from freeze_mapping calling .items() on it.
+    t = ProvenanceTrail()
+    t.record("k", "summary", x=1)
+    recs = [dict(r) for r in t.to_records()]
+    recs[0]["payload"] = ["not", "a", "mapping"]  # corrupt the payload type
+    with pytest.raises(ProvenanceError):
+        from_records(recs)
