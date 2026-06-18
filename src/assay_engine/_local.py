@@ -162,8 +162,11 @@ def require_local_uri(uri: str, *, what: str) -> str:
                             f"{what} must be a local store (ADR-0003 data sovereignty); URI query "
                             f"{key}={h!r} points off-box"
                         )
-        # libpq ``service``/``servicefile`` query params load ~/.pg_service.conf (or a custom
-        # file) which can redirect the connection off-box regardless of host= (#SEC-10-1).
+        # libpq ``service=`` URI query param loads ~/.pg_service.conf which can redirect the
+        # connection off-box regardless of host= (#SEC-10-1). ``servicefile`` is not a real
+        # libpq DSN keyword (the service file path is controlled by the PGSERVICEFILE env var,
+        # blocked separately in _assert_local_libpq_env) — it is included here as belt-and-
+        # suspenders in case a future libpq version or wrapper library adds support for it.
         for key in ("service", "servicefile"):
             if parse_qs(query).get(key):
                 raise NonLocalEndpointError(
@@ -175,8 +178,9 @@ def require_local_uri(uri: str, *, what: str) -> str:
     if "=" in uri:  # libpq keyword/value DSN (no URI authority)
         for match in _DSN_TOKEN_RE.finditer(uri):
             kw = match.group(1).strip().lower()
-            # libpq ``service``/``servicefile`` DSN keywords load ~/.pg_service.conf (or a custom
-            # file) which can redirect the connection off-box regardless of host= (#SEC-10-1).
+            # libpq ``service=`` DSN keyword loads ~/.pg_service.conf which can redirect the
+            # connection off-box regardless of host= (#SEC-10-1). ``servicefile`` is not a real
+            # libpq DSN keyword — included as belt-and-suspenders (see URI query branch above).
             if kw in {"service", "servicefile"}:
                 raise NonLocalEndpointError(
                     f"{what}: DSN keyword {kw!r} would load an off-box service definition "

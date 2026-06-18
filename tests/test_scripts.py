@@ -252,6 +252,37 @@ def test_scrub_hostname_does_not_over_redact_as_substring(monkeypatch):
     )
 
 
+def test_scrub_redacts_ipv6_ula_and_link_local():
+    # #B-11-1: ifconfig output leaks the operator's internal IPv6 topology. ULA addresses
+    # (fd00::/8) uniquely identify the operator's private LAN; link-local (fe80::/10) expose
+    # interface-specific context. Loopback (::1) is NOT operator-identifying and is kept.
+    cap = _load("scripts/capture_transcripts.py", "capture_transcripts_ipv6")
+    out = cap._scrub(
+        "inet6 fd0f:a420:ea11:4652:c9a:5e04:db1f:3adc prefixlen 64 "
+        "inet6 fe80::a61a:dbfb:8d96:e4fe%utun0 prefixlen 64 "
+        "loopback ::1 remains safe "
+        "public 2001:db8::1 also safe"
+    )
+    assert "fd0f:a420:ea11:4652" not in out, "ULA address leaked"
+    assert "fe80::a61a:dbfb" not in out, "link-local address leaked"
+    assert "::1" in out, "loopback IPv6 should not be redacted"
+    assert "2001:db8::1" in out, "public IPv6 should not be redacted"
+    assert "[REDACTED]" in out, "at least one redaction should have occurred"
+
+
+def test_scrub_redacts_mac_addresses():
+    # #B-11-2: ifconfig 'ether' lines expose hardware-level operator identity (persistent
+    # on macOS wired/primary interface). Six colon-separated 2-hex-digit groups.
+    cap = _load("scripts/capture_transcripts.py", "capture_transcripts_mac")
+    out = cap._scrub(
+        "ether b2:35:c2:4c:12:2f flags=8863 ether AA:BB:CC:DD:EE:FF mtu 1500 loop 127.0.0.1 ok"
+    )
+    assert "b2:35:c2:4c:12:2f" not in out, "lowercase MAC leaked"
+    assert "AA:BB:CC:DD:EE:FF" not in out, "uppercase MAC leaked"
+    assert "127.0.0.1" in out, "loopback IPv4 should be kept"
+    assert "[REDACTED]" in out
+
+
 def test_precommit_hook_wires_namespace_host_into_capture():
     # #P9-PII-1 confirm-concern: the namespace host (hc-grc.local) only redacts when ASSAY_SCRUB_HOSTS
     # names it; the machine hostname auto-derives but this does not. The pre-commit hook must set
