@@ -1,13 +1,13 @@
 {
-  "captured_at": "2026-06-18T15:15:50.273934+00:00",
+  "captured_at": "2026-06-18T16:03:23.131954+00:00",
   "active_session": "8d54714a-d616-4911-a386-9b4b0f2ce74d",
-  "n_files": 2961,
-  "total_bytes": 276543809,
+  "n_files": 2964,
+  "total_bytes": 277478699,
   "files": [
     {
       "path": "transcripts/sessions/8d54714a-d616-4911-a386-9b4b0f2ce74d.jsonl",
-      "bytes": 38386568,
-      "sha256": "73bb1262bc2f4467c511ad9d2133cc163fd4a4ef570da4ef66c08792fff36fa8"
+      "bytes": 38838021,
+      "sha256": "dc47cefc04bc7e5656bd240ea156eb99ecbeac7de7464c4e4532f17f9abbe145"
     },
     {
       "path": "transcripts/sessions/8d54714a-d616-4911-a386-9b4b0f2ce74d/subagents/agent-a05067d59cf434caf.jsonl",
@@ -98,6 +98,16 @@
       "path": "transcripts/sessions/8d54714a-d616-4911-a386-9b4b0f2ce74d/subagents/agent-a180a18541c189904.meta.json",
       "bytes": 113,
       "sha256": "a295a8a21e512b4dce0c9198e73044d01d2df3351ae30a2283f815798aaaa82c"
+    },
+    {
+      "path": "transcripts/sessions/8d54714a-d616-4911-a386-9b4b0f2ce74d/subagents/agent-a1c166a0627831b3a.jsonl",
+      "bytes": 277947,
+      "sha256": "ab1a135bad747548777a558d107cff06a41257eb8406ca3f4d0e9368c65095ae"
+    },
+    {
+      "path": "transcripts/sessions/8d54714a-d616-4911-a386-9b4b0f2ce74d/subagents/agent-a1c166a0627831b3a.meta.json",
+      "bytes": 128,
+      "sha256": "a2bb2957c210118bb684b5f8b41954bebed3867d3e6e86a28518154b52121851"
     },
     {
       "path": "transcripts/sessions/8d54714a-d616-4911-a386-9b4b0f2ce74d/subagents/agent-a206a8ab8a48cabf9.jsonl",
@@ -14148,6 +14158,11 @@
       "path": "transcripts/sessions/8d54714a-d616-4911-a386-9b4b0f2ce74d/tool-results/bcf1li40s.txt",
       "bytes": 15596875,
       "sha256": "a38c966c2dc335c797f2e2bab9617bdfc8c08b96c67704554d017b2a56f8d176"
+    },
+    {
+      "path": "transcripts/sessions/8d54714a-d616-4911-a386-9b4b0f2ce74d/tool-results/bczhetxxl.txt",
+      "bytes": 205362,
+      "sha256": "12ea7bf5be6ffd6851214366a811f6066b65c847422be50b5bb565e05fc06c70"
     },
     {
       "path": "transcripts/sessions/8d54714a-d616-4911-a386-9b4b0f2ce74d/tool-results/bdfkw21h2.txt",

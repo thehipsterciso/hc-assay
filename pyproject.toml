@@ -68,9 +68,13 @@ orchestration = [
 baseline = [
     "numpy>=1.26,<3",  # vectorized similarity at corpus scale (pure-Python fallback otherwise)
 ]
+gnn = [
+    "torch>=2.0",
+    "torch-geometric>=2.3",
+]
 # Every backend in one shot (for a full local install). dev tooling stays separate.
 all = [
-    "assay-engine[reasoning,observability,persistence,orchestration,baseline]",
+    "assay-engine[reasoning,observability,persistence,orchestration,baseline,gnn]",
 ]
 
 [tool.hatch.version]
@@ -137,5 +141,8 @@ module = [
     # httpx ships with the reasoning extra; seam.py imports it lazily/guarded for the BULK-tier
     # HTTP timeout, so the no-extras core lane has no stub and mypy --strict failed there (#K-CI-1).
     "httpx.*",
+    "torch.*",
+    "torch_geometric.*",
+    "torch_geometric_temporal.*",
 ]
 ignore_missing_imports = true
