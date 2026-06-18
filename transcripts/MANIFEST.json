@@ -1,13 +1,13 @@
 {
-  "captured_at": "2026-06-18T13:01:33.754970+00:00",
+  "captured_at": "2026-06-18T13:11:57.614242+00:00",
   "active_session": "8d54714a-d616-4911-a386-9b4b0f2ce74d",
-  "n_files": 2926,
-  "total_bytes": 270298448,
+  "n_files": 2928,
+  "total_bytes": 270702378,
   "files": [
     {
       "path": "transcripts/sessions/8d54714a-d616-4911-a386-9b4b0f2ce74d.jsonl",
-      "bytes": 35280271,
-      "sha256": "905148ac1b59c22d002196c59d1907043e839817b11d0348a1cd5143b4fdf4e4"
+      "bytes": 35412913,
+      "sha256": "a89f713ffadf63a85eb17dd56dbce2989107662d0298c97f166e88f8005ea656"
     },
     {
       "path": "transcripts/sessions/8d54714a-d616-4911-a386-9b4b0f2ce74d/subagents/agent-a05067d59cf434caf.jsonl",
@@ -388,6 +388,16 @@
       "path": "transcripts/sessions/8d54714a-d616-4911-a386-9b4b0f2ce74d/subagents/agent-a77ae6dd8a6d5b48c.meta.json",
       "bytes": 121,
       "sha256": "e25c8d6fe4d1ba87d605e6bb06cb6f5c72bc7b7da2c113a0d324f92f74084c0c"
+    },
+    {
+      "path": "transcripts/sessions/8d54714a-d616-4911-a386-9b4b0f2ce74d/subagents/agent-a78959258b1bf19a0.jsonl",
+      "bytes": 271144,
+      "sha256": "50e7bedeac41918b274e4d40182b4a726576bb34bff7aa312e52ab8dd97e0697"
+    },
+    {
+      "path": "transcripts/sessions/8d54714a-d616-4911-a386-9b4b0f2ce74d/subagents/agent-a78959258b1bf19a0.meta.json",
+      "bytes": 144,
+      "sha256": "053eca596327c63a18591fcbb2b0cae1a4594c0fc821a1ceb264fdc235a591e7"
     },
     {
       "path": "transcripts/sessions/8d54714a-d616-4911-a386-9b4b0f2ce74d/subagents/agent-a7905a84d8d3fda41.jsonl",
