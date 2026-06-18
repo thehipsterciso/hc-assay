@@ -72,6 +72,23 @@ _SECRET_PATTERNS = [
         r"|172\.(?:1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}"
         r"|192\.168\.\d{1,3}\.\d{1,3})(?!\d)(?!\.\d)"
     ),  # RFC1918 → [REDACTED]
+    # IPv6 ULA (fd00::/8, fc00::/7) and link-local (fe80::/10) addresses (#B-11-1): captured
+    # ifconfig/ip addr output leaks the operator's internal IPv6 topology just as RFC1918 does
+    # for IPv4. ULA prefixes (fd/fc) identify the operator's private LAN; link-local (fe80)
+    # exposes interface-specific context. Loopback (::1) starts with ':' and is NOT matched.
+    # Zone IDs (%utun0, %lo0, %en0) are included so the full token is redacted.
+    re.compile(
+        r"(?<![0-9a-fA-F:])(?:fe80|f[cd][0-9a-fA-F]{2}):[0-9a-fA-F:]{2,}(?:%[a-zA-Z0-9]+)?",
+        re.IGNORECASE,
+    ),  # IPv6 ULA + link-local → [REDACTED]
+    # MAC addresses (#B-11-2): ifconfig output contains 'ether aa:bb:cc:dd:ee:ff' — persistent
+    # hardware identity for the primary interface (not randomized on wired macOS). Six colon-
+    # separated 2-hex-digit groups; lookbehind/lookahead guard against partial matches inside
+    # longer hex strings or IPv6 addresses (which use 4-digit groups, not 2-digit groups).
+    re.compile(
+        r"(?<![0-9a-fA-F])(?:[0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2}(?![0-9a-fA-F:])",
+        re.IGNORECASE,
+    ),  # MAC address → [REDACTED]
 ]
 
 
