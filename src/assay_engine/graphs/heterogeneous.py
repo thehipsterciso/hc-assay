@@ -122,7 +122,11 @@ def HGTModel(  # noqa: N802
                     new_h = conv(h, edge_index_dict)
                     # HGTConv only returns destination node types; keep source-only nodes intact.
                     h = {
-                        ntype: (new_h[ntype] if ntype in new_h and new_h[ntype] is not None else h[ntype])
+                        ntype: (
+                            new_h[ntype]
+                            if ntype in new_h and new_h[ntype] is not None
+                            else h[ntype]
+                        )
                         for ntype in h
                     }
             return self.lin_out(h[target_node_type])  # type: ignore[no-any-return]
